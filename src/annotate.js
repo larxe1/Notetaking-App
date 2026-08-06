@@ -303,11 +303,18 @@ export function initAnnPanel() {
         const ed = document.getElementById(activeEditorId);
         ed.focus();
         const sel = window.getSelection();
+        let linkText = '📄 ' + pdf.name;
+        
         if (savedRange) {
           sel.removeAllRanges();
           sel.addRange(savedRange);
+          const selectedText = savedRange.toString().trim();
+          if (selectedText.length > 0) {
+            linkText = selectedText;
+          }
         }
-        const html = `<a href="#" data-pdf-link="${pdf.id}" contenteditable="false" style="color:var(--gold);text-decoration:underline;cursor:pointer">📄 ${pdf.name}</a>&nbsp;`;
+        
+        const html = `<a href="#" data-pdf-link="${pdf.id}" contenteditable="false" style="color:var(--gold);text-decoration:underline;cursor:pointer">${linkText}</a>&nbsp;`;
         document.execCommand('insertHTML', false, html);
       });
       list.appendChild(div);
