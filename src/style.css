@@ -301,10 +301,15 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
    RESPONSIVE
 ════════════════════════════════════════ */
 @media (max-width: 1024px) {
-  #lib-side { position: fixed; top: 0; left: 0; bottom: 0; transform: translateX(-100%); box-shadow: 4px 0 24px rgba(0,0,0,.5); }
+  #lib-side { 
+    position: fixed; top: 0; left: 0; bottom: 0; 
+    width: 320px; max-width: 85vw;
+    transform: translateX(-100%); 
+    box-shadow: 4px 0 24px rgba(0,0,0,.6); 
+  }
   #lib-side.open { transform: translateX(0); }
   #mob-menu-btn { display: block; }
-  #lib-close { display: block !important; }
+  #lib-close { display: block !important; padding: 10px; margin-right: -10px; color: #fff; font-size: 22px; }
   #ann-panel { width: 100%; bottom: 0; top: auto; height: 68vh; transform: translateY(100%); border-left: none; border-top: 1px solid var(--navy-b); border-radius: 16px 16px 0 0; }
   #ann-panel.open { transform: translateY(0); }
   #thumb-strip { display: none; }

@@ -328,17 +328,27 @@ export function initLibraryModals() {
 
   // PDF upload via Drive
   document.getElementById('pdf-file-in').addEventListener('change', async function () {
-    if (!this.files[0] || !S.uploadFolderId) return;
+    if (!this.files || this.files.length === 0 || !S.uploadFolderId) return;
     try {
-      const file = this.files[0];
-      // Upload to Drive
-      const driveFile = await driveUploadPDF(file);
-      // Register in Supabase
-      const rec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
-      S.annCounts[rec.id] = 0;
+      const files = Array.from(this.files);
+      toast(`Uploading ${files.length} PDF${files.length > 1 ? 's' : ''}…`);
+      
+      let lastRec = null;
+      for (const file of files) {
+        // Upload to Drive
+        const driveFile = await driveUploadPDF(file);
+        // Register in Supabase
+        lastRec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
+        S.annCounts[lastRec.id] = 0;
+      }
+      
       renderLibrary();
-      toast('Uploaded — opening…');
-      await openPDFFromLibrary(rec);
+      toast('Upload complete!');
+      
+      // If they only uploaded one file, open it automatically
+      if (files.length === 1 && lastRec) {
+        await openPDFFromLibrary(lastRec);
+      }
     } catch (e) {
       console.error('[Upload Error]', e);
       const msg = e.message || '';
