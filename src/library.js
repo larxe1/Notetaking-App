@@ -283,6 +283,13 @@ export function initLibraryModals() {
     toast('Subject created');
   });
 
+  // Preset color clicks
+  document.querySelectorAll('.subj-cpre').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('subj-color').value = btn.dataset.c;
+    });
+  });
+
   document.querySelectorAll('.ftype-btn').forEach(b =>
     b.addEventListener('click', () => {
       document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('sel'));

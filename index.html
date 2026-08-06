@@ -239,7 +239,20 @@
   <div class="modal-box">
     <h3>New Subject</h3>
     <div class="form-row"><label>Name</label><input type="text" id="subj-name" placeholder="e.g. Labor Law 1"></div>
-    <div class="form-row"><label>Color</label><div class="cpick-row"><input type="color" id="subj-color" value="#c9a84c"></div></div>
+    <div class="form-row">
+      <label>Color</label>
+      <div class="cpick-row" style="display:flex;gap:12px;align-items:center">
+        <input type="color" id="subj-color" value="#c9a84c" style="width:32px;height:32px;padding:0;border:none;cursor:pointer" title="Custom Color">
+        <div id="subj-presets" style="display:flex;gap:8px">
+          <!-- Preset color dots -->
+          <div class="subj-cpre" style="width:24px;height:24px;border-radius:50%;background:#c9a84c;cursor:pointer;border:2px solid transparent" data-c="#c9a84c"></div>
+          <div class="subj-cpre" style="width:24px;height:24px;border-radius:50%;background:#558abb;cursor:pointer;border:2px solid transparent" data-c="#558abb"></div>
+          <div class="subj-cpre" style="width:24px;height:24px;border-radius:50%;background:#5ca473;cursor:pointer;border:2px solid transparent" data-c="#5ca473"></div>
+          <div class="subj-cpre" style="width:24px;height:24px;border-radius:50%;background:#a65b69;cursor:pointer;border:2px solid transparent" data-c="#a65b69"></div>
+          <div class="subj-cpre" style="width:24px;height:24px;border-radius:50%;background:#8f72a4;cursor:pointer;border:2px solid transparent" data-c="#8f72a4"></div>
+        </div>
+      </div>
+    </div>
     <div class="modal-acts">
       <button class="btn-sec" data-close="mo-subj">Cancel</button>
       <button class="btn-gold" id="save-subj">Create</button>
