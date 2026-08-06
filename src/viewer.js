@@ -63,6 +63,12 @@ export async function openPDFFromLibrary(pdfFile) {
     // Track recent PDFs
     pushRecent(pdfFile);
 
+    // Jump to bookmarked page (or stay on page 1)
+    const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
+    if (savedStart) {
+      import('./ui.js').then(m => m.jumpToPage(parseInt(savedStart)));
+    }
+
     syncOK('Ready');
   } catch (e) {
     console.error(e);
