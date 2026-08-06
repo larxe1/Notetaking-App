@@ -29,15 +29,17 @@ export const S = {
 
   // Interaction mode
   mode:        'text',   // 'text' | 'box' | 'draw'
+  drawTool:    'pen',    // 'pen' | 'erase'
   activeColor: '#c9a84c',
   drawWidth:   2,
 
   // Pending text selection before confirm
   pendingSel:  null,
 
-  // Upload target folder
-  uploadFolderId:   null,
-  newFolderSubjId:  null,
+  // Upload / folder target
+  uploadFolderId:      null,
+  newFolderSubjId:     null,
+  newSubfolderParentId: null,  // for creating a subfolder inside a folder
 
   // Note editing
   editingNoteId: null,

@@ -5,6 +5,8 @@ import { S } from './state.js';
 import { autosave, toast } from './ui.js';
 import { dbSaveDrawings } from './db.js';
 
+const ERASE_COLOR = '__erase__';
+
 export function setupDrawListeners(canvas, pageNum) {
   function getPt(e) {
     const r  = canvas.getBoundingClientRect();
@@ -27,9 +29,11 @@ export function setupDrawListeners(canvas, pageNum) {
     e.preventDefault();
     const [x, y] = getPt(e);
     S.curPts.push([x / canvas.width, y / canvas.height]);
+    const previewColor = S.drawTool === 'erase' ? ERASE_COLOR : S.activeColor;
+    const previewWidth = S.drawTool === 'erase' ? S.eraseWidth : S.drawWidth;
     renderCanvas(canvas, [
       ...(S.drawData[pageNum] || []),
-      { points: S.curPts, color: S.activeColor, width: S.drawWidth },
+      { points: S.curPts, color: previewColor, width: previewWidth },
     ]);
   });
 
@@ -38,7 +42,9 @@ export function setupDrawListeners(canvas, pageNum) {
     S.isDrawing = false;
     if (S.curPts.length >= 2) {
       if (!S.drawData[pageNum]) S.drawData[pageNum] = [];
-      S.drawData[pageNum].push({ points: S.curPts, color: S.activeColor, width: S.drawWidth });
+      const color = S.drawTool === 'erase' ? ERASE_COLOR : S.activeColor;
+      const width = S.drawTool === 'erase' ? S.eraseWidth : S.drawWidth;
+      S.drawData[pageNum].push({ points: S.curPts, color, width });
       if (S.curPDF) {
         autosave('saving');
         try {
@@ -54,12 +60,17 @@ export function setupDrawListeners(canvas, pageNum) {
   canvas.addEventListener('pointercancel', onEnd);
 }
 
+// ── Render strokes — handles erase strokes via destination-out ──
 export function renderCanvas(canvas, strokes) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const s of strokes) {
     if (!s.points || s.points.length < 2) continue;
     const pts = s.points.map(([px, py]) => [px * canvas.width, py * canvas.height]);
+
+    const isErase = s.color === ERASE_COLOR;
+    ctx.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
+
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length - 1; i++) {
@@ -68,12 +79,13 @@ export function renderCanvas(canvas, strokes) {
       ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
     }
     ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
-    ctx.strokeStyle = s.color  || '#c9a84c';
-    ctx.lineWidth   = s.width  || 2;
+    ctx.strokeStyle = isErase ? 'rgba(0,0,0,1)' : (s.color || '#c9a84c');
+    ctx.lineWidth   = s.width || 2;
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
     ctx.stroke();
   }
+  ctx.globalCompositeOperation = 'source-over'; // always reset
 }
 
 export function redrawAllDrawings() {
@@ -83,6 +95,30 @@ export function redrawAllDrawings() {
 }
 
 export function initDrawControls() {
+  // ── Eraser toggle ──
+  S.eraseWidth = 20; // default eraser size
+
+  document.getElementById('btn-erase').addEventListener('click', () => {
+    S.drawTool = S.drawTool === 'erase' ? 'pen' : 'erase';
+    updateDrawToolUI();
+    toast(S.drawTool === 'erase' ? 'Eraser on' : 'Back to pen');
+  });
+
+  // Eraser size buttons
+  document.querySelectorAll('.er-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.eraseWidth = parseInt(btn.dataset.ew);
+      document.querySelectorAll('.er-btn').forEach(b => b.classList.remove('sel'));
+      btn.classList.add('sel');
+      // Make sure eraser is active when picking size
+      if (S.drawTool !== 'erase') {
+        S.drawTool = 'erase';
+        updateDrawToolUI();
+      }
+    });
+  });
+
+  // ── Undo (removes last stroke of any type) ──
   document.getElementById('btn-undo').addEventListener('click', async () => {
     if (!S.curPDF) return;
     const pg = S.curPage;
@@ -113,8 +149,23 @@ export function initDrawControls() {
       S.drawWidth = parseInt(btn.dataset.w);
       document.querySelectorAll('.dw-btn').forEach(b => b.classList.remove('sel'));
       btn.classList.add('sel');
+      // Switch back to pen when picking pen size
+      if (S.drawTool !== 'pen') {
+        S.drawTool = 'pen';
+        updateDrawToolUI();
+      }
     });
   });
+}
+
+function updateDrawToolUI() {
+  const btn = document.getElementById('btn-erase');
+  btn.classList.toggle('active', S.drawTool === 'erase');
+  btn.textContent = S.drawTool === 'erase' ? '✏ Pen' : '⊘ Erase';
+
+  // Show/hide eraser size buttons
+  document.getElementById('erase-sizes').style.display = S.drawTool === 'erase' ? 'flex' : 'none';
+  document.getElementById('pen-sizes').style.display   = S.drawTool === 'erase' ? 'none'  : 'flex';
 }
 
 // ── Pinch zoom ──

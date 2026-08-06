@@ -78,9 +78,8 @@ function buildSubjectEl(subj) {
     dbDelSubject(subj.id).then(() => { renderLibrary(); toast('Deleted'); });
   });
 
-  // Sort folders by sort_order then created_at
   const folds = S.folders
-    .filter(f => f.subject_id === subj.id)
+    .filter(f => f.subject_id === subj.id && !f.parent_folder_id) // root folders only
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   for (const f of folds) ch.appendChild(buildFolderEl(f));
   return w;
@@ -101,6 +100,7 @@ function buildFolderEl(fold) {
       <span>${icons[fold.folder_type] || '📁'}</span>
       <span class="li-fold-name">${fold.name}</span>
       <div class="li-acts">
+        <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Upload PDF" data-act="upload">📄+</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
         <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
@@ -117,6 +117,14 @@ function buildFolderEl(fold) {
     S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
     chev.classList.toggle('closed');
     ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
+  });
+
+  w.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
+    e.stopPropagation();
+    S.newSubfolderParentId = fold.id;
+    S.newFolderSubjId = fold.subject_id;
+    document.getElementById('subfold-name').value = '';
+    openModal('mo-subfold');
   });
 
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
@@ -139,6 +147,17 @@ function buildFolderEl(fold) {
   });
 
   S.pdfs.filter(p => p.folder_id === fold.id).forEach(p => ch.appendChild(buildPdfEl(p)));
+
+  // Render child subfolders recursively (indented)
+  const childFolds = S.folders
+    .filter(f => f.parent_folder_id === fold.id)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  for (const child of childFolds) {
+    const childEl = buildFolderEl(child);
+    childEl.style.marginLeft = '12px';
+    childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
+    ch.appendChild(childEl);
+  }
 
   // ── Drag-to-reorder ──
   w.addEventListener('dragstart', e => {
@@ -279,6 +298,16 @@ export function initLibraryModals() {
     renderLibrary();
     closeModal('mo-fold');
     toast('Folder created');
+  });
+
+  // Save subfolder (nested inside an existing folder)
+  document.getElementById('save-subfold').addEventListener('click', async () => {
+    const name = document.getElementById('subfold-name').value.trim();
+    if (!name || !S.newSubfolderParentId) return;
+    await dbCreateFolder(S.newFolderSubjId, name, 'custom', S.newSubfolderParentId);
+    renderLibrary();
+    closeModal('mo-subfold');
+    toast('Subfolder created');
   });
 
   // PDF upload via Drive

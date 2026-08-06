@@ -103,9 +103,19 @@
 
       <!-- Draw controls (shown only in draw mode) -->
       <div id="draw-ctrls">
-        <div class="dw-btn sel" data-w="2"><div class="dw-inner" style="width:5px;height:5px"></div></div>
-        <div class="dw-btn"    data-w="4"><div class="dw-inner" style="width:9px;height:9px"></div></div>
-        <div class="dw-btn"    data-w="8"><div class="dw-inner" style="width:13px;height:13px"></div></div>
+        <!-- Pen sizes -->
+        <div id="pen-sizes" style="display:flex;align-items:center;gap:4px">
+          <div class="dw-btn sel" data-w="2"><div class="dw-inner" style="width:5px;height:5px"></div></div>
+          <div class="dw-btn"    data-w="4"><div class="dw-inner" style="width:9px;height:9px"></div></div>
+          <div class="dw-btn"    data-w="8"><div class="dw-inner" style="width:13px;height:13px"></div></div>
+        </div>
+        <!-- Eraser sizes (hidden by default) -->
+        <div id="erase-sizes" style="display:none;align-items:center;gap:4px">
+          <div class="er-btn sel" data-ew="12"><div class="dw-inner" style="width:8px;height:8px;background:#e44"></div></div>
+          <div class="er-btn"     data-ew="24"><div class="dw-inner" style="width:14px;height:14px;background:#e44"></div></div>
+          <div class="er-btn"     data-ew="48"><div class="dw-inner" style="width:20px;height:20px;background:#e44"></div></div>
+        </div>
+        <button class="tb-btn" id="btn-erase">⊘ Erase</button>
         <button class="tb-btn" id="btn-undo">↩ Undo</button>
         <button class="tb-btn" id="btn-clear">🗑 Clear</button>
         <div class="tb-sep"></div>
@@ -255,6 +265,18 @@
     <div class="modal-acts">
       <button class="btn-sec" data-close="mo-fold">Cancel</button>
       <button class="btn-gold" id="save-fold">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Subfolder -->
+<div class="modal-ov" id="mo-subfold">
+  <div class="modal-box">
+    <h3>📁 New Subfolder</h3>
+    <div class="form-row"><label>Name</label><input type="text" id="subfold-name" placeholder="e.g. Digests, Rulings…"></div>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-subfold">Cancel</button>
+      <button class="btn-gold" id="save-subfold">Create</button>
     </div>
   </div>
 </div>

@@ -89,11 +89,11 @@ export async function dbDelSubject(id) {
 }
 
 // ── Folders ──
-export async function dbCreateFolder(subject_id, name, folder_type) {
+export async function dbCreateFolder(subject_id, name, folder_type, parent_folder_id = null) {
   const id = 'fold_' + Date.now();
-  const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order: 0 });
+  const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order: 0, parent_folder_id });
   if (error) throw error;
-  S.folders.push({ id, subject_id, name, folder_type, sort_order: 0 });
+  S.folders.push({ id, subject_id, name, folder_type, sort_order: 0, parent_folder_id });
   return id;
 }
 
@@ -110,9 +110,15 @@ export async function dbReorderFolder(id, sort_order) {
 }
 
 export async function dbDelFolder(id) {
-  const pids = S.pdfs.filter(p => p.folder_id === id).map(p => p.id);
+  // Recursively collect all descendant folder IDs
+  function collectFolderIds(foldId) {
+    const children = S.folders.filter(f => f.parent_folder_id === foldId).map(f => f.id);
+    return [foldId, ...children.flatMap(collectFolderIds)];
+  }
+  const allFoldIds = collectFolderIds(id);
+  const pids = S.pdfs.filter(p => allFoldIds.includes(p.folder_id)).map(p => p.id);
 
-  // Delete annotations + notes for all PDFs (fix bug #7)
+  // Delete annotations + notes for all PDFs
   if (pids.length) {
     const { data: anns } = await db.from('annotations').select('id').in('pdf_file_id', pids);
     const annIds = (anns || []).map(a => a.id);
@@ -123,10 +129,11 @@ export async function dbDelFolder(id) {
     await db.from('drawings').delete().in('pdf_file_id', pids);
     await db.from('pdf_files').delete().in('id', pids);
   }
-  await db.from('folders').delete().eq('id', id);
+  // Delete all descendant folders (deepest first) + self
+  await db.from('folders').delete().in('id', allFoldIds);
 
-  S.pdfs    = S.pdfs.filter(p => p.folder_id !== id);
-  S.folders = S.folders.filter(f => f.id !== id);
+  S.pdfs    = S.pdfs.filter(p => !allFoldIds.includes(p.folder_id));
+  S.folders = S.folders.filter(f => !allFoldIds.includes(f.id));
 }
 
 // ── PDFs (using Google Drive file ID instead of Supabase storage) ──
