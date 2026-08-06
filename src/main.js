@@ -73,7 +73,8 @@ async function init() {
       document.getElementById('btn-toc').click();
     } catch (e) {
       console.error('Bookmark Error:', e);
-      toast('Failed to add bookmark. Did you run the SQL migration?');
+      alert('Supabase Error: ' + (e.message || JSON.stringify(e)));
+      toast('Failed to add bookmark.');
     }
   });
 
