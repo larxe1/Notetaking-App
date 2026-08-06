@@ -132,7 +132,8 @@ export async function dbDelFolder(id) {
 // ── PDFs (using Google Drive file ID instead of Supabase storage) ──
 export async function dbRegisterPDF(folder_id, name, drive_file_id) {
   const id = 'pdf_' + Date.now();
-  const { error } = await db.from('pdf_files').insert({ id, folder_id, name, drive_file_id });
+  // storage_path kept as empty string for backward compat with old schema
+  const { error } = await db.from('pdf_files').insert({ id, folder_id, name, drive_file_id, storage_path: '' });
   if (error) throw error;
   const rec = { id, folder_id, name, drive_file_id };
   S.pdfs.push(rec);
