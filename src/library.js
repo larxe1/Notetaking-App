@@ -295,9 +295,19 @@ export function initLibraryModals() {
       toast('Uploaded — opening…');
       await openPDFFromLibrary(rec);
     } catch (e) {
-      toast(e.message?.includes('Drive') || e.message?.includes('signed')
-        ? 'Sign in to Google Drive first!'
-        : 'Upload failed. Check connection.');
+      console.error('[Upload Error]', e);
+      const msg = e.message || '';
+      let tip = 'Upload failed. Check connection.';
+      if (msg.includes('signed') || msg.includes('Drive') || msg.includes('token')) {
+        tip = 'Sign in to Google Drive first!';
+      } else if (msg.includes('401') || msg.includes('403')) {
+        tip = 'Google auth expired — sign out and sign in again.';
+      } else if (msg.includes('quota')) {
+        tip = 'Google Drive is full!';
+      } else if (msg.includes('drive_file_id') || msg.includes('column')) {
+        tip = 'DB error: run the SQL migration in Supabase (see SETUP.md)';
+      }
+      toast(tip);
     }
     this.value = '';
   });
