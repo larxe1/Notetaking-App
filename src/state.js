@@ -6,6 +6,7 @@ export const S = {
   subjects:    [],
   folders:     [],
   pdfs:        [],
+  bookmarks:   [],
   colorCats:   [],
 
   // Current open PDF

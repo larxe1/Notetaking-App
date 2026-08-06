@@ -209,6 +209,27 @@ export async function dbDelAnnotation(id) {
   S.annotations = S.annotations.filter(a => a.id !== id);
 }
 
+// ── Custom Bookmarks (TOC) ──
+export async function dbLoadBookmarks(pfid) {
+  const { data } = await db.from('pdf_bookmarks').select('*').eq('pdf_file_id', pfid).order('page');
+  S.bookmarks = data || [];
+}
+
+export async function dbCreateBookmark(pfid, page, title) {
+  const id = 'bm_' + Date.now();
+  const { error } = await db.from('pdf_bookmarks').insert({ id, pdf_file_id: pfid, page, title });
+  if (error) throw error;
+  const bm = { id, pdf_file_id: pfid, page, title };
+  S.bookmarks.push(bm);
+  S.bookmarks.sort((a, b) => a.page - b.page);
+  return bm;
+}
+
+export async function dbDelBookmark(id) {
+  await db.from('pdf_bookmarks').delete().eq('id', id);
+  S.bookmarks = S.bookmarks.filter(b => b.id !== id);
+}
+
 // ── Notes ──
 export async function dbCreateNote(annotation_id, note_html, order_index) {
   const id = 'note_' + Date.now();

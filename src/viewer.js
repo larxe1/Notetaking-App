@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { syncOK, syncSpin, jumpToPage } from './ui.js';
-import { dbLoadAnnotations, dbLoadDrawings } from './db.js';
+import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { renderThumbnails } from './thumbnails.js';
@@ -50,8 +50,9 @@ export async function openPDFFromLibrary(pdfFile) {
     // Render thumbnails
     await renderThumbnails();
 
-    // Load annotations + drawings
+    // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
+    await dbLoadBookmarks(pdfFile.id);
     await dbLoadAnnotations(pdfFile.id);
     await dbLoadDrawings(pdfFile.id);
     const { redrawAllAnnotations } = await import('./annotate.js');
