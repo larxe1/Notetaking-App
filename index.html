@@ -218,6 +218,7 @@
         <button class="fmt-btn" data-cmd="italic"><i>I</i></button>
         <button class="fmt-btn" data-cmd="underline"><u>U</u></button>
         <button class="fmt-btn" data-cmd="strikeThrough"><s>S</s></button>
+        <button class="fmt-btn" id="btn-add-pdflink" title="Link to another PDF">🔗 Link PDF</button>
       </div>
       <div id="note-editor" contenteditable="true" data-ph="Add a note, doctrine, citation…"></div>
       <div class="ann-btns">
@@ -355,11 +356,27 @@
       <button class="fmt-btn" data-cmd2="italic"><i>I</i></button>
       <button class="fmt-btn" data-cmd2="underline"><u>U</u></button>
       <button class="fmt-btn" data-cmd2="strikeThrough"><s>S</s></button>
+      <button class="fmt-btn" id="btn-edit-pdflink" title="Link to another PDF">🔗 Link PDF</button>
     </div>
     <div id="edit-note-ed" contenteditable="true" style="background:var(--navy);border:1px solid var(--navy-b);border-radius:6px;padding:9px 10px;font-size:13px;line-height:1.6;color:#e8e4db;min-height:80px;max-height:200px;overflow-y:auto;outline:none;margin-top:8px;transition:border-color .15s"></div>
     <div class="modal-acts">
       <button class="btn-sec" data-close="mo-edit-note">Cancel</button>
       <button class="btn-gold" id="save-edit-note">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Select PDF Link Modal -->
+<div class="modal-ov" id="mo-pdf-link">
+  <div class="modal-box" style="width:400px; max-height:80vh; display:flex; flex-direction:column">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+      <h3 style="margin:0">Select a PDF to Link</h3>
+      <button class="btn-sec" data-close="mo-pdf-link" style="padding:4px 8px">✕</button>
+    </div>
+    <div class="form-row">
+      <input type="text" id="pdf-link-search" placeholder="Search your library..." style="margin-bottom:8px">
+    </div>
+    <div id="pdf-link-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:4px">
     </div>
   </div>
 </div>

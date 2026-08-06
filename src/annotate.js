@@ -157,19 +157,34 @@ function renderNotes(ann) {
     const card = document.createElement('div');
     card.className = 'note-card';
     card.innerHTML = `<div class="note-num">Note ${i + 1}</div><div class="note-body">${note.note_html}</div><div class="note-actions"><button class="note-act-btn">✏ Edit</button><button class="note-act-btn del">🗑 Delete</button></div>`;
+    
+    // Intercept PDF links
+    card.querySelectorAll('[data-pdf-link]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const pdfId = link.getAttribute('data-pdf-link');
+        const pdf = S.pdfs.find(p => p.id === pdfId);
+        if (pdf) {
+          import('./viewer.js').then(m => m.openPDFFromLibrary(pdf));
+        } else {
+          import('./ui.js').then(m => m.toast('PDF not found or deleted'));
+        }
+      });
+    });
+
     card.querySelector('.note-act-btn').addEventListener('click', () => {
       S.editingNoteId = note.id;
       document.getElementById('edit-note-ed').innerHTML = note.note_html;
-      openModal('mo-edit-note');
+      import('./ui.js').then(m => m.openModal('mo-edit-note'));
     });
     card.querySelector('.note-act-btn.del').addEventListener('click', async () => {
       autosave('saving');
       await dbDelNote(note.id);
       ann.notes = ann.notes.filter(n => n.id !== note.id);
-      S.annCounts[S.curPDF?.id] = Math.max(0, (S.annCounts[S.curPDF?.id] || 1) - 0); // notes don't affect ann count
+      S.annCounts[S.curPDF?.id] = Math.max(0, (S.annCounts[S.curPDF?.id] || 1) - 0);
       renderNotes(ann);
       autosave('saved');
-      toast('Note deleted');
+      import('./ui.js').then(m => m.toast('Note deleted'));
     });
     list.appendChild(card);
   });
@@ -241,6 +256,64 @@ export function initAnnPanel() {
       document.execCommand(b.dataset.cmd2, false, null);
     });
   });
+
+  // PDF Linking
+  let savedRange = null;
+  let activeEditorId = null;
+
+  const openPdfLink = (editorId) => {
+    const sel = window.getSelection();
+    if (sel.rangeCount > 0) savedRange = sel.getRangeAt(0);
+    else savedRange = null;
+    
+    activeEditorId = editorId;
+    import('./ui.js').then(m => m.openModal('mo-pdf-link'));
+    renderPdfLinkList();
+  };
+
+  document.getElementById('btn-add-pdflink').addEventListener('mousedown', e => e.preventDefault());
+  document.getElementById('btn-add-pdflink').addEventListener('click', () => openPdfLink('note-editor'));
+
+  document.getElementById('btn-edit-pdflink').addEventListener('mousedown', e => e.preventDefault());
+  document.getElementById('btn-edit-pdflink').addEventListener('click', () => openPdfLink('edit-note-ed'));
+
+  function renderPdfLinkList() {
+    const list = document.getElementById('pdf-link-list');
+    const search = document.getElementById('pdf-link-search').value.toLowerCase();
+    
+    list.innerHTML = '';
+    const filtered = S.pdfs.filter(p => p.name.toLowerCase().includes(search));
+    
+    if (filtered.length === 0) {
+      list.innerHTML = '<div style="color:#888;padding:10px">No PDFs found.</div>';
+      return;
+    }
+    
+    filtered.forEach(pdf => {
+      const div = document.createElement('div');
+      div.style.padding = '8px 10px';
+      div.style.cursor = 'pointer';
+      div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+      div.textContent = '📄 ' + pdf.name;
+      
+      div.addEventListener('mouseover', () => div.style.color = 'var(--gold)');
+      div.addEventListener('mouseout', () => div.style.color = '');
+      div.addEventListener('click', () => {
+        import('./ui.js').then(m => m.closeModal('mo-pdf-link'));
+        const ed = document.getElementById(activeEditorId);
+        ed.focus();
+        const sel = window.getSelection();
+        if (savedRange) {
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+        }
+        const html = `<a href="#" data-pdf-link="${pdf.id}" contenteditable="false" style="color:var(--gold);text-decoration:underline;cursor:pointer">📄 ${pdf.name}</a>&nbsp;`;
+        document.execCommand('insertHTML', false, html);
+      });
+      list.appendChild(div);
+    });
+  }
+  document.getElementById('pdf-link-search').addEventListener('input', renderPdfLinkList);
 
   // Selection confirm/cancel (fixes bug #1 — was cut off in original)
   document.getElementById('sel-confirm').addEventListener('mousedown', e => e.preventDefault());
