@@ -102,6 +102,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 /* PDF item */
 .li-pdf { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px; cursor: pointer; transition: background .1s; font-size: 12px; color: #9a9490; margin: 1px 2px; }
+.li-pdf.drag-over { background: rgba(201,168,76,.15); border: 1px dashed var(--gold); }
 .li-pdf:hover { background: rgba(255,255,255,.05); color: #e8e4db; }
 .li-pdf:hover .li-acts { visibility: visible; }
 .li-pdf.active { background: var(--gold-bg); color: var(--gold); }

@@ -10,7 +10,7 @@ import { toast, openModal, closeModal } from './ui.js';
 import {
   dbCreateSubject, dbRenameSubject, dbDelSubject,
   dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder,
-  dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF,
+  dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
   dbLoadAnnCounts,
 } from './db.js';
 import { driveUploadPDF, driveDeleteFile } from './drive.js';
@@ -146,7 +146,10 @@ function buildFolderEl(fold) {
     dbDelFolder(fold.id).then(() => { renderLibrary(); toast('Deleted'); });
   });
 
-  S.pdfs.filter(p => p.folder_id === fold.id).forEach(p => ch.appendChild(buildPdfEl(p)));
+  S.pdfs
+    .filter(p => p.folder_id === fold.id)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .forEach(p => ch.appendChild(buildPdfEl(p)));
 
   // Render child subfolders recursively (indented)
   const childFolds = S.folders
@@ -213,6 +216,32 @@ function buildPdfEl(pdf) {
     el.style.opacity = '0.5';
   });
   el.addEventListener('dragend', () => { el.style.opacity = ''; });
+  
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.remove('drag-over');
+    
+    const draggedId = e.dataTransfer.getData('text/plain');
+    if (!draggedId || !draggedId.startsWith('pdf:')) return;
+    
+    const dragPdfId = draggedId.replace('pdf:', '');
+    if (dragPdfId === pdf.id) return;
+    
+    const dragPdf = S.pdfs.find(p => p.id === dragPdfId);
+    if (!dragPdf || dragPdf.folder_id !== pdf.folder_id) return; // Only reorder within the same folder
+
+    const sibPdfs = S.pdfs
+      .filter(p => p.folder_id === pdf.folder_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      
+    const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
+    const newSortOrder = targetIdx === 0 ? (sibPdfs[0].sort_order ?? 0) - 1 : ((sibPdfs[targetIdx - 1].sort_order ?? 0) + (sibPdfs[targetIdx].sort_order ?? 0)) / 2;
+    await dbReorderPDF(dragPdfId, newSortOrder);
+    renderLibrary();
+  });
 
   const count = S.annCounts[pdf.id] || 0;
   el.innerHTML = `

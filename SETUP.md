@@ -12,6 +12,9 @@ Your `pdf_files` table needs a new column for Google Drive file IDs.
 -- Add Google Drive file ID column
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
 
+-- Add sort_order for drag-to-reorder support
+ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS sort_order NUMERIC;
+
 -- (Optional but recommended) Add cascade delete for cleaner data
 -- This auto-deletes annotation_notes when annotations are deleted
 ALTER TABLE annotation_notes DROP CONSTRAINT IF EXISTS annotation_notes_annotation_id_fkey;
