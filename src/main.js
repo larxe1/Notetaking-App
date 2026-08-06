@@ -65,10 +65,20 @@ async function init() {
     if (!S.curPDF || !S.curPage) return;
     const inp = document.getElementById('bm-title');
     const title = inp.value.trim() || `Page ${S.curPage}`;
-    await dbCreateBookmark(S.curPDF.id, S.curPage, title);
-    inp.value = '';
-    // Re-render TOC
-    document.getElementById('btn-toc').click();
+    
+    try {
+      await dbCreateBookmark(S.curPDF.id, S.curPage, title);
+      inp.value = '';
+      // Re-render TOC
+      document.getElementById('btn-toc').click();
+    } catch (e) {
+      console.error('Bookmark Error:', e);
+      toast('Failed to add bookmark. Did you run the SQL migration?');
+    }
+  });
+
+  document.getElementById('bm-title').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-add-bm').click();
   });
 
   // Table of Contents
