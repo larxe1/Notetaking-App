@@ -2,6 +2,7 @@
 // DB — all Supabase interactions
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
+import { driveDeleteFile } from './drive.js';
 
 // Inline sync helpers (avoids circular dep with ui.js)
 const _el = id => document.getElementById(id);
@@ -67,7 +68,8 @@ export async function dbDelSubject(id) {
   // Get all folder IDs under this subject
   const fids = S.folders.filter(f => f.subject_id === id).map(f => f.id);
   // Get all PDF IDs under those folders
-  const pids = S.pdfs.filter(p => fids.includes(p.folder_id)).map(p => p.id);
+  const pdfsToDelete = S.pdfs.filter(p => fids.includes(p.folder_id));
+  const pids = pdfsToDelete.map(p => p.id);
 
   // Delete annotations + notes for all PDFs (fix bug #6)
   if (pids.length) {
@@ -79,6 +81,13 @@ export async function dbDelSubject(id) {
     }
     await db.from('drawings').delete().in('pdf_file_id', pids);
     await db.from('pdf_files').delete().in('id', pids);
+    
+    // Also remove from Google Drive
+    for (const p of pdfsToDelete) {
+      if (p.drive_file_id) {
+        try { await driveDeleteFile(p.drive_file_id); } catch (e) { console.error('Drive delete error', e); }
+      }
+    }
   }
   if (fids.length) await db.from('folders').delete().in('id', fids);
   await db.from('subjects').delete().eq('id', id);
@@ -116,7 +125,8 @@ export async function dbDelFolder(id) {
     return [foldId, ...children.flatMap(collectFolderIds)];
   }
   const allFoldIds = collectFolderIds(id);
-  const pids = S.pdfs.filter(p => allFoldIds.includes(p.folder_id)).map(p => p.id);
+  const pdfsToDelete = S.pdfs.filter(p => allFoldIds.includes(p.folder_id));
+  const pids = pdfsToDelete.map(p => p.id);
 
   // Delete annotations + notes for all PDFs
   if (pids.length) {
@@ -128,6 +138,13 @@ export async function dbDelFolder(id) {
     }
     await db.from('drawings').delete().in('pdf_file_id', pids);
     await db.from('pdf_files').delete().in('id', pids);
+    
+    // Also remove from Google Drive
+    for (const p of pdfsToDelete) {
+      if (p.drive_file_id) {
+        try { await driveDeleteFile(p.drive_file_id); } catch (e) { console.error('Drive delete error', e); }
+      }
+    }
   }
   // Delete all descendant folders (deepest first) + self
   await db.from('folders').delete().in('id', allFoldIds);
