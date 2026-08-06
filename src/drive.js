@@ -17,6 +17,8 @@ export async function driveSignIn() {
       callback: async (resp) => {
         if (resp.error) { reject(resp); return; }
         S.driveToken = resp.access_token;
+        localStorage.setItem('driveToken', S.driveToken);
+        localStorage.setItem('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
         // Get user info
         try {
           const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -24,9 +26,14 @@ export async function driveSignIn() {
           });
           const info = await r.json();
           S.driveUser = info.email || 'Connected';
-        } catch { S.driveUser = 'Connected'; }
+          localStorage.setItem('driveUser', S.driveUser);
+        } catch { 
+          S.driveUser = 'Connected'; 
+          localStorage.setItem('driveUser', S.driveUser);
+        }
         // Ensure our folder exists
         S.driveFolderId = await ensureAppFolder();
+        localStorage.setItem('driveFolderId', S.driveFolderId);
         updateDriveBar();
         resolve();
       },
@@ -40,6 +47,10 @@ export function driveSignOut() {
   S.driveToken = null;
   S.driveUser  = null;
   S.driveFolderId = null;
+  localStorage.removeItem('driveToken');
+  localStorage.removeItem('driveUser');
+  localStorage.removeItem('driveTokenExpiry');
+  localStorage.removeItem('driveFolderId');
   updateDriveBar();
 }
 
@@ -152,6 +163,23 @@ async function drivePost(url, body) {
 
 // ── Init: render drive bar on load ──
 export function initDriveBar() {
+  const token = localStorage.getItem('driveToken');
+  const expiry = localStorage.getItem('driveTokenExpiry');
+  if (token && expiry && Date.now() < parseInt(expiry)) {
+    S.driveToken = token;
+    S.driveUser = localStorage.getItem('driveUser');
+    S.driveFolderId = localStorage.getItem('driveFolderId');
+  } else {
+    // Clear out any expired tokens without calling revoke (since it's expired)
+    S.driveToken = null;
+    S.driveUser = null;
+    S.driveFolderId = null;
+    localStorage.removeItem('driveToken');
+    localStorage.removeItem('driveUser');
+    localStorage.removeItem('driveTokenExpiry');
+    localStorage.removeItem('driveFolderId');
+  }
+
   updateDriveBar();
   document.getElementById('drive-sign-btn').addEventListener('click', async () => {
     if (S.driveUser) {
