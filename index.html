@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Legal Annotator</title>
+<meta name="description" content="Cloud-synced PDF annotation tool for law students — highlight, draw, and annotate PDFs with notes. Synced across all devices.">
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Google Identity Services (for Drive OAuth) -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<!-- App config — edit these values! -->
+<script>
+  window.APP_CONFIG = {
+    SUPABASE_URL:      'https://umxyyfneyhmjlfujlgkk.supabase.co',
+    SUPABASE_KEY:      'sb_publishable_l7gBFU9vkSjORhrYlPCy1A_ga4Vq53C',
+    GOOGLE_CLIENT_ID:  'YOUR_GOOGLE_CLIENT_ID_HERE',  // ← replace after setup (see SETUP.md)
+  };
+</script>
+
+<!-- Stylesheet -->
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ══════════════════════════════
+       LIBRARY SIDEBAR
+  ══════════════════════════════ -->
+  <div id="lib-backdrop"></div>
+  <div id="lib-side">
+    <div class="lib-hd">
+      <div class="brand">
+        ⚖ Legal Annotator
+        <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
+      </div>
+      <small style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block">Cloud Library</small>
+    </div>
+
+    <!-- Sync + auto-save bar -->
+    <div id="sync-bar">
+      <div class="sdot spin" id="sdot"></div>
+      <span id="stxt">Connecting…</span>
+      <span id="autosave-lbl"></span>
+    </div>
+
+    <!-- Google Drive auth bar -->
+    <div id="drive-bar">
+      <span class="drive-icon">🔗</span>
+      <span id="drive-user">Not connected</span>
+      <button id="drive-sign-btn">Sign in</button>
+    </div>
+
+    <!-- Recent PDFs -->
+    <div id="recent-wrap" style="display:none">
+      <span class="recent-lbl">Recent</span>
+      <div id="recent-list"></div>
+    </div>
+
+    <button id="new-subj-btn">+ New Subject</button>
+    <div id="lib-tree"><div class="lib-empty">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════
+       VIEWER
+  ══════════════════════════════ -->
+  <div id="viewer-wrap">
+    <!-- Toolbar -->
+    <div id="toolbar">
+      <button id="mob-menu-btn">☰</button>
+
+      <!-- Mode toggle -->
+      <div id="mode-tog">
+        <button class="mode-btn active" data-mode="text">
+          <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20"><path d="M4 3h12v2H4V3zm0 4h12v2H4V7zm0 4h8v2H4v-2z"/></svg>
+          <span>Text</span>
+        </button>
+        <button class="mode-btn" data-mode="box">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="1"/></svg>
+          <span>Box</span>
+        </button>
+        <button class="mode-btn" data-mode="draw">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+          <span>Draw</span>
+        </button>
+      </div>
+
+      <div class="tb-sep"></div>
+
+      <!-- Color dots -->
+      <div id="color-dots"></div>
+      <button id="add-color-btn" title="Add color">＋</button>
+
+      <div class="tb-sep"></div>
+
+      <!-- Draw controls (shown only in draw mode) -->
+      <div id="draw-ctrls">
+        <div class="dw-btn sel" data-w="2"><div class="dw-inner" style="width:5px;height:5px"></div></div>
+        <div class="dw-btn"    data-w="4"><div class="dw-inner" style="width:9px;height:9px"></div></div>
+        <div class="dw-btn"    data-w="8"><div class="dw-inner" style="width:13px;height:13px"></div></div>
+        <button class="tb-btn" id="btn-undo">↩ Undo</button>
+        <button class="tb-btn" id="btn-clear">🗑 Clear</button>
+        <div class="tb-sep"></div>
+      </div>
+
+      <!-- Actions -->
+      <button class="tb-btn" id="btn-search" title="Search (Ctrl+F)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+        Search
+      </button>
+      <button class="tb-btn" id="btn-export" title="Export annotations to Markdown">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V19a2 2 0 002 2h14a2 2 0 002-2v-2"/></svg>
+        Export
+      </button>
+      <button class="tb-btn" id="btn-help" title="Keyboard shortcuts (?)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17" stroke-linecap="round" stroke-width="3"/></svg>
+        Help
+      </button>
+
+      <div class="tb-sep"></div>
+
+      <!-- Zoom -->
+      <button class="tb-btn" id="btn-zout">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35M8 11h6"/></svg>
+      </button>
+      <span id="zoom-lbl">100%</span>
+      <button class="tb-btn" id="btn-zin">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35M11 8v6M8 11h6"/></svg>
+      </button>
+
+      <div class="tb-sep"></div>
+
+      <!-- Page nav -->
+      <div id="pg-info">
+        <button class="tb-btn" id="btn-prev">◀</button>
+        <input type="number" id="pg-input" value="1" min="1">
+        / <span id="pg-total">—</span>
+        <button class="tb-btn" id="btn-next">▶</button>
+      </div>
+    </div>
+
+    <!-- Search Panel -->
+    <div id="search-panel">
+      <div id="search-top">
+        <div id="search-tabs">
+          <button class="stab active" data-stab="pdf">📄 PDF Text</button>
+          <button class="stab"        data-stab="ann">🖊 Annotations</button>
+        </div>
+        <div id="search-input-wrap">
+          <input id="search-input" placeholder="Type to search…" autocomplete="off" spellcheck="false">
+          <span id="search-count"></span>
+          <button class="snav-btn" id="sprev" title="Previous">◀</button>
+          <button class="snav-btn" id="snext" title="Next">▶</button>
+        </div>
+        <button id="search-close-btn">✕</button>
+      </div>
+      <div id="search-ann-results"></div>
+    </div>
+
+    <!-- Main content: PDF canvas + thumbnail strip -->
+    <div id="content-area">
+      <div id="canvas-scroll">
+        <div id="welcome">
+          <h2>📚 Legal Annotator</h2>
+          <p>Your cloud study library — annotations sync across all devices.</p>
+          <div class="ws"><span class="wn">1</span>Sign in to Google Drive (sidebar)</div>
+          <div class="ws"><span class="wn">2</span>Create a Subject (e.g. "Labor Law 1")</div>
+          <div class="ws"><span class="wn">3</span>Add folders: Codal, Cases, Laws, Others</div>
+          <div class="ws"><span class="wn">4</span>Upload PDFs into each folder</div>
+          <div class="ws"><span class="wn">5</span>Highlight · Annotate · Draw · Search</div>
+        </div>
+      </div>
+      <!-- Thumbnail strip (populated by thumbnails.js) -->
+      <div id="thumb-strip"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
+       ANNOTATION PANEL
+  ══════════════════════════════ -->
+  <div id="ann-panel">
+    <div class="ap-hd">
+      <div class="ap-ex" id="ap-ex"></div>
+      <button class="ap-close" id="ap-close">✕</button>
+    </div>
+    <div class="ap-colors" id="ap-colors">
+      <div class="ap-colors-lbl">Highlight Color</div>
+    </div>
+    <div id="ann-notes"></div>
+    <div id="add-note-area">
+      <div class="fmt-bar">
+        <button class="fmt-btn" data-cmd="bold"><b>B</b></button>
+        <button class="fmt-btn" data-cmd="italic"><i>I</i></button>
+        <button class="fmt-btn" data-cmd="underline"><u>U</u></button>
+        <button class="fmt-btn" data-cmd="strikeThrough"><s>S</s></button>
+      </div>
+      <div id="note-editor" contenteditable="true" data-ph="Add a note, doctrine, citation…"></div>
+      <div class="ann-btns">
+        <button class="btn-del-hi" id="btn-del-hi">Delete Highlight</button>
+        <button class="btn-gold" id="btn-add-note">Add Note</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Selection confirm menu -->
+<div id="sel-menu">
+  <button class="sel-btn sel-confirm" id="sel-confirm">✓ Highlight</button>
+  <button class="sel-btn sel-cancel"  id="sel-cancel">✗ Cancel</button>
+</div>
+
+<!-- Box drag ghost -->
+<div id="drag-ghost"></div>
+
+<!-- ══════════════════════════════
+     MODALS
+══════════════════════════════ -->
+
+<!-- New Subject -->
+<div class="modal-ov" id="mo-subj">
+  <div class="modal-box">
+    <h3>New Subject</h3>
+    <div class="form-row"><label>Name</label><input type="text" id="subj-name" placeholder="e.g. Labor Law 1"></div>
+    <div class="form-row"><label>Color</label><div class="cpick-row"><input type="color" id="subj-color" value="#c9a84c"></div></div>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-subj">Cancel</button>
+      <button class="btn-gold" id="save-subj">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Folder -->
+<div class="modal-ov" id="mo-fold">
+  <div class="modal-box">
+    <h3>New Folder</h3>
+    <div class="form-row"><label>Folder Name</label><input type="text" id="fold-name" placeholder="e.g. Cases, Codal…"></div>
+    <div class="form-row">
+      <label>Type</label>
+      <div class="fold-types">
+        <button class="ftype-btn sel" data-type="codal">📜 Codal</button>
+        <button class="ftype-btn"     data-type="cases">⚖ Cases</button>
+        <button class="ftype-btn"     data-type="laws">📋 Laws</button>
+        <button class="ftype-btn"     data-type="others">📁 Others</button>
+        <button class="ftype-btn"     data-type="custom">✏ Custom</button>
+      </div>
+    </div>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-fold">Cancel</button>
+      <button class="btn-gold" id="save-fold">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Color -->
+<div class="modal-ov" id="mo-color">
+  <div class="modal-box">
+    <h3>New Highlight Color</h3>
+    <div class="form-row"><label>Category Name</label><input type="text" id="cat-name" placeholder="e.g. Arguments, Key Terms…"></div>
+    <div class="form-row"><label>Color</label><div class="cpick-row"><input type="color" id="cat-color" value="#a855f7"></div></div>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-color">Cancel</button>
+      <button class="btn-gold" id="save-color">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Note -->
+<div class="modal-ov" id="mo-edit-note">
+  <div class="modal-box">
+    <h3>Edit Note</h3>
+    <div class="fmt-bar">
+      <button class="fmt-btn" data-cmd2="bold"><b>B</b></button>
+      <button class="fmt-btn" data-cmd2="italic"><i>I</i></button>
+      <button class="fmt-btn" data-cmd2="underline"><u>U</u></button>
+      <button class="fmt-btn" data-cmd2="strikeThrough"><s>S</s></button>
+    </div>
+    <div id="edit-note-ed" contenteditable="true" style="background:var(--navy);border:1px solid var(--navy-b);border-radius:6px;padding:9px 10px;font-size:13px;line-height:1.6;color:#e8e4db;min-height:80px;max-height:200px;overflow-y:auto;outline:none;margin-top:8px;transition:border-color .15s"></div>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-edit-note">Cancel</button>
+      <button class="btn-gold" id="save-edit-note">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Keyboard Shortcuts Help -->
+<div class="modal-ov" id="mo-keys">
+  <div class="modal-box">
+    <h3>⌨ Keyboard Shortcuts</h3>
+    <div class="key-grid">
+      <div class="key-row"><kbd>T</kbd><span class="key-desc">Text highlight mode</span></div>
+      <div class="key-row"><kbd>B</kbd><span class="key-desc">Box select mode</span></div>
+      <div class="key-row"><kbd>D</kbd><span class="key-desc">Draw mode</span></div>
+      <div class="key-row"><kbd>?</kbd><span class="key-desc">Show this help</span></div>
+      <div class="key-row"><kbd>Ctrl</kbd>+<kbd>F</kbd><span class="key-desc">Search</span></div>
+      <div class="key-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span class="key-desc">Undo draw stroke</span></div>
+      <div class="key-row"><kbd>Ctrl</kbd>+<kbd>↵</kbd><span class="key-desc">Add note (in editor)</span></div>
+      <div class="key-row"><kbd>Esc</kbd><span class="key-desc">Close panels/search</span></div>
+    </div>
+    <div class="modal-acts">
+      <button class="btn-gold" data-close="mo-keys">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input -->
+<input type="file" id="pdf-file-in" accept="application/pdf">
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<!-- ══════════════════════════════
+     SCRIPTS
+     Using ES modules with import maps for browser-native module support
+     No build step needed!
+══════════════════════════════ -->
+<script type="importmap">
+{
+  "imports": {}
+}
+</script>
+
+<!-- Wire help button (simple, no module needed) -->
+<script>
+  document.getElementById('btn-help').addEventListener('click', () => {
+    document.getElementById('mo-keys').classList.add('open');
+  });
+  // Set pdf.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+</script>
+
+<!-- Main app (ES module) -->
+<script type="module" src="src/main.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,315 @@
+// ═══════════════════════════════════════════════
+// LIBRARY — sidebar rendering with all upgrades:
+//   - Annotation count badges
+//   - Rename (subject, folder, PDF)
+//   - Drag-to-reorder folders
+//   - Recent PDFs
+// ═══════════════════════════════════════════════
+import { S } from './state.js';
+import { toast, openModal, closeModal } from './ui.js';
+import {
+  dbCreateSubject, dbRenameSubject, dbDelSubject,
+  dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder,
+  dbRegisterPDF,   dbRenamePDF,     dbDelPDF,
+  dbLoadAnnCounts,
+} from './db.js';
+import { driveUploadPDF, driveDeleteFile } from './drive.js';
+import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
+import { closeSidebar } from './ui.js';
+
+// ── Render full library tree ──
+export function renderLibrary() {
+  const tree = document.getElementById('lib-tree');
+  if (!S.subjects.length) {
+    tree.innerHTML = '<div class="lib-empty">No subjects yet.<br>Click "+ New Subject" to start.</div>';
+    return;
+  }
+  tree.innerHTML = '';
+  for (const subj of S.subjects) tree.appendChild(buildSubjectEl(subj));
+}
+
+// ── Subject node ──
+function buildSubjectEl(subj) {
+  const w   = document.createElement('div');
+  w.className   = 'li-subj';
+  w.dataset.id  = subj.id;
+  const exp = !S.collapsedSubj[subj.id];
+
+  w.innerHTML = `
+    <div class="li-subj-hd">
+      <span class="li-chev ${exp ? '' : 'closed'}">▼</span>
+      <span class="li-dot" style="background:${subj.hex_color || '#c9a84c'}"></span>
+      <span class="li-subj-name">${subj.name}</span>
+      <div class="li-acts">
+        <button class="li-act-btn" title="Add folder" data-act="add-fold">📁+</button>
+        <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
+        <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
+      </div>
+    </div>
+    <div class="li-subj-ch" style="display:${exp ? 'flex' : 'none'}"></div>`;
+
+  const hd   = w.querySelector('.li-subj-hd');
+  const ch   = w.querySelector('.li-subj-ch');
+  const chev = w.querySelector('.li-chev');
+
+  hd.addEventListener('click', e => {
+    if (e.target.closest('.li-acts')) return;
+    S.collapsedSubj[subj.id] = !S.collapsedSubj[subj.id];
+    chev.classList.toggle('closed');
+    ch.style.display = S.collapsedSubj[subj.id] ? 'none' : 'flex';
+  });
+
+  w.querySelector('[data-act="add-fold"]').addEventListener('click', e => {
+    e.stopPropagation();
+    openNewFolderModal(subj.id);
+  });
+
+  w.querySelector('[data-act="rename"]').addEventListener('click', e => {
+    e.stopPropagation();
+    startInlineRename(w.querySelector('.li-subj-name'), async newName => {
+      await dbRenameSubject(subj.id, newName);
+      toast('Renamed');
+    });
+  });
+
+  w.querySelector('[data-act="del"]').addEventListener('click', e => {
+    e.stopPropagation();
+    if (!confirm(`Delete subject "${subj.name}" and all its content?`)) return;
+    dbDelSubject(subj.id).then(() => { renderLibrary(); toast('Deleted'); });
+  });
+
+  // Sort folders by sort_order then created_at
+  const folds = S.folders
+    .filter(f => f.subject_id === subj.id)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  for (const f of folds) ch.appendChild(buildFolderEl(f));
+  return w;
+}
+
+// ── Folder node ──
+function buildFolderEl(fold) {
+  const w  = document.createElement('div');
+  w.className  = 'li-fold';
+  w.dataset.id = fold.id;
+  w.draggable  = true;
+  const exp  = !S.collapsedFold[fold.id];
+  const icons = { codal: '📜', cases: '⚖', laws: '📋', others: '📁', custom: '📂' };
+
+  w.innerHTML = `
+    <div class="li-fold-hd">
+      <span class="li-chev ${exp ? '' : 'closed'}" style="font-size:9px">▼</span>
+      <span>${icons[fold.folder_type] || '📁'}</span>
+      <span class="li-fold-name">${fold.name}</span>
+      <div class="li-acts">
+        <button class="li-act-btn" title="Upload PDF" data-act="upload">📄+</button>
+        <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
+        <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
+      </div>
+    </div>
+    <div class="li-fold-ch" style="display:${exp ? 'flex' : 'none'}"></div>`;
+
+  const hd   = w.querySelector('.li-fold-hd');
+  const ch   = w.querySelector('.li-fold-ch');
+  const chev = w.querySelector('.li-chev');
+
+  hd.addEventListener('click', e => {
+    if (e.target.closest('.li-acts')) return;
+    S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
+    chev.classList.toggle('closed');
+    ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
+  });
+
+  w.querySelector('[data-act="upload"]').addEventListener('click', e => {
+    e.stopPropagation();
+    triggerPDFUpload(fold.id);
+  });
+
+  w.querySelector('[data-act="rename"]').addEventListener('click', e => {
+    e.stopPropagation();
+    startInlineRename(w.querySelector('.li-fold-name'), async newName => {
+      await dbRenameFolder(fold.id, newName);
+      toast('Renamed');
+    });
+  });
+
+  w.querySelector('[data-act="del"]').addEventListener('click', e => {
+    e.stopPropagation();
+    if (!confirm(`Delete folder "${fold.name}" and all its PDFs?`)) return;
+    dbDelFolder(fold.id).then(() => { renderLibrary(); toast('Deleted'); });
+  });
+
+  S.pdfs.filter(p => p.folder_id === fold.id).forEach(p => ch.appendChild(buildPdfEl(p)));
+
+  // ── Drag-to-reorder ──
+  w.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', fold.id);
+    w.style.opacity = '0.5';
+  });
+  w.addEventListener('dragend', () => { w.style.opacity = ''; });
+  w.addEventListener('dragover', e => { e.preventDefault(); w.classList.add('drag-over'); });
+  w.addEventListener('dragleave', () => w.classList.remove('drag-over'));
+  w.addEventListener('drop', async e => {
+    e.preventDefault();
+    w.classList.remove('drag-over');
+    const draggedId = e.dataTransfer.getData('text/plain');
+    if (draggedId === fold.id) return;
+    const draggedFold = S.folders.find(f => f.id === draggedId);
+    if (!draggedFold || draggedFold.subject_id !== fold.subject_id) return;
+
+    // Reorder: give dragged item the sort_order just before the drop target
+    const sibFolds = S.folders
+      .filter(f => f.subject_id === fold.subject_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+    const targetIdx  = sibFolds.findIndex(f => f.id === fold.id);
+    const newSortOrder = targetIdx === 0 ? (sibFolds[0].sort_order ?? 0) - 1 : ((sibFolds[targetIdx - 1].sort_order ?? 0) + (sibFolds[targetIdx].sort_order ?? 0)) / 2;
+    await dbReorderFolder(draggedId, newSortOrder);
+    renderLibrary();
+  });
+
+  return w;
+}
+
+// ── PDF item ──
+function buildPdfEl(pdf) {
+  const el = document.createElement('div');
+  el.className  = 'li-pdf' + (S.curPDF?.id === pdf.id ? ' active' : '');
+  el.dataset.id = pdf.id;
+
+  const count = S.annCounts[pdf.id] || 0;
+  el.innerHTML = `
+    <span>📄</span>
+    <span class="li-pdf-name" title="${pdf.name}">${pdf.name}</span>
+    <span class="ann-badge" style="${count ? '' : 'display:none'}">${count}</span>
+    <div class="li-acts">
+      <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
+      <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
+    </div>`;
+
+  el.addEventListener('click', e => {
+    if (e.target.closest('.li-acts')) return;
+    openPDFFromLibrary(pdf);
+    closeSidebar();
+  });
+
+  el.querySelector('[data-act="rename"]').addEventListener('click', e => {
+    e.stopPropagation();
+    startInlineRename(el.querySelector('.li-pdf-name'), async newName => {
+      await dbRenamePDF(pdf.id, newName);
+      toast('Renamed');
+    });
+  });
+
+  el.querySelector('[data-act="del"]').addEventListener('click', e => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${pdf.name}"?`)) return;
+    dbDelPDF(pdf.id).then(async () => {
+      // Also remove from Drive
+      if (pdf.drive_file_id) await driveDeleteFile(pdf.drive_file_id);
+      renderLibrary();
+      if (S.curPDF?.id === pdf.id) {
+        S.curPDF = null;
+        document.getElementById('canvas-scroll').innerHTML =
+          '<div id="welcome" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center"><p style="color:var(--muted);font-size:13px">PDF removed. Select another from the library.</p></div>';
+      }
+      toast('PDF deleted');
+    });
+  });
+
+  return el;
+}
+
+// ── Inline rename helper ──
+function startInlineRename(nameEl, onSave) {
+  const old = nameEl.textContent;
+  const inp = document.createElement('input');
+  inp.className = 'rename-input';
+  inp.value = old;
+  nameEl.replaceWith(inp);
+  inp.focus();
+  inp.select();
+
+  const finish = async (save) => {
+    const val = inp.value.trim();
+    inp.replaceWith(nameEl);
+    if (save && val && val !== old) {
+      nameEl.textContent = val;
+      try { await onSave(val); }
+      catch { nameEl.textContent = old; toast('Rename failed'); }
+    } else {
+      nameEl.textContent = old;
+    }
+  };
+
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  inp.addEventListener('blur', () => finish(true));
+}
+
+// ── Modal wiring (subjects, folders, upload) ──
+export function initLibraryModals() {
+  document.getElementById('new-subj-btn').addEventListener('click', () => {
+    document.getElementById('subj-name').value = '';
+    openModal('mo-subj');
+  });
+
+  document.getElementById('save-subj').addEventListener('click', async () => {
+    const name = document.getElementById('subj-name').value.trim();
+    if (!name) return;
+    await dbCreateSubject(name, document.getElementById('subj-color').value);
+    renderLibrary();
+    closeModal('mo-subj');
+    toast('Subject created');
+  });
+
+  document.querySelectorAll('.ftype-btn').forEach(b =>
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('sel'));
+      b.classList.add('sel');
+    })
+  );
+
+  document.getElementById('save-fold').addEventListener('click', async () => {
+    const name = document.getElementById('fold-name').value.trim();
+    if (!name || !S.newFolderSubjId) return;
+    const type = document.querySelector('.ftype-btn.sel')?.dataset.type || 'custom';
+    await dbCreateFolder(S.newFolderSubjId, name, type);
+    renderLibrary();
+    closeModal('mo-fold');
+    toast('Folder created');
+  });
+
+  // PDF upload via Drive
+  document.getElementById('pdf-file-in').addEventListener('change', async function () {
+    if (!this.files[0] || !S.uploadFolderId) return;
+    try {
+      const file = this.files[0];
+      // Upload to Drive
+      const driveFile = await driveUploadPDF(file);
+      // Register in Supabase
+      const rec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
+      S.annCounts[rec.id] = 0;
+      renderLibrary();
+      toast('Uploaded — opening…');
+      await openPDFFromLibrary(rec);
+    } catch (e) {
+      toast(e.message?.includes('Drive') || e.message?.includes('signed')
+        ? 'Sign in to Google Drive first!'
+        : 'Upload failed. Check connection.');
+    }
+    this.value = '';
+  });
+}
+
+export function openNewFolderModal(id) {
+  S.newFolderSubjId = id;
+  document.getElementById('fold-name').value = '';
+  openModal('mo-fold');
+}
+
+export function triggerPDFUpload(fid) {
+  S.uploadFolderId = fid;
+  document.getElementById('pdf-file-in').click();
+}
