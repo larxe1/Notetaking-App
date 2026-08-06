@@ -153,6 +153,12 @@ export async function dbRenamePDF(id, name) {
   if (pdf) pdf.name = name;
 }
 
+export async function dbMovePDF(id, folder_id) {
+  await db.from('pdf_files').update({ folder_id }).eq('id', id);
+  const p = S.pdfs.find(x => x.id === id);
+  if (p) p.folder_id = folder_id;
+}
+
 export async function dbDelPDF(id) {
   // Delete annotations + notes (fix bug #8)
   const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', id);

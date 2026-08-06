@@ -10,7 +10,7 @@ import { toast, openModal, closeModal } from './ui.js';
 import {
   dbCreateSubject, dbRenameSubject, dbDelSubject,
   dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder,
-  dbRegisterPDF,   dbRenamePDF,     dbDelPDF,
+  dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF,
   dbLoadAnnCounts,
 } from './db.js';
 import { driveUploadPDF, driveDeleteFile } from './drive.js';
@@ -171,7 +171,20 @@ function buildFolderEl(fold) {
     e.preventDefault();
     w.classList.remove('drag-over');
     const draggedId = e.dataTransfer.getData('text/plain');
-    if (draggedId === fold.id) return;
+    if (!draggedId || draggedId === fold.id) return;
+    
+    // Check if dragging a PDF
+    if (draggedId.startsWith('pdf:')) {
+      const pdfId = draggedId.replace('pdf:', '');
+      const pdf = S.pdfs.find(p => p.id === pdfId);
+      if (pdf && pdf.folder_id !== fold.id) {
+        await dbMovePDF(pdfId, fold.id);
+        renderLibrary();
+      }
+      return;
+    }
+
+    // Otherwise, it's a folder being dragged
     const draggedFold = S.folders.find(f => f.id === draggedId);
     if (!draggedFold || draggedFold.subject_id !== fold.subject_id) return;
 
@@ -189,11 +202,17 @@ function buildFolderEl(fold) {
   return w;
 }
 
-// ── PDF item ──
 function buildPdfEl(pdf) {
   const el = document.createElement('div');
   el.className  = 'li-pdf' + (S.curPDF?.id === pdf.id ? ' active' : '');
   el.dataset.id = pdf.id;
+  el.draggable  = true;
+
+  el.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/plain', 'pdf:' + pdf.id);
+    el.style.opacity = '0.5';
+  });
+  el.addEventListener('dragend', () => { el.style.opacity = ''; });
 
   const count = S.annCounts[pdf.id] || 0;
   el.innerHTML = `
