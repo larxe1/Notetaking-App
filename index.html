@@ -238,7 +238,20 @@
 <div class="modal-ov" id="mo-subj">
   <div class="modal-box">
     <h3>New Subject</h3>
-    <div class="form-row"><label>Name</label><input type="text" id="subj-name" placeholder="e.g. Labor Law 1"></div>
+    <div class="form-row">
+      <label>Name</label>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input type="text" id="subj-name" placeholder="e.g. Labor Law 1">
+        <div id="subj-emojis" style="display:flex;gap:8px;font-size:18px">
+          <span class="subj-emo" style="cursor:pointer" title="Click to add emoji">⚖️</span>
+          <span class="subj-emo" style="cursor:pointer" title="Click to add emoji">📜</span>
+          <span class="subj-emo" style="cursor:pointer" title="Click to add emoji">💼</span>
+          <span class="subj-emo" style="cursor:pointer" title="Click to add emoji">🏛️</span>
+          <span class="subj-emo" style="cursor:pointer" title="Click to add emoji">📚</span>
+          <span style="font-size:11px;color:#888;margin-left:auto;align-self:center">(Or press Win + . for more)</span>
+        </div>
+      </div>
+    </div>
     <div class="form-row">
       <label>Color</label>
       <div class="cpick-row" style="display:flex;gap:12px;align-items:center">

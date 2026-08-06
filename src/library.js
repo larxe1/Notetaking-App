@@ -290,6 +290,15 @@ export function initLibraryModals() {
     });
   });
 
+  // Preset emoji clicks
+  document.querySelectorAll('.subj-emo').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById('subj-name');
+      inp.value = btn.textContent + ' ' + inp.value;
+      inp.focus();
+    });
+  });
+
   document.querySelectorAll('.ftype-btn').forEach(b =>
     b.addEventListener('click', () => {
       document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('sel'));
