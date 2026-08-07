@@ -4,7 +4,7 @@
 import { S } from './state.js';
 import { jumpToPage } from './ui.js';
 
-export async function renderThumbnails() {
+export async function renderThumbnails(expectedId) {
   const strip = document.getElementById('thumb-strip');
   strip.innerHTML = '';
   if (!S.pdfDoc) return;
@@ -13,6 +13,7 @@ export async function renderThumbnails() {
 
   for (let p = 1; p <= S.totalPages; p++) {
     const page = await S.pdfDoc.getPage(p);
+    if (expectedId && S.curPDF?.id !== expectedId) return;
     const vp   = page.getViewport({ scale: 1 });
     const scale = THUMB_W / vp.width;
     const tvp   = page.getViewport({ scale });

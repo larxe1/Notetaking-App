@@ -43,12 +43,15 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
     _textDone.clear();
 
     // Render all pages sequentially
+    const expectedId = pdfFile.id;
     for (let p = 1; p <= S.totalPages; p++) {
-      await renderPage(p, scroll);
+      if (S.curPDF?.id !== expectedId) return;
+      await renderPage(p, scroll, expectedId);
     }
 
     // Render thumbnails
-    await renderThumbnails();
+    if (S.curPDF?.id !== expectedId) return;
+    await renderThumbnails(expectedId);
 
     // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
@@ -113,8 +116,9 @@ export async function reRenderAll() {
 }
 
 // ── Render a single page ──
-export async function renderPage(pageNum, container) {
+export async function renderPage(pageNum, container, expectedId) {
   const page = await S.pdfDoc.getPage(pageNum);
+  if (expectedId && S.curPDF?.id !== expectedId) return;
   const vp   = page.getViewport({ scale: S.scale });
 
   const wrap = document.createElement('div');
@@ -158,6 +162,7 @@ export async function renderPage(pageNum, container) {
 
   // Build text items
   const tc        = await page.getTextContent();
+  if (expectedId && S.curPDF?.id !== expectedId) return;
   const textItems = [];
   for (const item of tc.items) {
     if (!item.str || !item.transform) continue;
