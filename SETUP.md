@@ -15,6 +15,13 @@ ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
 -- Add sort_order for drag-to-reorder support
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS sort_order NUMERIC;
 
+-- PDF Notepad table (general notes per PDF)
+CREATE TABLE IF NOT EXISTS pdf_notes (
+  pdf_id  TEXT PRIMARY KEY REFERENCES pdf_files(id) ON DELETE CASCADE,
+  content TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- (Optional but recommended) Add cascade delete for cleaner data
 -- This auto-deletes annotation_notes when annotations are deleted
 ALTER TABLE annotation_notes DROP CONSTRAINT IF EXISTS annotation_notes_annotation_id_fkey;

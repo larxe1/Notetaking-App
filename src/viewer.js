@@ -64,6 +64,10 @@ export async function openPDFFromLibrary(pdfFile) {
     // Track recent PDFs
     pushRecent(pdfFile);
 
+    // Notify notepad of PDF change
+    const { notepadOnPDFChange } = await import('./notepad.js');
+    notepadOnPDFChange(pdfFile.id);
+
     // Jump to bookmarked page (or stay on page 1)
     const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
     if (savedStart) {

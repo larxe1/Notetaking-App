@@ -303,3 +303,13 @@ export async function dbDelColorCat(id) {
   await db.from('color_categories').delete().eq('id', id);
   S.colorCats = S.colorCats.filter(c => c.id !== id);
 }
+
+// ── PDF Notepad ──
+export async function dbLoadNotepad(pdf_id) {
+  const { data } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+  return data?.content || '';
+}
+
+export async function dbSaveNotepad(pdf_id, content) {
+  await db.from('pdf_notes').upsert({ pdf_id, content }, { onConflict: 'pdf_id' });
+}

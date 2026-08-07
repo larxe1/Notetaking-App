@@ -162,6 +162,14 @@
         / <span id="pg-total">—</span>
         <button class="tb-btn" id="btn-next">▶</button>
       </div>
+
+      <div class="tb-sep"></div>
+
+      <!-- Notepad button -->
+      <button class="tb-btn" id="btn-notepad" title="PDF Notepad">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Notepad
+      </button>
     </div>
 
     <!-- Search Panel -->
@@ -197,6 +205,23 @@
       </div>
       <!-- Thumbnail strip (populated by thumbnails.js) -->
       <div id="thumb-strip"></div>
+    </div>
+  </div>
+
+  <!-- Notepad Panel -->
+  <div id="notepad-panel">
+    <div class="np-hd">
+      <span class="np-title">📝 PDF Notepad</span>
+      <span id="np-save-lbl"></span>
+      <button class="ap-close" id="np-close">✕</button>
+    </div>
+    <div id="np-body">
+      <div
+        id="np-editor"
+        contenteditable="true"
+        data-ph="Write general notes about this PDF here…"
+        spellcheck="true"
+      ></div>
     </div>
   </div>
 

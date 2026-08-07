@@ -268,6 +268,62 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #drag-ghost { position: fixed; background: rgba(201,168,76,.12); border: 1.5px dashed var(--gold); pointer-events: none; z-index: 800; display: none; }
 
 /* ════════════════════════════════════════
+   NOTEPAD PANEL
+════════════════════════════════════════ */
+#notepad-panel {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  width: 320px;
+  background: var(--navy-l);
+  border-left: 1px solid var(--navy-b);
+  z-index: 14; /* below annotation panel */
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .25s ease;
+  box-shadow: -4px 0 24px rgba(0,0,0,.4);
+}
+#notepad-panel.open { transform: translateX(0); }
+.np-hd {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--navy-b);
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.np-title { font-family: 'Libre Baskerville', serif; font-size: 14px; color: var(--gold); flex: 1; }
+#np-save-lbl { font-size: 10px; color: var(--muted); transition: color .2s; }
+#np-save-lbl.saving { color: var(--gold); }
+#np-save-lbl.saved  { color: var(--green); }
+#np-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 12px 14px; }
+#np-editor {
+  flex: 1;
+  background: var(--navy);
+  border: 1px solid var(--navy-b);
+  border-radius: 6px;
+  padding: 12px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #e8e4db;
+  overflow-y: auto;
+  outline: none;
+  resize: none;
+  font-family: 'Inter', sans-serif;
+  transition: border-color .15s;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+#np-editor:focus { border-color: var(--gold); }
+#np-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
+
+@media (max-width: 1024px) {
+  #notepad-panel {
+    width: 100%; bottom: 0; top: auto; height: 60vh;
+    transform: translateY(100%);
+    border-left: none; border-top: 1px solid var(--navy-b);
+    border-radius: 16px 16px 0 0;
+  }
+  #notepad-panel.open { transform: translateY(0); }
+}
+
+/* ════════════════════════════════════════
    MODALS
 ════════════════════════════════════════ */
 .modal-ov { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 2000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: opacity .2s; }

@@ -15,6 +15,7 @@ import {
   initKeyboard, exportAnnotations, toast, syncErr,
   openModal, closeModal
 } from './ui.js';
+import { initNotepad } from './notepad.js';
 
 async function init() {
   // Init Google Drive bar
@@ -47,6 +48,7 @@ async function init() {
   initPinchZoom();
   initZoom();
   initNavButtons();
+  initNotepad();
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
