@@ -83,15 +83,31 @@ async function ensureAppFolder() {
   return created.id;
 }
 
+// ── Ensure a named subfolder exists inside a parent Drive folder ──
+export async function driveEnsureSubFolder(name, parentId) {
+  const safeParent = parentId || S.driveFolderId;
+  const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${safeParent}' in parents and trashed=false`;
+  const resp = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  if (resp.files && resp.files.length > 0) return resp.files[0].id;
+
+  // Create it
+  const meta = { name, mimeType: 'application/vnd.google-apps.folder', parents: [safeParent] };
+  const created = await drivePost('https://www.googleapis.com/drive/v3/files?fields=id', meta);
+  return created.id;
+}
+
 // ── Upload PDF to Drive ──
-export async function driveUploadPDF(file) {
+// targetFolderId: optional Drive folder ID to place the file in (defaults to root app folder)
+export async function driveUploadPDF(file, targetFolderId) {
   if (!S.driveToken) throw new Error('Not signed in to Google Drive');
   if (!S.driveFolderId) S.driveFolderId = await ensureAppFolder();
+
+  const parentId = targetFolderId || S.driveFolderId;
 
   syncSpin('Uploading to Drive…');
   const meta = {
     name: file.name,
-    parents: [S.driveFolderId],
+    parents: [parentId],
   };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));

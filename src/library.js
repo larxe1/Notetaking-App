@@ -13,7 +13,7 @@ import {
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
   dbLoadAnnCounts,
 } from './db.js';
-import { driveUploadPDF, driveDeleteFile } from './drive.js';
+import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.js';
 import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
@@ -431,10 +431,37 @@ export function initLibraryModals() {
       const toUpload = newFiles.length > 0 ? newFiles : files;
       toast(`Uploading ${toUpload.length} PDF${toUpload.length > 1 ? 's' : ''}…`);
 
+      // ── Resolve Drive folder path (Subject / Folder) ──
+      let driveFolderId = null;
+      try {
+        const appFolder = S.driveFolderId;
+        if (appFolder) {
+          const folder   = S.folders.find(f => f.id === S.uploadFolderId);
+          const subject  = folder ? S.subjects.find(s => s.id === folder.subject_id) : null;
+          if (subject && folder) {
+            const subjDriveId = await driveEnsureSubFolder(subject.name, appFolder);
+            // If nested subfolder, build full path
+            if (folder.parent_folder_id) {
+              const parentFold = S.folders.find(f => f.id === folder.parent_folder_id);
+              if (parentFold) {
+                const parentDriveId = await driveEnsureSubFolder(parentFold.name, subjDriveId);
+                driveFolderId = await driveEnsureSubFolder(folder.name, parentDriveId);
+              } else {
+                driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
+              }
+            } else {
+              driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Could not create Drive subfolder, uploading to root:', e);
+      }
+
       let lastRec = null;
       for (const file of toUpload) {
-        // Upload to Drive
-        const driveFile = await driveUploadPDF(file);
+        // Upload to Drive (inside the resolved subject/folder path)
+        const driveFile = await driveUploadPDF(file, driveFolderId);
         // Register in Supabase
         lastRec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
         S.annCounts[lastRec.id] = 0;
