@@ -234,10 +234,31 @@ function onTextUp(pageNum) {
   const range = sel.getRangeAt(0);
   const pg    = S.pages[pageNum]; if (!pg) return;
   const wr    = pg.wrap.getBoundingClientRect();
-  const rects = Array.from(range.getClientRects())
+  let rects = Array.from(range.getClientRects())
     .filter(r => r.width > 1 && r.height > 1)
     .map(r => ({ x: r.left - wr.left, y: r.top - wr.top, w: r.width, h: r.height }));
+  
   if (!rects.length) return;
+
+  // Merge rects on the same line to create continuous highlights and fix gaps
+  rects.sort((a,b) => Math.abs(a.y - b.y) < 8 ? a.x - b.x : a.y - b.y);
+  const merged = [rects[0]];
+  for (let i = 1; i < rects.length; i++) {
+    const curr = rects[i];
+    const prev = merged[merged.length - 1];
+    // If on same line and horizontally close (within 16px, easily bridging spaces)
+    if (Math.abs(curr.y - prev.y) < 8 && curr.x <= prev.x + prev.w + 16) {
+      const right = Math.max(prev.x + prev.w, curr.x + curr.w);
+      const bottom = Math.max(prev.y + prev.h, curr.y + curr.h);
+      prev.x = Math.min(prev.x, curr.x);
+      prev.y = Math.min(prev.y, curr.y);
+      prev.w = right - prev.x;
+      prev.h = bottom - prev.y;
+    } else {
+      merged.push(curr);
+    }
+  }
+  rects = merged;
 
   const last = rects[rects.length - 1];
   S.pendingSel = { pageNum, rects, text };
