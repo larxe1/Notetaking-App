@@ -57,9 +57,21 @@ export function drawAnnotation(ann) {
   grp.addEventListener('click', e => { e.stopPropagation(); openAnnPanel(ann); });
   grp.addEventListener('mouseenter', e => {
     if (!ann.notes.length) return;
-    showTip(e, ann.notes.length === 1
-      ? ann.notes[0].note_html
-      : `<b>${ann.notes.length} notes</b> — click to view`);
+    
+    let html = '';
+    const toShow = Math.min(ann.notes.length, 3);
+    for (let i = 0; i < toShow; i++) {
+      if (i > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
+      html += ann.notes[i].note_html;
+    }
+    
+    if (ann.notes.length > 3) {
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">...and ${ann.notes.length - 3} more notes (click to view)</div>`;
+    } else if (ann.notes.length > 1) {
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">(click to manage notes)</div>`;
+    }
+    
+    showTip(e, html);
   });
   grp.addEventListener('mouseleave', hideTip);
   grp.addEventListener('mousemove', moveTip);
