@@ -106,7 +106,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .li-pdf:hover .li-acts { visibility: visible; }
 .li-subj.drag-over > .li-subj-hd, .li-fold.drag-over > .li-fold-hd, .li-pdf.drag-over { background: rgba(201,168,76,.15); }
 .li-pdf.active { background: rgba(201,168,76,.1); color: var(--gold); border-left: 2px solid var(--gold); }
-.li-selected { background: rgba(201,168,76,.2) !important; border-left: 2px solid var(--gold); }
+.li-pdf.li-selected, .li-fold.li-selected > .li-fold-hd { background: rgba(201,168,76,.2) !important; border-left: 2px solid var(--gold); }
 .selection-marquee {
   position: absolute;
   background: rgba(201,168,76, 0.15);
