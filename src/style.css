@@ -77,14 +77,14 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .lib-empty { font-size: 12px; color: var(--muted); padding: 16px 14px; line-height: 1.7; text-align: center; }
 
 /* Tree nodes */
-.li-subj { margin: 2px 8px; border-radius: 6px; }
-.li-subj-hd { display: flex; align-items: center; gap: 6px; padding: 7px 8px; cursor: pointer; border-radius: 6px; transition: background .1s; user-select: none; }
+.li-subj { margin: 1px 4px; border-radius: 6px; }
+.li-subj-hd { display: flex; align-items: center; gap: 4px; padding: 4px 6px; cursor: pointer; border-radius: 6px; transition: background .1s; user-select: none; }
 .li-subj-hd:hover { background: var(--navy-l); }
 .li-subj-hd:hover .li-acts { visibility: visible; }
 .li-chev { font-size: 10px; color: var(--muted); transition: transform .2s; flex-shrink: 0; }
 .li-chev.closed { transform: rotate(-90deg); }
 .li-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.li-subj-name { flex: 1; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-subj-name { flex: 1; font-size: 13px; font-weight: 500; word-break: break-word; }
 .li-acts { visibility: hidden; display: flex; gap: 2px; flex-shrink: 0; }
 .li-act-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 3px; transition: color .15s, background .15s; }
 .li-act-btn:hover { color: #e8e4db; background: rgba(255,255,255,.08); }
@@ -92,16 +92,16 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .li-subj-ch { padding-left: 12px; display: flex; flex-direction: column; gap: 1px; }
 
 /* Folder */
-.li-fold { margin: 1px 4px; border-radius: 5px; }
+.li-fold { margin: 1px 2px; border-radius: 5px; }
 .li-fold.drag-over > .li-fold-hd { background: var(--gold-bg); border: 1px dashed var(--gold); }
-.li-fold-hd { display: flex; align-items: center; gap: 5px; padding: 5px 6px; cursor: pointer; border-radius: 5px; transition: background .1s; user-select: none; }
+.li-fold-hd { display: flex; align-items: center; gap: 4px; padding: 4px 4px; cursor: pointer; border-radius: 5px; transition: background .1s; user-select: none; }
 .li-fold-hd:hover { background: rgba(255,255,255,.05); }
 .li-fold-hd:hover .li-acts { visibility: visible; }
-.li-fold-name { flex: 1; font-size: 12px; color: #b0aaa0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.li-fold-ch { padding-left: 14px; display: flex; flex-direction: column; gap: 1px; }
+.li-fold-name { flex: 1; font-size: 12px; color: #b0aaa0; word-break: break-word; }
+.li-fold-ch { padding-left: 12px; display: flex; flex-direction: column; gap: 1px; }
 
 /* PDF item */
-.li-pdf { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px; cursor: pointer; transition: background .1s; font-size: 12px; color: #9a9490; margin: 1px 2px; }
+.li-pdf { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 4px; cursor: pointer; transition: background .1s; font-size: 12px; color: #9a9490; margin: 1px 0; }
 .li-pdf:hover { background: rgba(255,255,255,.05); color: #e8e4db; }
 .li-pdf:hover .li-acts { visibility: visible; }
 .li-subj.drag-over > .li-subj-hd, .li-fold.drag-over > .li-fold-hd, .li-pdf.drag-over { background: rgba(201,168,76,.15); }
