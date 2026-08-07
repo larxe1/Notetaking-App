@@ -14,7 +14,7 @@ const _drawDone = new Set();
 const _textDone = new Set();
 
 // ── Open PDF from library ──
-export async function openPDFFromLibrary(pdfFile) {
+export async function openPDFFromLibrary(pdfFile, retries = 3) {
   S.curPDF = pdfFile;
   updateActivePDF();
 
@@ -25,7 +25,7 @@ export async function openPDFFromLibrary(pdfFile) {
   clearSearchHighlights();
 
   const scroll = document.getElementById('canvas-scroll');
-  scroll.innerHTML = '<div class="spin-w"><div class="spinner"></div>Loading PDF…</div>';
+  scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
 
   try {
     const buf = await driveFetchPDF(pdfFile.drive_file_id);
@@ -76,11 +76,16 @@ export async function openPDFFromLibrary(pdfFile) {
 
     syncOK('Ready');
   } catch (e) {
+    if (retries > 0) {
+      console.warn('PDF load failed, retrying...', e);
+      await new Promise(r => setTimeout(r, 1500));
+      return openPDFFromLibrary(pdfFile, retries - 1);
+    }
     console.error(e);
     const msg = e.message?.includes('Drive') || e.message?.includes('signed')
       ? 'Sign in to Google Drive first (click the Drive bar at the top of the sidebar).'
       : 'Could not load PDF. Check your connection.';
-    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:340px;line-height:1.6">${msg}</div>`;
+    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:340px;line-height:1.6">${msg}<br><br><button onclick="window.location.reload()" style="padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer">Reload App</button></div>`;
     const { syncErr } = await import('./ui.js');
     syncErr('Load failed');
   }

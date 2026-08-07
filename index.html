@@ -42,7 +42,7 @@
         <span id="app-title" style="cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">⚖ Legal Annotator</span>
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.6</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.7</small>
     </div>
 
     <!-- Sync + auto-save bar -->
@@ -65,7 +65,10 @@
       <div id="recent-list"></div>
     </div>
 
-    <button id="new-subj-btn">+ New Subject</button>
+    <div style="display:flex; margin: 8px 12px; gap: 6px;">
+      <button id="new-subj-btn" style="flex:1; margin:0; width:auto;">+ New Subject</button>
+      <button id="refresh-btn" title="Refresh App" style="padding:0 10px; background:var(--navy-l); border:1px solid var(--navy-b); border-radius:6px; color:var(--text); cursor:pointer; font-size:14px; transition:background .15s" onmouseover="this.style.background='var(--navy)'" onmouseout="this.style.background='var(--navy-l)'" onclick="window.location.reload()">⟳</button>
+    </div>
     <div id="lib-tree"><div class="lib-empty">Loading…</div></div>
   </div>
 
@@ -511,8 +514,10 @@
 <div class="modal-ov" id="mo-changelog">
   <div class="modal-box">
     <div style="padding: 10px 4px 4px 4px">
-      <h3>What's New in v1.1.6</h3>
+      <h3>What's New in v1.1.7</h3>
       <ul style="margin-top:16px; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.6">
+        <li style="margin-bottom:8px">Added a manual refresh button to the sidebar.</li>
+        <li style="margin-bottom:8px">Added auto-retry mechanisms for when loading the library or PDFs fails due to network issues.</li>
         <li style="margin-bottom:8px">Made the app title clickable so you can easily return to the home screen schedule!</li>
         <li style="margin-bottom:8px">Made the version string clickable to show this changelog.</li>
         <li style="margin-bottom:8px">Removed motivational quote from the class schedule calendar.</li>

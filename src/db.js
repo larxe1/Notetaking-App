@@ -16,8 +16,8 @@ const SKEY = window.APP_CONFIG.SUPABASE_KEY;
 export const db = supabase.createClient(SURL, SKEY);
 
 // ── Load all library data ──
-export async function dbLoad() {
-  syncSpin('Loading…');
+export async function dbLoad(retries = 3) {
+  syncSpin(retries < 3 ? `Retrying load... (${3 - retries})` : 'Loading…');
   try {
     const [s, f, p, c] = await Promise.all([
       db.from('subjects').select('*').order('created_at'),
@@ -32,6 +32,10 @@ export async function dbLoad() {
     S.colorCats  = c.data || [];
     syncOK('Connected');
   } catch (e) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 1500));
+      return dbLoad(retries - 1);
+    }
     syncErr('Connection failed');
     throw e; // re-throw so init() can handle it (Bug #12 fix)
   }
