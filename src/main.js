@@ -40,6 +40,16 @@ async function init() {
   // Wire all UI
   initModals();
   document.getElementById('app-version')?.addEventListener('click', () => openModal('mo-changelog'));
+  
+  const welcomeHTML = document.getElementById('canvas-scroll').innerHTML;
+  document.getElementById('app-title')?.addEventListener('click', async () => {
+    S.curPDF = null;
+    document.getElementById('canvas-scroll').innerHTML = welcomeHTML;
+    document.getElementById('thumb-strip').innerHTML = '';
+    const { updateActivePDF } = await import('./viewer.js');
+    updateActivePDF();
+  });
+
   initSidebar();
   initLibraryModals();
   initLibrarySelection();
