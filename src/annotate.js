@@ -350,4 +350,16 @@ export function initAnnPanel() {
     document.getElementById('sel-menu').classList.remove('open');
     S.pendingSel = null;
   });
+
+  // Auto-close selection menu when clicking outside
+  document.addEventListener('mousedown', e => {
+    const selMenu = document.getElementById('sel-menu');
+    if (S.pendingSel && selMenu.classList.contains('open')) {
+      if (!selMenu.contains(e.target)) {
+        window.getSelection()?.removeAllRanges();
+        selMenu.classList.remove('open');
+        S.pendingSel = null;
+      }
+    }
+  });
 }
