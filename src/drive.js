@@ -8,8 +8,11 @@ const CLIENT_ID   = window.APP_CONFIG.GOOGLE_CLIENT_ID;
 const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_NAME = 'Legal Annotator';
 
-// ── Sign in / get token ──
-export async function driveSignIn() {
+let _tokenRefreshTimer = null;
+
+// ── Internal: request/refresh an access token ──
+// silent=true → no popup (works if user already granted + has active Google session)
+function _requestToken(silent = false) {
   return new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
@@ -19,31 +22,55 @@ export async function driveSignIn() {
         S.driveToken = resp.access_token;
         localStorage.setItem('driveToken', S.driveToken);
         localStorage.setItem('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
-        // Get user info
-        try {
-          const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${S.driveToken}` }
-          });
-          const info = await r.json();
-          S.driveUser = info.email || 'Connected';
-          localStorage.setItem('driveUser', S.driveUser);
-        } catch { 
-          S.driveUser = 'Connected'; 
-          localStorage.setItem('driveUser', S.driveUser);
+        // Get user info (only needed on first sign-in)
+        if (!S.driveUser) {
+          try {
+            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${S.driveToken}` }
+            });
+            const info = await r.json();
+            S.driveUser = info.email || 'Connected';
+            localStorage.setItem('driveUser', S.driveUser);
+          } catch {
+            S.driveUser = 'Connected';
+            localStorage.setItem('driveUser', S.driveUser);
+          }
         }
-        // Ensure our folder exists
+        // Ensure our app folder exists
         S.driveFolderId = await ensureAppFolder();
         localStorage.setItem('driveFolderId', S.driveFolderId);
         updateDriveBar();
+        _scheduleRefresh(); // schedule the next silent refresh
         resolve();
       },
     });
-    client.requestAccessToken({ prompt: '' });
+    // prompt: '' = silent (no UI shown if already authorised)
+    // prompt: 'select_account' = show picker (used for explicit sign-in)
+    client.requestAccessToken({ prompt: silent ? '' : 'select_account' });
   });
+}
+
+// ── Schedule a silent token refresh ~50 mins from now ──
+function _scheduleRefresh() {
+  if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
+  _tokenRefreshTimer = setTimeout(async () => {
+    try {
+      await _requestToken(true); // silent
+    } catch {
+      // Silent refresh failed (Google session expired) — just update the UI
+      updateDriveBar();
+    }
+  }, 50 * 60 * 1000); // 50 minutes
+}
+
+// ── Sign in (user-initiated, shows account picker) ──
+export async function driveSignIn() {
+  return _requestToken(false);
 }
 
 export function driveSignOut() {
   if (S.driveToken) google.accounts.oauth2.revoke(S.driveToken);
+  if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
   S.driveToken = null;
   S.driveUser  = null;
   S.driveFolderId = null;
@@ -179,24 +206,44 @@ async function drivePost(url, body) {
 
 // ── Init: render drive bar on load ──
 export function initDriveBar() {
-  const token = localStorage.getItem('driveToken');
+  const token  = localStorage.getItem('driveToken');
   const expiry = localStorage.getItem('driveTokenExpiry');
+  const user   = localStorage.getItem('driveUser');
+
   if (token && expiry && Date.now() < parseInt(expiry)) {
-    S.driveToken = token;
-    S.driveUser = localStorage.getItem('driveUser');
+    // Token still valid — restore session and schedule a refresh
+    S.driveToken    = token;
+    S.driveUser     = user;
     S.driveFolderId = localStorage.getItem('driveFolderId');
+    updateDriveBar();
+    _scheduleRefresh();
+  } else if (user) {
+    // Token expired but user previously signed in — try silent refresh
+    S.driveUser = user; // keep name visible while refreshing
+    updateDriveBar();
+    // Wait for Google Identity Services to be ready, then silently refresh
+    const trySilent = () => {
+      _requestToken(true).catch(() => {
+        // Silent refresh failed (Google session gone) — clear state
+        S.driveUser = null;
+        localStorage.removeItem('driveToken');
+        localStorage.removeItem('driveUser');
+        localStorage.removeItem('driveTokenExpiry');
+        localStorage.removeItem('driveFolderId');
+        updateDriveBar();
+      });
+    };
+    // Give the Google script ~1s to initialise before trying
+    if (typeof google !== 'undefined') {
+      trySilent();
+    } else {
+      setTimeout(trySilent, 1000);
+    }
   } else {
-    // Clear out any expired tokens without calling revoke (since it's expired)
-    S.driveToken = null;
-    S.driveUser = null;
-    S.driveFolderId = null;
-    localStorage.removeItem('driveToken');
-    localStorage.removeItem('driveUser');
-    localStorage.removeItem('driveTokenExpiry');
-    localStorage.removeItem('driveFolderId');
+    // Never signed in
+    updateDriveBar();
   }
 
-  updateDriveBar();
   document.getElementById('drive-sign-btn').addEventListener('click', async () => {
     if (S.driveUser) {
       driveSignOut();
