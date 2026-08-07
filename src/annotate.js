@@ -45,11 +45,13 @@ export function drawAnnotation(ann) {
   const grp = document.createElement('div');
   grp.className  = 'hi-grp';
   grp.dataset.id = ann.id;
+  grp.style.opacity = '0.4';
+  grp.style.mixBlendMode = 'multiply';
 
   for (const r of ann.rects) {
     const d = document.createElement('div');
     d.className = 'hr';
-    d.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${ann.hex_color}44;border-bottom:2px solid ${ann.hex_color}`;
+    d.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${ann.hex_color};`;
     grp.appendChild(d);
   }
   grp.addEventListener('click', e => { e.stopPropagation(); openAnnPanel(ann); });
