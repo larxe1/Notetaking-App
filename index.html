@@ -42,7 +42,7 @@
         ⚖ Legal Annotator
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block">v1.1.2</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block">v1.1.3</small>
     </div>
 
     <!-- Sync + auto-save bar -->
@@ -194,13 +194,82 @@
     <div id="content-area">
       <div id="canvas-scroll">
         <div id="welcome">
-          <h2>📚 Legal Annotator</h2>
-          <p>Your cloud study library — annotations sync across all devices.</p>
-          <div class="ws"><span class="wn">1</span>Sign in to Google Drive (sidebar)</div>
-          <div class="ws"><span class="wn">2</span>Create a Subject (e.g. "Labor Law 1")</div>
-          <div class="ws"><span class="wn">3</span>Add folders: Codal, Cases, Laws, Others</div>
-          <div class="ws"><span class="wn">4</span>Upload PDFs into each folder</div>
-          <div class="ws"><span class="wn">5</span>Highlight · Annotate · Draw · Search</div>
+          <div id="welcome-calendar">
+            <div class="cal-header">
+              <h2>Class Schedule</h2>
+              <p>2nd Year, 1st Semester</p>
+            </div>
+            <div class="cal-grid">
+              <div class="cal-day">
+                <div class="cal-day-title">MON</div>
+                <div class="cal-item">
+                  <strong>103: Sales</strong>
+                  <div class="cal-time">9:00 - 11:30 AM</div>
+                  Atty. Ryan Anthony Malit<br>321
+                </div>
+                <div class="cal-item">
+                  <strong>124: CrimPro</strong>
+                  <div class="cal-time">2:30 - 4:00 PM</div>
+                  Atty.<br>203-205
+                </div>
+              </div>
+              <div class="cal-day">
+                <div class="cal-day-title">TUE</div>
+                <div class="cal-item">
+                  <strong>104: Torts and Damages</strong>
+                  <div class="cal-time">8:00 - 9:30 AM</div>
+                  Atty. Ramon Quintin Allado<br>321
+                </div>
+                <div class="cal-item">
+                  <strong>139: Insurance</strong>
+                  <div class="cal-time">10:00 - 12:00 PM</div>
+                  Atty. Jose Martin Loon<br>127
+                </div>
+                <div class="cal-item">
+                  <strong>113: Labor 1</strong>
+                  <div class="cal-time">3:00 - 4:30 PM</div>
+                  Atty. E. Leo Battad<br>221
+                </div>
+              </div>
+              <div class="cal-day">
+                <div class="cal-day-title">WED</div>
+                <div class="cal-item">
+                  <strong>102: Property</strong>
+                  <div class="cal-time">3:00 - 5:00 PM</div>
+                  Atty. John Noah Red<br>303-305
+                </div>
+              </div>
+              <div class="cal-day">
+                <div class="cal-day-title">THU</div>
+                <div class="cal-item">
+                  <strong>104: Torts and Damages</strong>
+                  <div class="cal-time">8:00 - 9:30 AM</div>
+                  Atty. Ramon Quintin Allado<br>321
+                </div>
+                <div class="cal-item">
+                  <strong>113: Labor 1</strong>
+                  <div class="cal-time">3:00 - 4:30 PM</div>
+                  Atty. E. Leo Battad<br>221
+                </div>
+              </div>
+              <div class="cal-day">
+                <div class="cal-day-title">FRI</div>
+                <div class="cal-item">
+                  <strong>124: CrimPro</strong>
+                  <div class="cal-time">1:00 - 2:30 PM</div>
+                  Atty.<br>203-205
+                </div>
+                <div class="cal-item">
+                  <strong>102: Property</strong>
+                  <div class="cal-time">3:00 - 5:00 PM</div>
+                  Atty. John Noah Red<br>303-305
+                </div>
+              </div>
+            </div>
+            <div class="cal-quote">
+              "Do it exhausted. Do it anxious. Do it after setbacks. Your consistency will take you farther than your confidence ever could."
+            </div>
+          </div>
         </div>
       </div>
       <!-- Thumbnail strip (populated by thumbnails.js) -->

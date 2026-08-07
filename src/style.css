@@ -211,11 +211,18 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .thumb-pg-num { position: absolute; bottom: 2px; right: 4px; font-size: 8px; color: rgba(255,255,255,.7); background: rgba(0,0,0,.5); border-radius: 2px; padding: 1px 3px; }
 
 /* ── Welcome ── */
-#welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); text-align: center; padding: 40px; }
-#welcome h2 { font-family: 'Libre Baskerville', serif; color: var(--gold); font-size: 20px; font-weight: 400; }
-#welcome p { font-size: 13px; line-height: 1.7; max-width: 300px; }
-.ws { font-size: 12px; background: var(--navy-l); border: 1px solid var(--navy-b); border-radius: 6px; padding: 8px 14px; text-align: left; width: 100%; max-width: 280px; display: flex; gap: 10px; }
-.wn { color: var(--gold); font-weight: 600; min-width: 14px; }
+#welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; }
+#welcome-calendar { width: 100%; max-width: 900px; background: var(--navy-d); padding: 30px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+.cal-header { text-align: center; margin-bottom: 24px; }
+.cal-header h2 { font-family: 'Libre Baskerville', serif; color: var(--gold); font-size: 28px; margin-bottom: 6px; font-style: italic; }
+.cal-header p { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.cal-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+.cal-day { background: var(--navy); border-radius: 8px; padding: 16px 12px; border: 1px solid rgba(255,255,255,0.05); }
+.cal-day-title { text-align: center; font-family: 'Libre Baskerville', serif; color: #e8e4db; font-size: 16px; font-style: italic; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+.cal-item { background: rgba(201,168,76,0.1); border-left: 2px solid var(--gold); padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 11px; color: #c9c5bb; line-height: 1.4; text-align: left; }
+.cal-item strong { color: var(--gold); display: block; font-size: 12px; margin-bottom: 4px; }
+.cal-item .cal-time { color: #e8e4db; font-weight: 500; margin-bottom: 4px; }
+.cal-quote { margin-top: 30px; font-size: 12px; font-style: italic; color: var(--muted); text-align: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; }
 .spin-w { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .spinner { width: 16px; height: 16px; border: 2px solid var(--navy-b); border-top-color: var(--gold); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
