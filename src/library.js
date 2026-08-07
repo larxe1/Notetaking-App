@@ -404,22 +404,47 @@ export function initLibraryModals() {
     if (!this.files || this.files.length === 0 || !S.uploadFolderId) return;
     try {
       const files = Array.from(this.files);
-      toast(`Uploading ${files.length} PDF${files.length > 1 ? 's' : ''}…`);
-      
+
+      // ── Duplicate detection ──
+      const existingNames = S.pdfs.map(p => p.name.toLowerCase().trim());
+      const duplicates = files.filter(f => existingNames.includes(f.name.toLowerCase().trim()));
+      const newFiles   = files.filter(f => !existingNames.includes(f.name.toLowerCase().trim()));
+
+      if (duplicates.length > 0 && newFiles.length === 0) {
+        // All files are duplicates — block entirely
+        const names = duplicates.map(f => `• ${f.name}`).join('\n');
+        toast(`Already in your library:\n${names}`);
+        this.value = '';
+        return;
+      }
+
+      if (duplicates.length > 0) {
+        // Some are duplicates — ask whether to skip them
+        const names = duplicates.map(f => `• ${f.name}`).join('\n');
+        const proceed = confirm(
+          `The following file${duplicates.length > 1 ? 's are' : ' is'} already in your library:\n\n${names}\n\nSkip ${duplicates.length > 1 ? 'them' : 'it'} and upload only the new files?`
+        );
+        if (!proceed) { this.value = ''; return; }
+        // Proceed with only the new ones
+      }
+
+      const toUpload = newFiles.length > 0 ? newFiles : files;
+      toast(`Uploading ${toUpload.length} PDF${toUpload.length > 1 ? 's' : ''}…`);
+
       let lastRec = null;
-      for (const file of files) {
+      for (const file of toUpload) {
         // Upload to Drive
         const driveFile = await driveUploadPDF(file);
         // Register in Supabase
         lastRec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
         S.annCounts[lastRec.id] = 0;
       }
-      
+
       renderLibrary();
       toast('Upload complete!');
-      
+
       // If they only uploaded one file, open it automatically
-      if (files.length === 1 && lastRec) {
+      if (toUpload.length === 1 && lastRec) {
         await openPDFFromLibrary(lastRec);
       }
     } catch (e) {
