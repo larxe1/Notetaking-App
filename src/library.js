@@ -198,14 +198,28 @@ function buildFolderEl(fold) {
     const draggedFold = S.folders.find(f => f.id === draggedId);
     if (!draggedFold || draggedFold.subject_id !== fold.subject_id) return;
 
-    // Reorder: give dragged item the sort_order just before the drop target
-    const sibFolds = S.folders
-      .filter(f => f.subject_id === fold.subject_id)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    // Reorder folders robustly
+    let sibFolds = S.folders
+      .filter(f => f.subject_id === fold.subject_id && f.id !== draggedId)
+      .sort((a, b) => {
+        const sA = a.sort_order ?? 0;
+        const sB = b.sort_order ?? 0;
+        if (sA === sB) return a.name.localeCompare(b.name);
+        return sA - sB;
+      });
 
-    const targetIdx  = sibFolds.findIndex(f => f.id === fold.id);
-    const newSortOrder = targetIdx === 0 ? (sibFolds[0].sort_order ?? 0) - 1 : ((sibFolds[targetIdx - 1].sort_order ?? 0) + (sibFolds[targetIdx].sort_order ?? 0)) / 2;
-    await dbReorderFolder(draggedId, newSortOrder);
+    const targetIdx = sibFolds.findIndex(f => f.id === fold.id);
+    
+    if (targetIdx !== -1) {
+      sibFolds.splice(targetIdx, 0, draggedFold);
+    } else {
+      sibFolds.push(draggedFold);
+    }
+
+    sibFolds.forEach((f, i) => {
+      f.sort_order = i;
+      dbReorderFolder(f.id, i).catch(() => {});
+    });
     renderLibrary();
   });
 
@@ -265,15 +279,33 @@ function buildPdfEl(pdf) {
 
     // Same folder → reorder
     if (!dragPdf) return;
-    const sibPdfs = S.pdfs
-      .filter(p => p.folder_id === pdf.folder_id)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    
+    // Get all PDFs in this folder EXCEPT the dragged one, sorted by current order (or name fallback)
+    let sibPdfs = S.pdfs
+      .filter(p => p.folder_id === pdf.folder_id && p.id !== dragPdfId)
+      .sort((a, b) => {
+        const sA = a.sort_order ?? 0;
+        const sB = b.sort_order ?? 0;
+        if (sA === sB) return a.name.localeCompare(b.name);
+        return sA - sB;
+      });
 
+    // Find where we dropped it
     const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
-    const newSortOrder = targetIdx === 0
-      ? (sibPdfs[0].sort_order ?? 0) - 1
-      : ((sibPdfs[targetIdx - 1].sort_order ?? 0) + (sibPdfs[targetIdx].sort_order ?? 0)) / 2;
-    await dbReorderPDF(dragPdfId, newSortOrder);
+    
+    // Insert the dragged PDF before the target
+    if (targetIdx !== -1) {
+      sibPdfs.splice(targetIdx, 0, dragPdf);
+    } else {
+      sibPdfs.push(dragPdf);
+    }
+
+    // Re-assign sequential sort_orders to everyone in the folder
+    sibPdfs.forEach((p, i) => {
+      p.sort_order = i;
+      dbReorderPDF(p.id, i).catch(() => {}); // fire and forget
+    });
+
     renderLibrary();
   });
 
