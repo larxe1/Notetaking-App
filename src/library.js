@@ -183,9 +183,8 @@ function buildFolderEl(fold) {
       return;
     }
 
-    // Normal click: select it AND expand/collapse
-    handleSelection(fold.id, e);
-    // Expand/collapse on pointerdown? Usually click is better, but this is fine.
+    // Normal click: just expand/collapse. Don't highlight it as selected!
+    // If they drag it, dragstart will automatically select it.
     S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
     chev.classList.toggle('closed');
     ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
