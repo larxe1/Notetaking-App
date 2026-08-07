@@ -162,13 +162,21 @@ function buildFolderEl(fold) {
     ch.appendChild(childEl);
   }
 
-  // ── Drag-to-reorder ──
+  // ── Drag-to-reorder (folders only, not when dragging a child PDF) ──
   w.addEventListener('dragstart', e => {
+    // Only start a folder drag if the drag originated from the folder header
+    if (e.target.closest('.li-pdf')) return;
     e.dataTransfer.setData('text/plain', fold.id);
     w.style.opacity = '0.5';
   });
   w.addEventListener('dragend', () => { w.style.opacity = ''; });
-  w.addEventListener('dragover', e => { e.preventDefault(); w.classList.add('drag-over'); });
+  w.addEventListener('dragover', e => {
+    const draggedId = e.dataTransfer.types.includes('text/plain') ? e.dataTransfer.getData('text/plain') : '';
+    // If a PDF is being dragged, let the PDF's own dragover handle it
+    if (e.target.closest('.li-pdf')) return;
+    e.preventDefault();
+    w.classList.add('drag-over');
+  });
   w.addEventListener('dragleave', () => w.classList.remove('drag-over'));
   w.addEventListener('drop', async e => {
     e.preventDefault();
@@ -211,38 +219,6 @@ function buildPdfEl(pdf) {
   el.dataset.id = pdf.id;
   el.draggable  = true;
 
-  el.addEventListener('dragstart', e => {
-    e.dataTransfer.setData('text/plain', 'pdf:' + pdf.id);
-    el.style.opacity = '0.5';
-  });
-  el.addEventListener('dragend', () => { el.style.opacity = ''; });
-  
-  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
-  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
-  el.addEventListener('drop', async e => {
-    e.preventDefault();
-    e.stopPropagation();
-    el.classList.remove('drag-over');
-    
-    const draggedId = e.dataTransfer.getData('text/plain');
-    if (!draggedId || !draggedId.startsWith('pdf:')) return;
-    
-    const dragPdfId = draggedId.replace('pdf:', '');
-    if (dragPdfId === pdf.id) return;
-    
-    const dragPdf = S.pdfs.find(p => p.id === dragPdfId);
-    if (!dragPdf || dragPdf.folder_id !== pdf.folder_id) return; // Only reorder within the same folder
-
-    const sibPdfs = S.pdfs
-      .filter(p => p.folder_id === pdf.folder_id)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      
-    const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
-    const newSortOrder = targetIdx === 0 ? (sibPdfs[0].sort_order ?? 0) - 1 : ((sibPdfs[targetIdx - 1].sort_order ?? 0) + (sibPdfs[targetIdx].sort_order ?? 0)) / 2;
-    await dbReorderPDF(dragPdfId, newSortOrder);
-    renderLibrary();
-  });
-
   const count = S.annCounts[pdf.id] || 0;
   el.innerHTML = `
     <span>📄</span>
@@ -252,6 +228,55 @@ function buildPdfEl(pdf) {
       <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
       <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
     </div>`;
+
+  el.addEventListener('dragstart', e => {
+    e.stopPropagation();
+    e.dataTransfer.setData('text/plain', 'pdf:' + pdf.id);
+    el.style.opacity = '0.5';
+  });
+  el.addEventListener('dragend', () => { el.style.opacity = ''; });
+
+  el.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.stopPropagation(); // prevent folder from also highlighting
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', e => {
+    if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over');
+  });
+  el.addEventListener('drop', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.remove('drag-over');
+
+    const draggedId = e.dataTransfer.getData('text/plain');
+    if (!draggedId || !draggedId.startsWith('pdf:')) return;
+
+    const dragPdfId = draggedId.replace('pdf:', '');
+    if (dragPdfId === pdf.id) return;
+
+    const dragPdf = S.pdfs.find(p => p.id === dragPdfId);
+
+    // Different folder → move
+    if (dragPdf && dragPdf.folder_id !== pdf.folder_id) {
+      await dbMovePDF(dragPdfId, pdf.folder_id);
+      renderLibrary();
+      return;
+    }
+
+    // Same folder → reorder
+    if (!dragPdf) return;
+    const sibPdfs = S.pdfs
+      .filter(p => p.folder_id === pdf.folder_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+    const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
+    const newSortOrder = targetIdx === 0
+      ? (sibPdfs[0].sort_order ?? 0) - 1
+      : ((sibPdfs[targetIdx - 1].sort_order ?? 0) + (sibPdfs[targetIdx].sort_order ?? 0)) / 2;
+    await dbReorderPDF(dragPdfId, newSortOrder);
+    renderLibrary();
+  });
 
   el.addEventListener('click', e => {
     if (e.target.closest('.li-acts')) return;
