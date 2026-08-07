@@ -171,7 +171,6 @@ function buildFolderEl(fold) {
   });
   w.addEventListener('dragend', () => { w.style.opacity = ''; });
   w.addEventListener('dragover', e => {
-    const draggedId = e.dataTransfer.types.includes('text/plain') ? e.dataTransfer.getData('text/plain') : '';
     // If a PDF is being dragged, let the PDF's own dragover handle it
     if (e.target.closest('.li-pdf')) return;
     e.preventDefault();
