@@ -241,13 +241,18 @@ function onTextUp(pageNum) {
   if (!rects.length) return;
 
   // Merge rects on the same line to create continuous highlights and fix gaps
-  rects.sort((a,b) => Math.abs(a.y - b.y) < 8 ? a.x - b.x : a.y - b.y);
+  rects.sort((a,b) => {
+    const over = Math.max(0, Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y));
+    return over > 2 ? a.x - b.x : a.y - b.y;
+  });
   const merged = [rects[0]];
   for (let i = 1; i < rects.length; i++) {
     const curr = rects[i];
     const prev = merged[merged.length - 1];
-    // If on same line and horizontally close (within 16px, easily bridging spaces)
-    if (Math.abs(curr.y - prev.y) < 8 && curr.x <= prev.x + prev.w + 16) {
+    
+    const over = Math.max(0, Math.min(prev.y+prev.h, curr.y+curr.h) - Math.max(prev.y, curr.y));
+    // If they share vertical space and are horizontally close (within 24px)
+    if (over > 0 && curr.x <= prev.x + prev.w + 24) {
       const right = Math.max(prev.x + prev.w, curr.x + curr.w);
       const bottom = Math.max(prev.y + prev.h, curr.y + curr.h);
       prev.x = Math.min(prev.x, curr.x);
