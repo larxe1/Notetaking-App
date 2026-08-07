@@ -9,6 +9,10 @@ export const S = {
   bookmarks:   [],
   colorCats:   [],
 
+  // Multi-selection in library
+  selectedIds: new Set(),
+  lastSelectedId: null,
+
   // Current open PDF
   curPDF:      null,
   pdfDoc:      null,

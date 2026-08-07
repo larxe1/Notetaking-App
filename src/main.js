@@ -4,7 +4,7 @@
 import { S }                  from './state.js';
 import { dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark } from './db.js';
 import { initDriveBar }       from './drive.js';
-import { renderLibrary, initLibraryModals } from './library.js';
+import { renderLibrary, initLibraryModals, initLibrarySelection } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
 import { setMode }            from './viewer.js';
 import { initAnnPanel }       from './annotate.js';
@@ -41,6 +41,7 @@ async function init() {
   initModals();
   initSidebar();
   initLibraryModals();
+  initLibrarySelection();
   initColors();
   initAnnPanel();
   initSearch();

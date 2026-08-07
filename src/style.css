@@ -102,10 +102,18 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 /* PDF item */
 .li-pdf { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px; cursor: pointer; transition: background .1s; font-size: 12px; color: #9a9490; margin: 1px 2px; }
-.li-pdf.drag-over { background: rgba(201,168,76,.15); border: 1px dashed var(--gold); }
 .li-pdf:hover { background: rgba(255,255,255,.05); color: #e8e4db; }
 .li-pdf:hover .li-acts { visibility: visible; }
-.li-pdf.active { background: var(--gold-bg); color: var(--gold); }
+.li-subj.drag-over > .li-subj-hd, .li-fold.drag-over > .li-fold-hd, .li-pdf.drag-over { background: rgba(201,168,76,.15); }
+.li-pdf.active { background: rgba(201,168,76,.1); color: var(--gold); border-left: 2px solid var(--gold); }
+.li-selected { background: rgba(201,168,76,.2) !important; border-left: 2px solid var(--gold); }
+.selection-marquee {
+  position: absolute;
+  background: rgba(201,168,76, 0.15);
+  border: 1px solid rgba(201,168,76, 0.5);
+  pointer-events: none;
+  z-index: 100;
+}
 .li-pdf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-badge { background: var(--gold-bg); border: 1px solid var(--gold); color: var(--gold); font-size: 9px; border-radius: 10px; padding: 1px 5px; flex-shrink: 0; font-weight: 600; }
 

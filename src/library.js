@@ -17,6 +17,66 @@ import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.j
 import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
+// ── Selection Logic ──
+function getFlatLibraryItems() {
+  const items = [];
+  S.subjects.forEach(subj => {
+    // We don't select subjects, but we iterate their contents
+    const rootFolds = S.folders.filter(f => f.subject_id === subj.id && !f.parent_folder_id)
+      .sort((a,b) => (a.sort_order??0)-(b.sort_order??0));
+    
+    function traverseFolder(fold) {
+      items.push({ type: 'folder', id: fold.id, obj: fold });
+      const children = [
+        ...S.folders.filter(f => f.parent_folder_id === fold.id).map(f => ({ type: 'folder', id: f.id, obj: f, sort: f.sort_order??0 })),
+        ...S.pdfs.filter(p => p.folder_id === fold.id).map(p => ({ type: 'pdf', id: p.id, obj: p, sort: p.sort_order??0 }))
+      ].sort((a, b) => a.sort - b.sort);
+      
+      children.forEach(c => {
+        if (c.type === 'folder') traverseFolder(c.obj);
+        else items.push(c);
+      });
+    }
+    rootFolds.forEach(traverseFolder);
+  });
+  return items;
+}
+
+export function handleSelection(id, e) {
+  if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    S.selectedIds.clear();
+    S.selectedIds.add(id);
+    S.lastSelectedId = id;
+  } else if (e.ctrlKey || e.metaKey) {
+    if (S.selectedIds.has(id)) S.selectedIds.delete(id);
+    else S.selectedIds.add(id);
+    S.lastSelectedId = id;
+  } else if (e.shiftKey && S.lastSelectedId) {
+    const items = getFlatLibraryItems();
+    const idx1 = items.findIndex(i => i.id === S.lastSelectedId);
+    const idx2 = items.findIndex(i => i.id === id);
+    if (idx1 !== -1 && idx2 !== -1) {
+      const start = Math.min(idx1, idx2);
+      const end = Math.max(idx1, idx2);
+      for (let i = start; i <= end; i++) {
+        S.selectedIds.add(items[i].id);
+      }
+    }
+    // DO NOT update lastSelectedId on shift-click
+  }
+  updateSelectionUI();
+}
+
+export function updateSelectionUI() {
+  document.querySelectorAll('.li-fold, .li-pdf').forEach(el => {
+    if (S.selectedIds.has(el.dataset.id)) {
+      el.classList.add('li-selected');
+    } else {
+      el.classList.remove('li-selected');
+    }
+  });
+}
+
 // ── Render full library tree ──
 export function renderLibrary() {
   const tree = document.getElementById('lib-tree');
@@ -26,6 +86,7 @@ export function renderLibrary() {
   }
   tree.innerHTML = '';
   for (const subj of S.subjects) tree.appendChild(buildSubjectEl(subj));
+  updateSelectionUI();
 }
 
 // ── Subject node ──
@@ -101,7 +162,7 @@ function buildFolderEl(fold) {
       <span class="li-fold-name">${fold.name}</span>
       <div class="li-acts">
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
-        <button class="li-act-btn" title="Upload PDF" data-act="upload">📄+</button>
+        <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
         <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
       </div>
@@ -112,8 +173,19 @@ function buildFolderEl(fold) {
   const ch   = w.querySelector('.li-fold-ch');
   const chev = w.querySelector('.li-chev');
 
-  hd.addEventListener('click', e => {
+  // Handle clicking the folder for expand/collapse OR selection
+  hd.addEventListener('pointerdown', e => {
     if (e.target.closest('.li-acts')) return;
+    
+    // If holding modifier, handle selection instead of expanding
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      handleSelection(fold.id, e);
+      return;
+    }
+
+    // Normal click: select it AND expand/collapse
+    handleSelection(fold.id, e);
+    // Expand/collapse on pointerdown? Usually click is better, but this is fine.
     S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
     chev.classList.toggle('closed');
     ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
@@ -165,12 +237,24 @@ function buildFolderEl(fold) {
 
   // ── Drag-to-reorder (folders only, not when dragging a child PDF) ──
   w.addEventListener('dragstart', e => {
-    // Only start a folder drag if the drag originated from the folder header
     if (e.target.closest('.li-pdf')) return;
-    e.dataTransfer.setData('text/plain', fold.id);
-    w.style.opacity = '0.5';
+    
+    // If dragging an unselected item, select only it
+    if (!S.selectedIds.has(fold.id)) {
+      S.selectedIds.clear();
+      S.selectedIds.add(fold.id);
+      updateSelectionUI();
+    }
+    
+    const dragPayload = JSON.stringify({ type: 'multi', ids: Array.from(S.selectedIds) });
+    e.dataTransfer.setData('text/plain', dragPayload);
+    
+    // Visually fade all selected items
+    document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '0.5');
   });
-  w.addEventListener('dragend', () => { w.style.opacity = ''; });
+  w.addEventListener('dragend', () => { 
+    document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '');
+  });
   w.addEventListener('dragover', e => {
     // If a PDF is being dragged, let the PDF's own dragover handle it
     if (e.target.closest('.li-pdf')) return;
@@ -181,46 +265,55 @@ function buildFolderEl(fold) {
   w.addEventListener('drop', async e => {
     e.preventDefault();
     w.classList.remove('drag-over');
-    const draggedId = e.dataTransfer.getData('text/plain');
-    if (!draggedId || draggedId === fold.id) return;
+    const rawData = e.dataTransfer.getData('text/plain');
+    if (!rawData) return;
     
-    // Check if dragging a PDF
-    if (draggedId.startsWith('pdf:')) {
-      const pdfId = draggedId.replace('pdf:', '');
+    let payload;
+    try { payload = JSON.parse(rawData); } catch { payload = { type: 'single', id: rawData }; }
+    const draggedIds = payload.type === 'multi' ? payload.ids : [payload.id];
+
+    if (draggedIds.includes(fold.id)) return;
+
+    const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
+    const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+
+    // Move PDFs into this folder
+    for (const pdfId of pdfIds) {
       const pdf = S.pdfs.find(p => p.id === pdfId);
       if (pdf && pdf.folder_id !== fold.id) {
-        await dbMovePDF(pdfId, fold.id);
-        renderLibrary();
+        dbMovePDF(pdfId, fold.id).catch(()=>{});
+        pdf.folder_id = fold.id;
       }
-      return;
     }
-
-    // Otherwise, it's a folder being dragged
-    const draggedFold = S.folders.find(f => f.id === draggedId);
-    if (!draggedFold || draggedFold.subject_id !== fold.subject_id) return;
-
-    // Reorder folders robustly
-    let sibFolds = S.folders
-      .filter(f => f.subject_id === fold.subject_id && f.id !== draggedId)
-      .sort((a, b) => {
-        const sA = a.sort_order ?? 0;
-        const sB = b.sort_order ?? 0;
-        if (sA === sB) return a.name.localeCompare(b.name);
-        return sA - sB;
-      });
-
-    const targetIdx = sibFolds.findIndex(f => f.id === fold.id);
     
-    if (targetIdx !== -1) {
-      sibFolds.splice(targetIdx, 0, draggedFold);
-    } else {
-      sibFolds.push(draggedFold);
-    }
+    // Reorder folders robustly
+    if (foldIds.length > 0) {
+      const draggedFolds = foldIds
+        .map(id => S.folders.find(f => f.id === id))
+        .filter(f => f && f.subject_id === fold.subject_id);
 
-    sibFolds.forEach((f, i) => {
-      f.sort_order = i;
-      dbReorderFolder(f.id, i).catch(() => {});
-    });
+      let sibFolds = S.folders
+        .filter(f => f.subject_id === fold.subject_id && !foldIds.includes(f.id))
+        .sort((a, b) => {
+          const sA = a.sort_order ?? 0;
+          const sB = b.sort_order ?? 0;
+          if (sA === sB) return a.name.localeCompare(b.name);
+          return sA - sB;
+        });
+
+      const targetIdx = sibFolds.findIndex(f => f.id === fold.id);
+      
+      if (targetIdx !== -1) {
+        sibFolds.splice(targetIdx, 0, ...draggedFolds);
+      } else {
+        sibFolds.push(...draggedFolds);
+      }
+
+      sibFolds.forEach((f, i) => {
+        f.sort_order = i;
+        dbReorderFolder(f.id, i).catch(() => {});
+      });
+    }
     renderLibrary();
   });
 
@@ -245,10 +338,21 @@ function buildPdfEl(pdf) {
 
   el.addEventListener('dragstart', e => {
     e.stopPropagation();
-    e.dataTransfer.setData('text/plain', 'pdf:' + pdf.id);
-    el.style.opacity = '0.5';
+    
+    if (!S.selectedIds.has(pdf.id)) {
+      S.selectedIds.clear();
+      S.selectedIds.add(pdf.id);
+      updateSelectionUI();
+    }
+    
+    const dragPayload = JSON.stringify({ type: 'multi', ids: Array.from(S.selectedIds).map(id => id.startsWith('pdf_') ? 'pdf:'+id : id) });
+    e.dataTransfer.setData('text/plain', dragPayload);
+    
+    document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '0.5');
   });
-  el.addEventListener('dragend', () => { el.style.opacity = ''; });
+  el.addEventListener('dragend', () => { 
+    document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '');
+  });
 
   el.addEventListener('dragover', e => {
     e.preventDefault();
@@ -263,27 +367,21 @@ function buildPdfEl(pdf) {
     e.stopPropagation();
     el.classList.remove('drag-over');
 
-    const draggedId = e.dataTransfer.getData('text/plain');
-    if (!draggedId || !draggedId.startsWith('pdf:')) return;
-
-    const dragPdfId = draggedId.replace('pdf:', '');
-    if (dragPdfId === pdf.id) return;
-
-    const dragPdf = S.pdfs.find(p => p.id === dragPdfId);
-
-    // Different folder → move
-    if (dragPdf && dragPdf.folder_id !== pdf.folder_id) {
-      await dbMovePDF(dragPdfId, pdf.folder_id);
-      renderLibrary();
-      return;
-    }
-
-    // Same folder → reorder
-    if (!dragPdf) return;
+    const rawData = e.dataTransfer.getData('text/plain');
+    if (!rawData) return;
     
-    // Get all PDFs in this folder EXCEPT the dragged one, sorted by current order (or name fallback)
+    let payload;
+    try { payload = JSON.parse(rawData); } catch { payload = { type: 'single', id: rawData }; }
+    const draggedIds = payload.type === 'multi' ? payload.ids : [payload.id];
+    
+    const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
+    if (pdfIds.length === 0 || pdfIds.includes(pdf.id)) return;
+
+    const draggedPdfs = pdfIds.map(id => S.pdfs.find(p => p.id === id)).filter(Boolean);
+
+    // Get all PDFs in this folder EXCEPT the dragged ones
     let sibPdfs = S.pdfs
-      .filter(p => p.folder_id === pdf.folder_id && p.id !== dragPdfId)
+      .filter(p => p.folder_id === pdf.folder_id && !pdfIds.includes(p.id))
       .sort((a, b) => {
         const sA = a.sort_order ?? 0;
         const sB = b.sort_order ?? 0;
@@ -294,15 +392,19 @@ function buildPdfEl(pdf) {
     // Find where we dropped it
     const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
     
-    // Insert the dragged PDF before the target
+    // Insert the dragged PDFs before the target
     if (targetIdx !== -1) {
-      sibPdfs.splice(targetIdx, 0, dragPdf);
+      sibPdfs.splice(targetIdx, 0, ...draggedPdfs);
     } else {
-      sibPdfs.push(dragPdf);
+      sibPdfs.push(...draggedPdfs);
     }
 
     // Re-assign sequential sort_orders to everyone in the folder
     sibPdfs.forEach((p, i) => {
+      if (pdfIds.includes(p.id) && p.folder_id !== pdf.folder_id) {
+        dbMovePDF(p.id, pdf.folder_id).catch(()=>{});
+        p.folder_id = pdf.folder_id;
+      }
       p.sort_order = i;
       dbReorderPDF(p.id, i).catch(() => {}); // fire and forget
     });
@@ -310,10 +412,18 @@ function buildPdfEl(pdf) {
     renderLibrary();
   });
 
+  el.addEventListener('pointerdown', e => {
+    if (e.target.closest('.li-acts')) return;
+    handleSelection(pdf.id, e);
+  });
+  
   el.addEventListener('click', e => {
     if (e.target.closest('.li-acts')) return;
-    openPDFFromLibrary(pdf);
-    closeSidebar();
+    // Only open PDF if we are not multi-selecting
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      openPDFFromLibrary(pdf);
+      closeSidebar();
+    }
   });
 
   el.querySelector('[data-act="rename"]').addEventListener('click', e => {
@@ -534,4 +644,77 @@ export function openNewFolderModal(id) {
 export function triggerPDFUpload(fid) {
   S.uploadFolderId = fid;
   document.getElementById('pdf-file-in').click();
+}
+
+// ── Marquee Selection ──
+export function initLibrarySelection() {
+  const tree = document.getElementById('lib-tree');
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let marquee = null;
+
+  tree.addEventListener('pointerdown', e => {
+    // Only start marquee if clicking directly on the empty background, NOT on an item
+    if (e.target.closest('.li-subj-hd') || e.target.closest('.li-fold-hd') || e.target.closest('.li-pdf') || e.target.closest('.li-acts')) return;
+    
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      S.selectedIds.clear();
+      updateSelectionUI();
+    }
+
+    marquee = document.createElement('div');
+    marquee.className = 'selection-marquee';
+    document.body.appendChild(marquee);
+    updateMarquee(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('pointermove', e => {
+    if (!isDragging || !marquee) return;
+    updateMarquee(e.clientX, e.clientY);
+    
+    // Calculate intersections
+    const rect = marquee.getBoundingClientRect();
+    const items = tree.querySelectorAll('.li-fold, .li-pdf');
+    items.forEach(item => {
+      const itemRect = item.getBoundingClientRect();
+      const intersect = !(
+        rect.right < itemRect.left || 
+        rect.left > itemRect.right || 
+        rect.bottom < itemRect.top || 
+        rect.top > itemRect.bottom
+      );
+      
+      const id = item.dataset.id;
+      if (intersect) {
+        S.selectedIds.add(id);
+        S.lastSelectedId = id;
+      } else if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        S.selectedIds.delete(id);
+      }
+    });
+    updateSelectionUI();
+  });
+
+  document.addEventListener('pointerup', () => {
+    isDragging = false;
+    if (marquee) {
+      marquee.remove();
+      marquee = null;
+    }
+  });
+
+  function updateMarquee(endX, endY) {
+    const left = Math.min(startX, endX);
+    const top = Math.min(startY, endY);
+    const width = Math.abs(startX - endX);
+    const height = Math.abs(startY - endY);
+    marquee.style.left = left + 'px';
+    marquee.style.top = top + 'px';
+    marquee.style.width = width + 'px';
+    marquee.style.height = height + 'px';
+  }
 }
