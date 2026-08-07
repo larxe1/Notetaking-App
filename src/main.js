@@ -67,12 +67,6 @@ async function init() {
     btn.addEventListener('click', () => setMode(btn.dataset.mode))
   );
 
-  // Bookmark Start Page
-  document.getElementById('btn-set-start').addEventListener('click', () => {
-    if (!S.curPDF || !S.curPage) return;
-    localStorage.setItem('bookmark_' + S.curPDF.id, S.curPage);
-    toast('Start page set to ' + S.curPage);
-  });
 
   // Add custom bookmark
   document.getElementById('btn-add-bm').addEventListener('click', async () => {

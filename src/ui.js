@@ -111,6 +111,7 @@ export function initNavButtons() {
         if (pg !== S.curPage) {
           S.curPage = pg;
           document.getElementById('pg-input').value = pg;
+          if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
           // Sync thumbnail strip active state
           document.querySelectorAll('.thumb-item').forEach(el =>
             el.classList.toggle('active', parseInt(el.dataset.page) === pg)
@@ -125,6 +126,7 @@ export function initNavButtons() {
 export function jumpToPage(pg) {
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
+  if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
   S.pages[pg]?.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.querySelectorAll('.thumb-item').forEach(el =>
     el.classList.toggle('active', parseInt(el.dataset.page) === pg)
