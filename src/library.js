@@ -146,12 +146,7 @@ function buildFolderEl(fold) {
     dbDelFolder(fold.id).then(() => { renderLibrary(); toast('Deleted'); });
   });
 
-  S.pdfs
-    .filter(p => p.folder_id === fold.id)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    .forEach(p => ch.appendChild(buildPdfEl(p)));
-
-  // Render child subfolders recursively (indented)
+  // Render child subfolders recursively (indented) FIRST
   const childFolds = S.folders
     .filter(f => f.parent_folder_id === fold.id)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -161,6 +156,12 @@ function buildFolderEl(fold) {
     childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
     ch.appendChild(childEl);
   }
+
+  // Then render PDFs below the subfolders
+  S.pdfs
+    .filter(p => p.folder_id === fold.id)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .forEach(p => ch.appendChild(buildPdfEl(p)));
 
   // ── Drag-to-reorder (folders only, not when dragging a child PDF) ──
   w.addEventListener('dragstart', e => {
