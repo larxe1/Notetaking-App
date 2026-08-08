@@ -234,6 +234,22 @@ function initCalendar() {
     openModal('mo-subj-notes');
   });
 
+  // Dynamically set title on hover to show notes
+  document.addEventListener('mouseover', e => {
+    const item = e.target.closest('.cal-item');
+    if (!item) return;
+    const strong = item.querySelector('strong');
+    if (!strong) return;
+    const subj = strong.textContent.trim();
+    const notes = localStorage.getItem('subj_notes_' + subj);
+    if (notes) {
+      // Limit notes preview length and escape quotes if needed, but native title handles raw strings fine
+      item.title = notes.length > 500 ? notes.substring(0, 500) + '...' : notes;
+    } else {
+      item.title = 'Click to add notes';
+    }
+  });
+
   document.getElementById('save-subj-notes')?.addEventListener('click', () => {
     if (!curSubj) return;
     const notes = document.getElementById('subj-notes-ta').value;
