@@ -77,13 +77,24 @@ async function extractPdfText() {
 
 document.getElementById('btn-quiz-pdf').addEventListener('click', async () => {
   if (!S.pdfDoc) return toast('Please open a PDF first.');
-  openModal('mo-quiz');
+  const panel = document.getElementById('quiz-panel');
+  
+  if (panel.style.display === 'flex') {
+    panel.style.display = 'none';
+    return;
+  }
+  
+  panel.style.display = 'flex';
   
   if (!localStorage.getItem('gemini_api_key')) {
     showState('setup');
   } else {
     showState('selectMode');
   }
+});
+
+document.getElementById('btn-close-quiz').addEventListener('click', () => {
+  document.getElementById('quiz-panel').style.display = 'none';
 });
 
 document.getElementById('btn-save-key').addEventListener('click', () => {
