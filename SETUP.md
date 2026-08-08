@@ -15,6 +15,9 @@ ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
 -- Add sort_order for drag-to-reorder support
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS sort_order NUMERIC;
 
+-- Add linked_pdf_id to support PDF shortcuts across folders
+ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS linked_pdf_id TEXT REFERENCES pdf_files(id) ON DELETE CASCADE;
+
 -- PDF Notepad table (general notes per PDF)
 CREATE TABLE IF NOT EXISTS pdf_notes (
   pdf_id  TEXT PRIMARY KEY REFERENCES pdf_files(id) ON DELETE CASCADE,

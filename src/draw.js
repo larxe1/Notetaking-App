@@ -46,9 +46,10 @@ export function setupDrawListeners(canvas, pageNum) {
       const width = S.drawTool === 'erase' ? S.eraseWidth : S.drawWidth;
       S.drawData[pageNum].push({ points: S.curPts, color, width });
       if (S.curPDF) {
+        const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
         autosave('saving');
         try {
-          await dbSaveDrawings(S.curPDF.id, pageNum, S.drawData[pageNum]);
+          await dbSaveDrawings(trueId, pageNum, S.drawData[pageNum]);
           autosave('saved');
         } catch { autosave('err'); }
       }
@@ -121,25 +122,27 @@ export function initDrawControls() {
   // ── Undo (removes last stroke of any type) ──
   document.getElementById('btn-undo').addEventListener('click', async () => {
     if (!S.curPDF) return;
+    const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
     const pg = S.curPage;
     if (!S.drawData[pg]?.length) return;
     S.drawData[pg].pop();
     const c = S.pages[pg]?.drawCanvas;
     if (c) renderCanvas(c, S.drawData[pg]);
     autosave('saving');
-    await dbSaveDrawings(S.curPDF.id, pg, S.drawData[pg]);
+    await dbSaveDrawings(trueId, pg, S.drawData[pg]);
     autosave('saved');
     toast('Undone');
   });
 
   document.getElementById('btn-clear').addEventListener('click', async () => {
     if (!S.curPDF) return;
+    const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
     const pg = S.curPage;
     S.drawData[pg] = [];
     const c = S.pages[pg]?.drawCanvas;
     if (c) renderCanvas(c, []);
     autosave('saving');
-    await dbSaveDrawings(S.curPDF.id, pg, []);
+    await dbSaveDrawings(trueId, pg, []);
     autosave('saved');
     toast('Drawing cleared');
   });

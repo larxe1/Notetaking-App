@@ -84,7 +84,7 @@ export function initNotepad() {
       closeNotepad();
     } else {
       if (S.curPDF) {
-        openNotepad(S.curPDF.id);
+        openNotepad(S.curPDF.linked_pdf_id || S.curPDF.id);
       } else {
         // No PDF open — just show empty panel with message
         $editor().textContent = '';

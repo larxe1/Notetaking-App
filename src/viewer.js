@@ -55,9 +55,10 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
-    await dbLoadBookmarks(pdfFile.id);
-    await dbLoadAnnotations(pdfFile.id);
-    await dbLoadDrawings(pdfFile.id);
+    const trueId = pdfFile.linked_pdf_id || pdfFile.id;
+    await dbLoadBookmarks(trueId);
+    await dbLoadAnnotations(trueId);
+    await dbLoadDrawings(trueId);
     const { redrawAllAnnotations } = await import('./annotate.js');
     const { redrawAllDrawings }    = await import('./draw.js');
     redrawAllAnnotations();

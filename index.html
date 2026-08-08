@@ -42,7 +42,7 @@
         <span id="app-title" style="cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">⚖ Legal Annotator</span>
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.20</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.21</small>
     </div>
 
     <!-- Sync + auto-save bar -->
@@ -488,6 +488,20 @@
   </div>
 </div>
 
+<!-- Link PDF Modal -->
+<div class="modal-ov" id="mo-link-pdf">
+  <div class="modal-box" style="width:320px">
+    <h3>Create Shortcut</h3>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:12px; line-height:1.4">Select a target folder to place a shortcut of this PDF. Annotations will be synced across both locations.</p>
+    <select id="link-target-folder" style="width:100%; background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:8px 10px; color:#e8e4db; font-family:'Inter', sans-serif; font-size:13px; outline:none; margin-bottom:12px">
+    </select>
+    <div class="modal-acts">
+      <button class="btn-sec" data-close="mo-link-pdf">Cancel</button>
+      <button class="btn-gold" id="confirm-link-pdf">Create Shortcut</button>
+    </div>
+  </div>
+</div>
+
 <!-- Important Links Modal -->
 <div class="modal-ov" id="mo-links">
   <div class="modal-box" style="width:420px; max-height:80vh; display:flex; flex-direction:column">
@@ -539,6 +553,7 @@
     <div style="padding: 10px 4px 4px 4px">
       <h3>Version History</h3>
       <ul style="margin-top:16px; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.6">
+        <li style="margin-bottom:8px"><b>[v1.1.21]</b> Added "Create Shortcut" feature! You can now link the same PDF to multiple folders. Annotations, drawings, and notes are perfectly synced across all shortcuts.</li>
         <li style="margin-bottom:8px"><b>[v1.1.20]</b> UI clarity fix: Changed "Connected" in the sidebar to "DB Sync Active" so it isn't confused with Google Drive connection status.</li>
         <li style="margin-bottom:8px"><b>[v1.1.19]</b> Added an "Important Links" tool to the toolbar! You can now save and quickly access all your essential law school URLs in one place.</li>
         <li style="margin-bottom:8px"><b>[v1.1.18]</b> Calendar subjects are now clickable! Clicking a subject opens a shared notepad for you to jot down notes about that specific subject or professor.</li>
@@ -548,7 +563,6 @@
         <li style="margin-bottom:8px"><b>[v1.1.14]</b> Formatted version history to include version numbers and capped it at the last 10 changes.</li>
         <li style="margin-bottom:8px"><b>[v1.1.13]</b> Fixed text highlight rendering to automatically bridge gaps between letters and words, creating one solid, continuous block per line.</li>
         <li style="margin-bottom:8px"><b>[v1.1.12]</b> Fixed a bug where the PDF would continue rendering in the background and show up alongside the calendar if you clicked the home button while the PDF was still loading.</li>
-        <li style="margin-bottom:8px"><b>[v1.1.11]</b> Fixed text highlight rendering to look like a single seamless highlight instead of overlapping individual boxes.</li>
       </ul>
     </div>
     <div class="modal-acts" style="margin-top:16px">

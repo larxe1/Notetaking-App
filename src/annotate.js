@@ -11,9 +11,10 @@ import {
 // ── Create annotation (text or box) ──
 export async function createAnnotation(pageNum, rects, text, mode_) {
   if (!S.curPDF) return;
+  const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
   const ann = {
     id: 'ann_' + Date.now(),
-    pdf_file_id: S.curPDF.id,
+    pdf_file_id: trueId,
     page: pageNum,
     rects,
     highlighted_text: text,
@@ -26,8 +27,8 @@ export async function createAnnotation(pageNum, rects, text, mode_) {
     await dbCreateAnnotation(ann);
     S.annotations.push(ann);
     // Update badge count
-    S.annCounts[S.curPDF.id] = (S.annCounts[S.curPDF.id] || 0) + 1;
-    updateAnnBadge(S.curPDF.id);
+    S.annCounts[trueId] = (S.annCounts[trueId] || 0) + 1;
+    updateAnnBadge(trueId);
     drawAnnotation(ann);
     autosave('saved');
     toast('Highlight saved');
@@ -195,7 +196,8 @@ function renderNotes(ann) {
       autosave('saving');
       await dbDelNote(note.id);
       ann.notes = ann.notes.filter(n => n.id !== note.id);
-      S.annCounts[S.curPDF?.id] = Math.max(0, (S.annCounts[S.curPDF?.id] || 1) - 0);
+      const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id;
+      if (trueId) S.annCounts[trueId] = Math.max(0, (S.annCounts[trueId] || 1) - 0);
       renderNotes(ann);
       autosave('saved');
       import('./ui.js').then(m => m.toast('Note deleted'));
@@ -212,10 +214,13 @@ export function initAnnPanel() {
     if (!S.selAnn) return;
     autosave('saving');
     await dbDelAnnotation(S.selAnn.id);
+    S.annotations = S.annotations.filter(x => x.id !== S.selAnn.id);
+    const trueId = S.selAnn.pdf_file_id;
+    if (trueId) {
+      S.annCounts[trueId] = Math.max(0, (S.annCounts[trueId] || 1) - 1);
+      updateAnnBadge(trueId);
+    }
     clearAnnMark(S.selAnn.id);
-    // Update badge
-    S.annCounts[S.curPDF?.id] = Math.max(0, (S.annCounts[S.curPDF?.id] || 1) - 1);
-    updateAnnBadge(S.curPDF?.id);
     closeAnnPanel();
     autosave('saved');
     toast('Highlight deleted');

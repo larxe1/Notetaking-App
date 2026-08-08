@@ -17,6 +17,8 @@ import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.j
 import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
+let _pdfToLink = null;
+
 // ── Selection Logic ──
 function getFlatLibraryItems() {
   const items = [];
@@ -328,9 +330,13 @@ function buildPdfEl(pdf) {
   const count = S.annCounts[pdf.id] || 0;
   el.innerHTML = `
     <span>📄</span>
-    <span class="li-pdf-name" title="${pdf.name}">${pdf.name}</span>
+    <span class="li-pdf-name" title="${pdf.name}">
+      ${pdf.linked_pdf_id ? '<span style="color:var(--gold);margin-right:4px" title="Shortcut">🔗</span>' : ''}
+      ${pdf.name}
+    </span>
     <span class="ann-badge" style="${count ? '' : 'display:none'}">${count}</span>
     <div class="li-acts">
+      <button class="li-act-btn" title="Create Shortcut in another folder" data-act="link">🔗</button>
       <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
       <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
     </div>`;
@@ -425,6 +431,41 @@ function buildPdfEl(pdf) {
     }
   });
 
+  el.querySelector('[data-act="link"]').addEventListener('click', e => {
+    e.stopPropagation();
+    _pdfToLink = pdf;
+    
+    // Populate dropdown with all folders EXCEPT the one it's currently in
+    const sel = document.getElementById('link-target-folder');
+    sel.innerHTML = '';
+    
+    // Group by subject for better UX
+    S.subjects.forEach(subj => {
+      const subjFolds = S.folders.filter(f => f.subject_id === subj.id);
+      if (subjFolds.length === 0) return;
+      
+      const optGroup = document.createElement('optgroup');
+      optGroup.label = subj.name;
+      
+      subjFolds.forEach(f => {
+        if (f.id === pdf.folder_id) return; // skip current folder
+        const opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = f.name;
+        optGroup.appendChild(opt);
+      });
+      
+      if (optGroup.children.length > 0) sel.appendChild(optGroup);
+    });
+    
+    if (sel.options.length === 0) {
+      toast('No other folders available to link to!');
+      return;
+    }
+    
+    import('./ui.js').then(m => m.openModal('mo-link-pdf'));
+  });
+
   el.querySelector('[data-act="rename"]').addEventListener('click', e => {
     e.stopPropagation();
     startInlineRename(el.querySelector('.li-pdf-name'), async newName => {
@@ -435,12 +476,20 @@ function buildPdfEl(pdf) {
 
   el.querySelector('[data-act="del"]').addEventListener('click', e => {
     e.stopPropagation();
-    if (!confirm(`Delete "${pdf.name}"?`)) return;
+    
+    const isMaster = S.pdfs.some(p => p.linked_pdf_id === pdf.id);
+    let msg = `Delete "${pdf.name}"?`;
+    if (isMaster) {
+      msg = `WARNING: "${pdf.name}" has shortcuts linked to it! Deleting this Master PDF will also delete ALL its shortcuts across other folders. Proceed?`;
+    }
+    
+    if (!confirm(msg)) return;
+    
     dbDelPDF(pdf.id).then(async () => {
       // Also remove from Drive
       if (pdf.drive_file_id) await driveDeleteFile(pdf.drive_file_id);
       renderLibrary();
-      if (S.curPDF?.id === pdf.id) {
+      if (S.curPDF?.id === pdf.id || S.curPDF?.linked_pdf_id === pdf.id) {
         S.curPDF = null;
         document.getElementById('canvas-scroll').innerHTML =
           '<div id="welcome" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center"><p style="color:var(--muted);font-size:13px">PDF removed. Select another from the library.</p></div>';
@@ -515,10 +564,37 @@ export function initLibraryModals() {
 
   document.querySelectorAll('.ftype-btn').forEach(b =>
     b.addEventListener('click', () => {
-      document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('sel'));
-      b.classList.add('sel');
+      document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
     })
   );
+  
+  // ── Link PDF Shortcut Modal ──
+  document.getElementById('confirm-link-pdf')?.addEventListener('click', async () => {
+    if (!_pdfToLink) return;
+    const targetFolderId = document.getElementById('link-target-folder').value;
+    if (!targetFolderId) return;
+    
+    // The true master ID is the original linked_pdf_id (if it's already a shortcut) or the id itself
+    const trueId = _pdfToLink.linked_pdf_id || _pdfToLink.id;
+    
+    try {
+      import('./ui.js').then(m => m.autosave('saving'));
+      await dbRegisterPDF(targetFolderId, _pdfToLink.name, _pdfToLink.drive_file_id, trueId);
+      renderLibrary();
+      import('./ui.js').then(m => {
+        m.closeModal('mo-link-pdf');
+        m.toast('Shortcut created!');
+        m.autosave('saved');
+      });
+    } catch (e) {
+      console.error(e);
+      import('./ui.js').then(m => {
+        m.toast('Failed to create shortcut');
+        m.autosave('err');
+      });
+    }
+  });
 
   document.getElementById('save-fold').addEventListener('click', async () => {
     const name = document.getElementById('fold-name').value.trim();
