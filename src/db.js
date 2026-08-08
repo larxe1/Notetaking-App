@@ -122,6 +122,12 @@ export async function dbReorderFolder(id, sort_order) {
   if (fold) fold.sort_order = sort_order;
 }
 
+export async function dbUpdateFolderNotes(id, notes) {
+  await db.from('folders').update({ notes }).eq('id', id);
+  const fold = S.folders.find(f => f.id === id);
+  if (fold) fold.notes = notes;
+}
+
 export async function dbDelFolder(id) {
   // Recursively collect all descendant folder IDs
   function collectFolderIds(foldId) {

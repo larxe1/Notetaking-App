@@ -11,13 +11,14 @@ import {
   dbCreateSubject, dbRenameSubject, dbDelSubject,
   dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder,
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
-  dbLoadAnnCounts,
+  dbLoadAnnCounts, dbUpdateFolderNotes
 } from './db.js';
 import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.js';
 import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
 let _pdfToLink = null;
+let _folderNotesId = null;
 
 // ── Selection Logic ──
 function getFlatLibraryItems() {
@@ -163,6 +164,7 @@ function buildFolderEl(fold) {
       <span>${icons[fold.folder_type] || '📁'}</span>
       <span class="li-fold-name">${fold.name}</span>
       <div class="li-acts">
+        <button class="li-act-btn" title="Folder Notes" data-act="notes">📝</button>
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
@@ -198,6 +200,14 @@ function buildFolderEl(fold) {
     S.newFolderSubjId = fold.subject_id;
     document.getElementById('subfold-name').value = '';
     openModal('mo-subfold');
+  });
+
+  w.querySelector('[data-act="notes"]').addEventListener('click', e => {
+    e.stopPropagation();
+    _folderNotesId = fold.id;
+    document.getElementById('mo-fold-notes-title').textContent = fold.name + ' Notes';
+    document.getElementById('fold-notes-ta').value = fold.notes || '';
+    openModal('mo-fold-notes');
   });
 
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
@@ -591,6 +601,27 @@ export function initLibraryModals() {
       console.error(e);
       import('./ui.js').then(m => {
         m.toast('Failed to create shortcut');
+        m.autosave('err');
+      });
+    }
+  });
+  
+  // ── Folder Notes Save ──
+  document.getElementById('save-fold-notes')?.addEventListener('click', async () => {
+    if (!_folderNotesId) return;
+    const text = document.getElementById('fold-notes-ta').value;
+    try {
+      import('./ui.js').then(m => m.autosave('saving'));
+      await dbUpdateFolderNotes(_folderNotesId, text);
+      import('./ui.js').then(m => {
+        m.closeModal('mo-fold-notes');
+        m.toast('Folder Notes saved');
+        m.autosave('saved');
+      });
+    } catch (e) {
+      console.error(e);
+      import('./ui.js').then(m => {
+        m.toast('Failed to save notes');
         m.autosave('err');
       });
     }

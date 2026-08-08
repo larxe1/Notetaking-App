@@ -18,6 +18,9 @@ ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS sort_order NUMERIC;
 -- Add linked_pdf_id to support PDF shortcuts across folders
 ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS linked_pdf_id TEXT REFERENCES pdf_files(id) ON DELETE CASCADE;
 
+-- Add notes to folders
+ALTER TABLE folders ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+
 -- PDF Notepad table (general notes per PDF)
 CREATE TABLE IF NOT EXISTS pdf_notes (
   pdf_id  TEXT PRIMARY KEY REFERENCES pdf_files(id) ON DELETE CASCADE,
