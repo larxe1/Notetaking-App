@@ -30,7 +30,7 @@ export async function dbLoad(retries = 3) {
     S.folders    = f.data || [];
     S.pdfs       = p.data || [];
     S.colorCats  = c.data || [];
-    syncOK('Connected');
+    syncOK('DB Sync Active');
   } catch (e) {
     if (retries > 0) {
       await new Promise(r => setTimeout(r, 1500));

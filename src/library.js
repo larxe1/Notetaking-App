@@ -620,7 +620,7 @@ export function initLibraryModals() {
       const msg = e.message || '';
       let tip = 'Upload failed. Check connection.';
       if (msg.includes('signed') || msg.includes('Drive') || msg.includes('token')) {
-        tip = 'Sign in to Google Drive first!';
+        tip = 'Sign in to Google Drive first (button is in the sidebar)!';
       } else if (msg.includes('401') || msg.includes('403')) {
         tip = 'Google auth expired — sign out and sign in again.';
       } else if (msg.includes('quota')) {

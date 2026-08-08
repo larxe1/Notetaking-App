@@ -42,13 +42,13 @@
         <span id="app-title" style="cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">⚖ Legal Annotator</span>
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.19</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.20</small>
     </div>
 
     <!-- Sync + auto-save bar -->
     <div id="sync-bar">
       <div class="sdot spin" id="sdot"></div>
-      <span id="stxt">Connecting…</span>
+      <span id="stxt">DB Connecting…</span>
       <span id="autosave-lbl"></span>
     </div>
 
@@ -539,6 +539,7 @@
     <div style="padding: 10px 4px 4px 4px">
       <h3>Version History</h3>
       <ul style="margin-top:16px; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.6">
+        <li style="margin-bottom:8px"><b>[v1.1.20]</b> UI clarity fix: Changed "Connected" in the sidebar to "DB Sync Active" so it isn't confused with Google Drive connection status.</li>
         <li style="margin-bottom:8px"><b>[v1.1.19]</b> Added an "Important Links" tool to the toolbar! You can now save and quickly access all your essential law school URLs in one place.</li>
         <li style="margin-bottom:8px"><b>[v1.1.18]</b> Calendar subjects are now clickable! Clicking a subject opens a shared notepad for you to jot down notes about that specific subject or professor.</li>
         <li style="margin-bottom:8px"><b>[v1.1.17]</b> The highlight popup menu now automatically closes if you click anywhere else on the screen (natural close).</li>
@@ -548,7 +549,6 @@
         <li style="margin-bottom:8px"><b>[v1.1.13]</b> Fixed text highlight rendering to automatically bridge gaps between letters and words, creating one solid, continuous block per line.</li>
         <li style="margin-bottom:8px"><b>[v1.1.12]</b> Fixed a bug where the PDF would continue rendering in the background and show up alongside the calendar if you clicked the home button while the PDF was still loading.</li>
         <li style="margin-bottom:8px"><b>[v1.1.11]</b> Fixed text highlight rendering to look like a single seamless highlight instead of overlapping individual boxes.</li>
-        <li style="margin-bottom:8px"><b>[v1.1.10]</b> Added Prof. Noel Lazaro to the CrimPro schedule.</li>
       </ul>
     </div>
     <div class="modal-acts" style="margin-top:16px">
