@@ -93,6 +93,12 @@ document.getElementById('btn-save-key').addEventListener('click', () => {
   showState('selectMode');
 });
 
+document.getElementById('btn-change-key').addEventListener('click', () => {
+  localStorage.removeItem('gemini_api_key');
+  document.getElementById('quiz-api-key').value = '';
+  showState('setup');
+});
+
 // MCQ Mode
 document.getElementById('btn-quiz-mcq').addEventListener('click', async () => {
   showState('loading');
