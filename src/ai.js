@@ -1,5 +1,5 @@
 export async function callGemini(apiKey, systemInstruction, prompt, schema = null) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
   
   const payload = {
     system_instruction: {
