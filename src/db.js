@@ -124,9 +124,16 @@ export async function dbDelSubject(id) {
 // ── Folders ──
 export async function dbCreateFolder(subject_id, name, folder_type, parent_folder_id = null) {
   const id = 'fold_' + Date.now();
-  const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order: 0, parent_folder_id });
+  
+  const sibFolds = S.folders.filter(f => f.parent_folder_id === parent_folder_id && f.subject_id === subject_id);
+  const sibPdfs = parent_folder_id ? S.pdfs.filter(p => p.folder_id === parent_folder_id) : [];
+  const m1 = sibFolds.reduce((max, f) => Math.max(max, f.sort_order || 0), -1);
+  const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
+  const sort_order = Math.max(m1, m2) + 1;
+
+  const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
   if (error) throw error;
-  S.folders.push({ id, subject_id, name, folder_type, sort_order: 0, parent_folder_id });
+  S.folders.push({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
   return id;
 }
 
@@ -186,10 +193,19 @@ export async function dbDelFolder(id) {
 // ── PDFs (using Google Drive file ID instead of Supabase storage) ──
 export async function dbRegisterPDF(folder_id, name, drive_file_id, linked_pdf_id = null) {
   const id = 'pdf_' + Date.now();
+  
+  const folder = S.folders.find(f => f.id === folder_id);
+  const subject_id = folder ? folder.subject_id : null;
+  const sibFolds = S.folders.filter(f => f.parent_folder_id === folder_id && f.subject_id === subject_id);
+  const sibPdfs = S.pdfs.filter(p => p.folder_id === folder_id);
+  const m1 = sibFolds.reduce((max, f) => Math.max(max, f.sort_order || 0), -1);
+  const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
+  const sort_order = Math.max(m1, m2) + 1;
+
   // storage_path kept as empty string for backward compat with old schema
-  const { error } = await db.from('pdf_files').insert({ id, folder_id, name, drive_file_id, linked_pdf_id, storage_path: '' });
+  const { error } = await db.from('pdf_files').insert({ id, folder_id, name, drive_file_id, linked_pdf_id, storage_path: '', sort_order });
   if (error) throw error;
-  const rec = { id, folder_id, name, drive_file_id, linked_pdf_id };
+  const rec = { id, folder_id, name, drive_file_id, linked_pdf_id, sort_order };
   S.pdfs.push(rec);
   return rec;
 }
