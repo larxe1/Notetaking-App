@@ -35,8 +35,12 @@ function showState(stateName) {
 async function extractPdfText() {
   if (!S.pdfDoc) return '';
   let fullText = '';
-  // Max 50 pages or limit to avoid extreme browser lag during extraction
-  const limit = Math.min(S.pdfDoc.numPages, 100);
+  
+  // Read page limit from UI (default 20)
+  const maxPagesInput = document.getElementById('quiz-page-limit');
+  const maxPages = maxPagesInput ? parseInt(maxPagesInput.value) || 20 : 20;
+  
+  const limit = Math.min(S.pdfDoc.numPages, maxPages);
   for (let i = 1; i <= limit; i++) {
     try {
       const page = await S.pdfDoc.getPage(i);

@@ -615,6 +615,13 @@
 
       <!-- State: Mode Selection -->
       <div id="quiz-select-mode" style="display:none; text-align:center; padding:20px 0">
+        <div style="margin-bottom:24px; background:rgba(201,168,76,0.1); padding:12px; border-radius:6px; display:inline-block">
+          <label style="color:var(--gold); font-size:13px; display:flex; align-items:center; gap:8px">
+            Read up to: 
+            <input type="number" id="quiz-page-limit" value="20" min="1" max="1000" style="width:60px; padding:4px; border-radius:4px; border:1px solid var(--gold); background:var(--navy); color:var(--text); text-align:center"> 
+            pages
+          </label>
+        </div>
         <p style="margin-bottom:24px; color:var(--muted)">Select quiz format generated from this PDF:</p>
         <div style="display:flex; gap:12px; justify-content:center">
           <button class="btn-sec" id="btn-quiz-mcq" style="flex:1; max-width:200px">Multiple Choice</button>
