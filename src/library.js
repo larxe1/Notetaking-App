@@ -9,7 +9,7 @@ import { S } from './state.js';
 import { toast, openModal, closeModal } from './ui.js';
 import {
   dbCreateSubject, dbRenameSubject, dbDelSubject,
-  dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder,
+  dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder, dbMoveFolder,
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
   dbLoadAnnCounts, dbUpdateFolderNotes
 } from './db.js';
@@ -80,6 +80,110 @@ export function updateSelectionUI() {
   });
 }
 
+// ── Unified Drag & Drop Logic ──
+async function handleReorder(targetId, targetType, draggedIds, insertAfter = false) {
+  const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
+  const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+  
+  let parentId = null;
+  let subjectId = null;
+
+  if (targetType === 'folder') {
+    const f = S.folders.find(x => x.id === targetId);
+    if (!f) return;
+    parentId = f.parent_folder_id;
+    subjectId = f.subject_id;
+  } else {
+    const p = S.pdfs.find(x => x.id === targetId);
+    if (!p) return;
+    parentId = p.folder_id;
+    const f = S.folders.find(x => x.id === parentId);
+    if (f) subjectId = f.subject_id;
+  }
+
+  let sibFolds = S.folders.filter(f => f.parent_folder_id === parentId && f.subject_id === subjectId);
+  let sibPdfs = parentId ? S.pdfs.filter(p => p.folder_id === parentId) : [];
+
+  sibFolds = sibFolds.filter(f => !foldIds.includes(f.id));
+  sibPdfs = sibPdfs.filter(p => !pdfIds.includes(p.id));
+
+  let siblings = [
+    ...sibFolds.map(f => ({ id: f.id, type: 'folder', obj: f })),
+    ...sibPdfs.map(p => ({ id: p.id, type: 'pdf', obj: p }))
+  ].sort((a, b) => (a.obj.sort_order ?? 0) - (b.obj.sort_order ?? 0));
+
+  let dropIdx = siblings.findIndex(s => s.id === targetId && s.type === targetType);
+  if (dropIdx === -1) dropIdx = siblings.length;
+  if (insertAfter) dropIdx++;
+
+  const draggedObjects = [
+    ...foldIds.map(id => {
+      const f = S.folders.find(x => x.id === id);
+      if (f) return { id: f.id, type: 'folder', obj: f };
+      return null;
+    }),
+    ...pdfIds.map(id => {
+      const p = S.pdfs.find(x => x.id === id);
+      if (p) return { id: p.id, type: 'pdf', obj: p };
+      return null;
+    })
+  ].filter(Boolean);
+
+  if (draggedObjects.length === 0) return;
+
+  siblings.splice(dropIdx, 0, ...draggedObjects);
+
+  siblings.forEach((s, i) => {
+    s.obj.sort_order = i;
+    if (s.type === 'folder') {
+      if (s.obj.parent_folder_id !== parentId || s.obj.subject_id !== subjectId) {
+        dbMoveFolder(s.id, parentId, subjectId).catch(()=>{});
+        s.obj.parent_folder_id = parentId;
+        s.obj.subject_id = subjectId;
+      }
+      dbReorderFolder(s.id, i).catch(()=>{});
+    } else {
+      if (s.obj.folder_id !== parentId) {
+        dbMovePDF(s.id, parentId).catch(()=>{});
+        s.obj.folder_id = parentId;
+      }
+      dbReorderPDF(s.id, i).catch(()=>{});
+    }
+  });
+  renderLibrary();
+}
+
+async function handleMoveInto(targetFolderId, draggedIds) {
+  const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
+  const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+  
+  let changed = false;
+  for (const pdfId of pdfIds) {
+    const pdf = S.pdfs.find(p => p.id === pdfId);
+    if (pdf && pdf.folder_id !== targetFolderId) {
+      dbMovePDF(pdfId, targetFolderId).catch(()=>{});
+      pdf.folder_id = targetFolderId;
+      changed = true;
+    }
+  }
+
+  const targetFolder = S.folders.find(f => f.id === targetFolderId);
+  if (targetFolder) {
+    for (const foldId of foldIds) {
+      const folder = S.folders.find(f => f.id === foldId);
+      if (folder && folder.parent_folder_id !== targetFolderId) {
+        dbMoveFolder(foldId, targetFolderId, targetFolder.subject_id).catch(()=>{});
+        folder.parent_folder_id = targetFolderId;
+        folder.subject_id = targetFolder.subject_id;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) renderLibrary();
+}
+
+
 // ── Render full library tree ──
 export function renderLibrary() {
   const tree = document.getElementById('lib-tree');
@@ -140,6 +244,35 @@ function buildSubjectEl(subj) {
     e.stopPropagation();
     if (!confirm(`Delete subject "${subj.name}" and all its content?`)) return;
     dbDelSubject(subj.id).then(() => { renderLibrary(); toast('Deleted'); });
+  });
+
+  hd.addEventListener('dragover', e => {
+    e.preventDefault();
+    hd.classList.add('drag-over');
+  });
+  hd.addEventListener('dragleave', () => hd.classList.remove('drag-over'));
+  hd.addEventListener('drop', async e => {
+    e.preventDefault();
+    e.stopPropagation();
+    hd.classList.remove('drag-over');
+    const rawData = e.dataTransfer.getData('text/plain');
+    if (!rawData) return;
+    let payload;
+    try { payload = JSON.parse(rawData); } catch { payload = { type: 'single', id: rawData }; }
+    const draggedIds = payload.type === 'multi' ? payload.ids : [payload.id];
+    const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+    
+    let changed = false;
+    for (const foldId of foldIds) {
+      const folder = S.folders.find(f => f.id === foldId);
+      if (folder && (folder.parent_folder_id !== null || folder.subject_id !== subj.id)) {
+        dbMoveFolder(foldId, null, subj.id).catch(()=>{});
+        folder.parent_folder_id = null;
+        folder.subject_id = subj.id;
+        changed = true;
+      }
+    }
+    if (changed) renderLibrary();
   });
 
   const folds = S.folders
@@ -230,53 +363,55 @@ function buildFolderEl(fold) {
     dbDelFolder(fold.id).then(() => { renderLibrary(); toast('Deleted'); });
   });
 
-  // Render child subfolders recursively (indented) FIRST
-  const childFolds = S.folders
-    .filter(f => f.parent_folder_id === fold.id)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  for (const child of childFolds) {
-    const childEl = buildFolderEl(child);
-    childEl.style.marginLeft = '12px';
-    childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
-    ch.appendChild(childEl);
+  // Unify and render children
+  const childFolds = S.folders.filter(f => f.parent_folder_id === fold.id).map(f => ({ ...f, _type: 'folder' }));
+  const childPdfs = S.pdfs.filter(p => p.folder_id === fold.id).map(p => ({ ...p, _type: 'pdf' }));
+  
+  const children = [...childFolds, ...childPdfs].sort((a, b) => {
+    const sA = a.sort_order ?? 0;
+    const sB = b.sort_order ?? 0;
+    if (sA === sB) return a.name.localeCompare(b.name);
+    return sA - sB;
+  });
+
+  for (const child of children) {
+    if (child._type === 'folder') {
+      const childEl = buildFolderEl(child);
+      childEl.style.marginLeft = '12px';
+      childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
+      ch.appendChild(childEl);
+    } else {
+      ch.appendChild(buildPdfEl(child));
+    }
   }
 
-  // Then render PDFs below the subfolders
-  S.pdfs
-    .filter(p => p.folder_id === fold.id)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    .forEach(p => ch.appendChild(buildPdfEl(p)));
-
-  // ── Drag-to-reorder (folders only, not when dragging a child PDF) ──
+  // ── Drag-to-reorder/move ──
   w.addEventListener('dragstart', e => {
     if (e.target.closest('.li-pdf')) return;
-    
-    // If dragging an unselected item, select only it
     if (!S.selectedIds.has(fold.id)) {
       S.selectedIds.clear();
       S.selectedIds.add(fold.id);
       updateSelectionUI();
     }
-    
     const dragPayload = JSON.stringify({ type: 'multi', ids: Array.from(S.selectedIds) });
     e.dataTransfer.setData('text/plain', dragPayload);
-    
-    // Visually fade all selected items
     document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '0.5');
   });
   w.addEventListener('dragend', () => { 
     document.querySelectorAll('.li-selected').forEach(el => el.style.opacity = '');
   });
-  w.addEventListener('dragover', e => {
-    // If a PDF is being dragged, let the PDF's own dragover handle it
-    if (e.target.closest('.li-pdf')) return;
-    e.preventDefault();
-    w.classList.add('drag-over');
+
+  hd.addEventListener('dragover', e => {
+    if (!S.selectedIds.has(fold.id)) {
+      e.preventDefault();
+      hd.classList.add('drag-over');
+    }
   });
-  w.addEventListener('dragleave', () => w.classList.remove('drag-over'));
-  w.addEventListener('drop', async e => {
+  hd.addEventListener('dragleave', () => hd.classList.remove('drag-over'));
+  hd.addEventListener('drop', async e => {
     e.preventDefault();
-    w.classList.remove('drag-over');
+    e.stopPropagation();
+    hd.classList.remove('drag-over');
     const rawData = e.dataTransfer.getData('text/plain');
     if (!rawData) return;
     
@@ -286,47 +421,17 @@ function buildFolderEl(fold) {
 
     if (draggedIds.includes(fold.id)) return;
 
-    const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
-    const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
-
-    // Move PDFs into this folder
-    for (const pdfId of pdfIds) {
-      const pdf = S.pdfs.find(p => p.id === pdfId);
-      if (pdf && pdf.folder_id !== fold.id) {
-        dbMovePDF(pdfId, fold.id).catch(()=>{});
-        pdf.folder_id = fold.id;
-      }
-    }
+    // Check intent based on mouse Y coordinate
+    const rect = hd.getBoundingClientRect();
+    const y = e.clientY - rect.top;
     
-    // Reorder folders robustly
-    if (foldIds.length > 0) {
-      const draggedFolds = foldIds
-        .map(id => S.folders.find(f => f.id === id))
-        .filter(f => f && f.subject_id === fold.subject_id);
-
-      let sibFolds = S.folders
-        .filter(f => f.subject_id === fold.subject_id && !foldIds.includes(f.id))
-        .sort((a, b) => {
-          const sA = a.sort_order ?? 0;
-          const sB = b.sort_order ?? 0;
-          if (sA === sB) return a.name.localeCompare(b.name);
-          return sA - sB;
-        });
-
-      const targetIdx = sibFolds.findIndex(f => f.id === fold.id);
-      
-      if (targetIdx !== -1) {
-        sibFolds.splice(targetIdx, 0, ...draggedFolds);
-      } else {
-        sibFolds.push(...draggedFolds);
-      }
-
-      sibFolds.forEach((f, i) => {
-        f.sort_order = i;
-        dbReorderFolder(f.id, i).catch(() => {});
-      });
+    if (y < rect.height * 0.25) {
+      await handleReorder(fold.id, 'folder', draggedIds, false);
+    } else if (y > rect.height * 0.75) {
+      await handleReorder(fold.id, 'folder', draggedIds, true);
+    } else {
+      await handleMoveInto(fold.id, draggedIds);
     }
-    renderLibrary();
   });
 
   return w;
@@ -390,42 +495,11 @@ function buildPdfEl(pdf) {
     try { payload = JSON.parse(rawData); } catch { payload = { type: 'single', id: rawData }; }
     const draggedIds = payload.type === 'multi' ? payload.ids : [payload.id];
     
-    const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
-    if (pdfIds.length === 0 || pdfIds.includes(pdf.id)) return;
+    if (draggedIds.includes(pdf.id) || draggedIds.includes(`pdf:${pdf.id}`)) return;
 
-    const draggedPdfs = pdfIds.map(id => S.pdfs.find(p => p.id === id)).filter(Boolean);
-
-    // Get all PDFs in this folder EXCEPT the dragged ones
-    let sibPdfs = S.pdfs
-      .filter(p => p.folder_id === pdf.folder_id && !pdfIds.includes(p.id))
-      .sort((a, b) => {
-        const sA = a.sort_order ?? 0;
-        const sB = b.sort_order ?? 0;
-        if (sA === sB) return a.name.localeCompare(b.name);
-        return sA - sB;
-      });
-
-    // Find where we dropped it
-    const targetIdx = sibPdfs.findIndex(p => p.id === pdf.id);
-    
-    // Insert the dragged PDFs before the target
-    if (targetIdx !== -1) {
-      sibPdfs.splice(targetIdx, 0, ...draggedPdfs);
-    } else {
-      sibPdfs.push(...draggedPdfs);
-    }
-
-    // Re-assign sequential sort_orders to everyone in the folder
-    sibPdfs.forEach((p, i) => {
-      if (pdfIds.includes(p.id) && p.folder_id !== pdf.folder_id) {
-        dbMovePDF(p.id, pdf.folder_id).catch(()=>{});
-        p.folder_id = pdf.folder_id;
-      }
-      p.sort_order = i;
-      dbReorderPDF(p.id, i).catch(() => {}); // fire and forget
-    });
-
-    renderLibrary();
+    const rect = el.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    await handleReorder(pdf.id, 'pdf', draggedIds, y > rect.height / 2);
   });
 
   el.addEventListener('pointerdown', e => {

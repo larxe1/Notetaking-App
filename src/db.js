@@ -186,6 +186,15 @@ export async function dbMovePDF(id, folder_id) {
   if (p) p.folder_id = folder_id;
 }
 
+export async function dbMoveFolder(id, parent_folder_id, subject_id) {
+  await db.from('folders').update({ parent_folder_id, subject_id }).eq('id', id);
+  const f = S.folders.find(x => x.id === id);
+  if (f) {
+    f.parent_folder_id = parent_folder_id;
+    f.subject_id = subject_id;
+  }
+}
+
 export async function dbReorderPDF(id, sort_order) {
   await db.from('pdf_files').update({ sort_order }).eq('id', id);
   const p = S.pdfs.find(x => x.id === id);
