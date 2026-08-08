@@ -170,7 +170,13 @@ export async function driveFetchPDF(drive_file_id) {
     `https://www.googleapis.com/drive/v3/files/${drive_file_id}?alt=media`,
     { headers: { Authorization: `Bearer ${S.driveToken}` } }
   );
-  if (!resp.ok) throw new Error('Drive download failed: ' + resp.status);
+  if (!resp.ok) {
+    if (resp.status === 401) {
+      driveSignOut();
+      throw new Error('Google Drive session expired. Please sign in again.');
+    }
+    throw new Error('Drive download failed: ' + resp.status);
+  }
   const buf = await resp.arrayBuffer();
   S.pdfCache[drive_file_id] = buf;
   return buf;
