@@ -230,7 +230,7 @@ function buildSubjectEl(subj) {
     <div class="li-subj-hd">
       <span class="li-chev ${exp ? '' : 'closed'}">▼</span>
       <span class="li-dot" style="background:${subj.hex_color || '#c9a84c'}"></span>
-      <span class="li-subj-name">${subj.name}</span>
+      <span class="li-subj-name" title="${subj.name.replace(/"/g, '&quot;')}">${subj.name}</span>
       <div class="li-acts">
         <button class="li-act-btn" title="Add folder" data-act="add-fold">📁+</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
@@ -320,7 +320,7 @@ function buildFolderEl(fold) {
     <div class="li-fold-hd">
       <span class="li-chev ${exp ? '' : 'closed'}" style="font-size:9px">▼</span>
       <span>${icons[fold.folder_type] || '📁'}</span>
-      <span class="li-fold-name">${fold.name}</span>
+      <span class="li-fold-name" title="${fold.name.replace(/"/g, '&quot;')}">${fold.name}</span>
       <div class="li-acts">
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
@@ -472,7 +472,7 @@ function buildPdfEl(pdf) {
   const count = S.annCounts[pdf.id] || 0;
   el.innerHTML = `
     <span>📄</span>
-    <span class="li-pdf-name" title="${pdf.name}">
+    <span class="li-pdf-name" title="${pdf.name.replace(/"/g, '&quot;')}">
       ${pdf.linked_pdf_id ? '<span style="color:var(--gold);margin-right:4px" title="Shortcut">🔗</span>' : ''}
       ${pdf.name}
     </span>
