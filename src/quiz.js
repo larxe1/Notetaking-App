@@ -32,16 +32,37 @@ function showState(stateName) {
   if (els[stateName]) els[stateName].style.display = (stateName === 'essayUI') ? 'flex' : 'block';
 }
 
+function parsePageRange(rangeStr, maxPages) {
+  if (!rangeStr.trim()) return null;
+  const pages = new Set();
+  const parts = rangeStr.split(',');
+  for (let p of parts) {
+    p = p.trim();
+    if (p.includes('-')) {
+      const [start, end] = p.split('-').map(x => parseInt(x));
+      if (!isNaN(start) && !isNaN(end)) {
+        for (let i = start; i <= end; i++) {
+          if (i >= 1 && i <= maxPages) pages.add(i);
+        }
+      }
+    } else {
+      const val = parseInt(p);
+      if (!isNaN(val) && val >= 1 && val <= maxPages) pages.add(val);
+    }
+  }
+  return Array.from(pages).sort((a,b) => a - b);
+}
+
 async function extractPdfText() {
   if (!S.pdfDoc) return '';
   let fullText = '';
   
-  // Read page limit from UI (default 20)
-  const maxPagesInput = document.getElementById('quiz-page-limit');
-  const maxPages = maxPagesInput ? parseInt(maxPagesInput.value) || 20 : 20;
+  const rangeStr = document.getElementById('quiz-page-range').value;
+  const pageList = parsePageRange(rangeStr, S.pdfDoc.numPages);
   
-  const limit = Math.min(S.pdfDoc.numPages, maxPages);
-  for (let i = 1; i <= limit; i++) {
+  const limit = pageList ? pageList.length : Math.min(S.pdfDoc.numPages, 100);
+  for (let idx = 0; idx < limit; idx++) {
+    const i = pageList ? pageList[idx] : idx + 1;
     try {
       const page = await S.pdfDoc.getPage(i);
       const content = await page.getTextContent();
@@ -83,7 +104,8 @@ document.getElementById('btn-quiz-mcq').addEventListener('click', async () => {
   els.loadingTxt.textContent = 'Gemini AI is generating your quiz...';
   
   try {
-    currentMCQ = await generateMCQ(currentPdfText, key);
+    const topic = document.getElementById('quiz-topic').value.trim();
+    currentMCQ = await generateMCQ(currentPdfText, key, topic);
     renderMCQ(currentMCQ);
     showState('mcqUI');
   } catch (err) {
@@ -155,7 +177,8 @@ document.getElementById('btn-quiz-essay').addEventListener('click', async () => 
   els.loadingTxt.textContent = 'Gemini AI is crafting a complex essay question...';
   
   try {
-    currentEssayQuestion = await generateEssayQuestion(currentPdfText, key);
+    const topic = document.getElementById('quiz-topic').value.trim();
+    currentEssayQuestion = await generateEssayQuestion(currentPdfText, key, topic);
     els.essayQ.textContent = currentEssayQuestion;
     els.essayAns.value = '';
     els.essayRes.style.display = 'none';

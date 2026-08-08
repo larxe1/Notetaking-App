@@ -45,8 +45,9 @@ export async function callGemini(apiKey, systemInstruction, prompt, schema = nul
   return text;
 }
 
-export async function generateMCQ(pdfText, apiKey) {
-  const sys = `You are a strict, brilliant law professor. Generate exactly 5 highly analytical multiple-choice questions based on the provided text.`;
+export async function generateMCQ(pdfText, apiKey, topic = "") {
+  let sys = `You are a strict, brilliant law professor. Generate exactly 5 highly analytical multiple-choice questions based on the provided text.`;
+  if (topic) sys += ` Ensure the questions specifically focus on the following topic(s): ${topic}.`;
   const schema = {
     type: "ARRAY",
     items: {
@@ -67,8 +68,9 @@ export async function generateMCQ(pdfText, apiKey) {
   return await callGemini(apiKey, sys, `Based strictly on the following text, generate a 5-question quiz.\n\nTEXT:\n${pdfText}`, schema);
 }
 
-export async function generateEssayQuestion(pdfText, apiKey) {
-  const sys = `You are a strict, brilliant law professor. Generate 1 highly complex, deep-thinking open-ended essay question based strictly on the text provided. The question should require critical analysis and legal reasoning. Do not output anything other than the question itself.`;
+export async function generateEssayQuestion(pdfText, apiKey, topic = "") {
+  let sys = `You are a strict, brilliant law professor. Generate 1 highly complex, deep-thinking open-ended essay question based strictly on the text provided. The question should require critical analysis and legal reasoning. Do not output anything other than the question itself.`;
+  if (topic) sys += ` Ensure the essay question specifically focuses on the following topic(s): ${topic}.`;
   return await callGemini(apiKey, sys, `TEXT:\n${pdfText}`);
 }
 
