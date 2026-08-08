@@ -1,0 +1,90 @@
+export async function callGemini(apiKey, systemInstruction, prompt, schema = null) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  
+  const payload = {
+    system_instruction: {
+      parts: [{ text: systemInstruction }]
+    },
+    contents: [{
+      parts: [{ text: prompt }]
+    }],
+    generationConfig: {
+      temperature: 0.2
+    }
+  };
+
+  if (schema) {
+    payload.generationConfig.response_mime_type = "application/json";
+    payload.generationConfig.response_schema = schema;
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    let err = 'API Error';
+    try { const data = await res.json(); err = data.error?.message || err; } catch {}
+    throw new Error(err);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Empty response from AI");
+  
+  if (schema) {
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error("Invalid JSON returned by AI");
+    }
+  }
+  
+  return text;
+}
+
+export async function generateMCQ(pdfText, apiKey) {
+  const sys = `You are a strict, brilliant law professor. Generate exactly 5 highly analytical multiple-choice questions based on the provided text.`;
+  const schema = {
+    type: "ARRAY",
+    items: {
+      type: "OBJECT",
+      properties: {
+        question: { type: "STRING", description: "The quiz question" },
+        options: { 
+          type: "ARRAY", 
+          items: { type: "STRING" },
+          description: "Exactly 4 multiple choice options" 
+        },
+        correct_index: { type: "INTEGER", description: "0-based index of the correct option" }
+      },
+      required: ["question", "options", "correct_index"]
+    }
+  };
+  
+  return await callGemini(apiKey, sys, `Based strictly on the following text, generate a 5-question quiz.\n\nTEXT:\n${pdfText}`, schema);
+}
+
+export async function generateEssayQuestion(pdfText, apiKey) {
+  const sys = `You are a strict, brilliant law professor. Generate 1 highly complex, deep-thinking open-ended essay question based strictly on the text provided. The question should require critical analysis and legal reasoning. Do not output anything other than the question itself.`;
+  return await callGemini(apiKey, sys, `TEXT:\n${pdfText}`);
+}
+
+export async function gradeEssay(pdfText, question, studentAnswer, apiKey) {
+  const sys = `You are a strict, uncompromising law professor who does not coddle students. Grade the student's answer based on the provided source text and the question asked. 
+Be brutally critical, point out legal inaccuracies, structural flaws, and weak reasoning. Give a final grade out of 100.`;
+  
+  const schema = {
+    type: "OBJECT",
+    properties: {
+      grade: { type: "STRING", description: "e.g., '65/100'" },
+      critique: { type: "STRING", description: "Your brutal, uncompromising feedback" }
+    },
+    required: ["grade", "critique"]
+  };
+  
+  const prompt = `SOURCE TEXT:\n${pdfText}\n\nQUESTION:\n${question}\n\nSTUDENT'S ANSWER:\n${studentAnswer}`;
+  return await callGemini(apiKey, sys, prompt, schema);
+}
