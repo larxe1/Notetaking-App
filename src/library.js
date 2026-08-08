@@ -131,6 +131,8 @@ async function handleReorder(targetId, targetType, draggedIds, insertAfter = fal
 
   if (draggedObjects.length === 0) return;
 
+  snapshotMove();
+
   siblings.splice(dropIdx, 0, ...draggedObjects);
 
   siblings.forEach((s, i) => {
@@ -165,6 +167,8 @@ async function handleReorder(targetId, targetType, draggedIds, insertAfter = fal
 async function handleMoveInto(targetFolderId, draggedIds) {
   const pdfIds = draggedIds.filter(id => id.startsWith('pdf:')).map(id => id.replace('pdf:', ''));
   const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+  
+  snapshotMove();
   
   let changed = false;
   for (const pdfId of pdfIds) {
@@ -280,6 +284,8 @@ function buildSubjectEl(subj) {
     try { payload = JSON.parse(rawData); } catch { payload = { type: 'single', id: rawData }; }
     const draggedIds = payload.type === 'multi' ? payload.ids : [payload.id];
     const foldIds = draggedIds.filter(id => !id.startsWith('pdf:'));
+    
+    snapshotMove();
     
     let changed = false;
     for (const foldId of foldIds) {
@@ -896,7 +902,67 @@ export function initLibrarySelection() {
     const height = Math.abs(startY - endY);
     marquee.style.left = left + 'px';
     marquee.style.top = top + 'px';
-    marquee.style.width = width + 'px';
     marquee.style.height = height + 'px';
   }
 }
+
+// ── Undo functionality ──
+export function snapshotMove() {
+  const snap = {
+    folders: S.folders.map(f => ({ id: f.id, sort_order: f.sort_order, parent_folder_id: f.parent_folder_id, subject_id: f.subject_id })),
+    pdfs: S.pdfs.map(p => ({ id: p.id, sort_order: p.sort_order, folder_id: p.folder_id }))
+  };
+  S.undoStack.push(snap);
+}
+
+window.undoLastMove = async function() {
+  if (!S.undoStack || S.undoStack.length === 0) {
+    toast('Nothing to undo');
+    return;
+  }
+  const snap = S.undoStack.pop();
+  let changed = false;
+  
+  for (const sf of snap.folders) {
+    const f = S.folders.find(x => x.id === sf.id);
+    if (f && (f.sort_order !== sf.sort_order || f.parent_folder_id !== sf.parent_folder_id || f.subject_id !== sf.subject_id)) {
+      f.sort_order = sf.sort_order;
+      f.parent_folder_id = sf.parent_folder_id;
+      f.subject_id = sf.subject_id;
+      // We don't need to await each to update DB fast
+      import('./db.js').then(db => {
+        db.db.from('folders').update({ sort_order: sf.sort_order, parent_folder_id: sf.parent_folder_id, subject_id: sf.subject_id }).eq('id', sf.id).catch(()=>{});
+      });
+      changed = true;
+    }
+  }
+  
+  for (const sp of snap.pdfs) {
+    const p = S.pdfs.find(x => x.id === sp.id);
+    if (p && (p.sort_order !== sp.sort_order || p.folder_id !== sp.folder_id)) {
+      p.sort_order = sp.sort_order;
+      p.folder_id = sp.folder_id;
+      import('./db.js').then(db => {
+        db.db.from('pdf_files').update({ sort_order: sp.sort_order, folder_id: sp.folder_id }).eq('id', sp.id).catch(()=>{});
+      });
+      changed = true;
+    }
+  }
+  
+  if (changed) {
+    renderLibrary();
+    toast('Undo successful');
+  } else {
+    toast('Nothing to undo');
+  }
+};
+
+window.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    // Check if user is typing in an input/textarea
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+    e.preventDefault();
+    window.undoLastMove();
+  }
+});

@@ -55,6 +55,9 @@ export const S = {
   // UI collapse state
   collapsedSubj: {},
   expandedFold: {},
+  
+  // Organization Undo Stack
+  undoStack: [],
 
   // Search
   searchMode:    'pdf',  // 'pdf' | 'ann'
