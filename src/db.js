@@ -30,6 +30,26 @@ export async function dbLoad(retries = 3) {
     S.folders    = f.data || [];
     S.pdfs       = p.data || [];
     S.colorCats  = c.data || [];
+    
+    // Sanitize circular references caused by drag-and-drop bug
+    for (const folder of S.folders) {
+      if (!folder.parent_folder_id) continue;
+      let curr = folder.parent_folder_id;
+      let isCycle = false;
+      const seen = new Set([folder.id]);
+      while (curr) {
+        if (seen.has(curr)) { isCycle = true; break; }
+        seen.add(curr);
+        const par = S.folders.find(x => x.id === curr);
+        curr = par ? par.parent_folder_id : null;
+      }
+      if (isCycle) {
+        console.warn('Fixed circular folder reference:', folder.name);
+        folder.parent_folder_id = null;
+        db.from('folders').update({ parent_folder_id: null }).eq('id', folder.id).then();
+      }
+    }
+
     syncOK('DB Sync Active');
   } catch (e) {
     if (retries > 0) {

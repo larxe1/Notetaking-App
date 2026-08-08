@@ -136,7 +136,16 @@ async function handleReorder(targetId, targetType, draggedIds, insertAfter = fal
   siblings.forEach((s, i) => {
     s.obj.sort_order = i;
     if (s.type === 'folder') {
-      if (s.obj.parent_folder_id !== parentId || s.obj.subject_id !== subjectId) {
+      // Prevent circular cycles
+      let isCircular = false;
+      let curr = parentId;
+      while (curr) {
+        if (curr === s.id) { isCircular = true; break; }
+        const par = S.folders.find(x => x.id === curr);
+        curr = par ? par.parent_folder_id : null;
+      }
+      
+      if (!isCircular && (s.obj.parent_folder_id !== parentId || s.obj.subject_id !== subjectId)) {
         dbMoveFolder(s.id, parentId, subjectId).catch(()=>{});
         s.obj.parent_folder_id = parentId;
         s.obj.subject_id = subjectId;
@@ -171,7 +180,17 @@ async function handleMoveInto(targetFolderId, draggedIds) {
   if (targetFolder) {
     for (const foldId of foldIds) {
       const folder = S.folders.find(f => f.id === foldId);
-      if (folder && folder.parent_folder_id !== targetFolderId) {
+      
+      // Prevent circular cycles
+      let isCircular = false;
+      let curr = targetFolderId;
+      while (curr) {
+        if (curr === foldId) { isCircular = true; break; }
+        const par = S.folders.find(x => x.id === curr);
+        curr = par ? par.parent_folder_id : null;
+      }
+
+      if (!isCircular && folder && folder.parent_folder_id !== targetFolderId) {
         dbMoveFolder(foldId, targetFolderId, targetFolder.subject_id).catch(()=>{});
         folder.parent_folder_id = targetFolderId;
         folder.subject_id = targetFolder.subject_id;
@@ -387,6 +406,7 @@ function buildFolderEl(fold) {
 
   // ── Drag-to-reorder/move ──
   w.addEventListener('dragstart', e => {
+    e.stopPropagation();
     if (e.target.closest('.li-pdf')) return;
     if (!S.selectedIds.has(fold.id)) {
       S.selectedIds.clear();
