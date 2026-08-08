@@ -54,7 +54,7 @@ export const S = {
 
   // UI collapse state
   collapsedSubj: {},
-  collapsedFold: {},
+  expandedFold: {},
 
   // Search
   searchMode:    'pdf',  // 'pdf' | 'ann'

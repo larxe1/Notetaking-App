@@ -288,7 +288,7 @@ function buildFolderEl(fold) {
   w.className  = 'li-fold';
   w.dataset.id = fold.id;
   w.draggable  = true;
-  const exp  = !S.collapsedFold[fold.id];
+  const exp  = !!S.expandedFold[fold.id];
   const icons = { codal: '📜', cases: '⚖', laws: '📋', others: '📁', custom: '📂' };
 
   w.innerHTML = `
@@ -326,9 +326,9 @@ function buildFolderEl(fold) {
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
     
     if (e.target.closest('.li-chev')) {
-      S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
+      S.expandedFold[fold.id] = !S.expandedFold[fold.id];
       chev.classList.toggle('closed');
-      ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
+      ch.style.display = S.expandedFold[fold.id] ? 'flex' : 'none';
     } else {
       // User clicked the folder name/icon: open full document view
       openFolderDoc(fold);
