@@ -219,7 +219,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .cal-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
 .cal-day { background: var(--navy); border-radius: 8px; padding: 16px 12px; border: 1px solid rgba(255,255,255,0.05); }
 .cal-day-title { text-align: center; font-family: 'Libre Baskerville', serif; color: #e8e4db; font-size: 16px; font-style: italic; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
-.cal-item { background: rgba(201,168,76,0.1); border-left: 2px solid var(--gold); padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 11px; color: #c9c5bb; line-height: 1.4; text-align: left; }
+.cal-item { background: rgba(201,168,76,0.1); border-left: 2px solid var(--gold); padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 11px; color: #c9c5bb; line-height: 1.4; text-align: left; cursor: pointer; transition: background 0.15s; }
+.cal-item:hover { background: rgba(201,168,76,0.2); }
 .cal-item strong { color: var(--gold); display: block; font-size: 12px; margin-bottom: 4px; }
 .cal-item .cal-time { color: #e8e4db; font-weight: 500; margin-bottom: 4px; }
 .cal-quote { margin-top: 30px; font-size: 12px; font-style: italic; color: var(--muted); text-align: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; }

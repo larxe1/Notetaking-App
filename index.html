@@ -42,7 +42,7 @@
         <span id="app-title" style="cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">⚖ Legal Annotator</span>
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.17</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.18</small>
     </div>
 
     <!-- Sync + auto-save bar -->
@@ -472,6 +472,18 @@
   </div>
 </div>
 
+<!-- Subject Notes Modal -->
+<div class="modal-ov" id="mo-subj-notes">
+  <div class="modal-box">
+    <h3 id="mo-subj-notes-title">Subject Notes</h3>
+    <textarea id="subj-notes-ta" style="width:100%; height:150px; background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:10px; color:#e8e4db; font-family:'Inter', sans-serif; font-size:13px; resize:vertical; outline:none; transition:border-color .15s" placeholder="Write notes about this subject or professor here..."></textarea>
+    <div class="modal-acts" style="margin-top:12px">
+      <button class="btn-sec" data-close="mo-subj-notes">Cancel</button>
+      <button class="btn-gold" id="save-subj-notes">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Keyboard Shortcuts Help -->
 <div class="modal-ov" id="mo-keys">
   <div class="modal-box">
@@ -504,6 +516,7 @@
     <div style="padding: 10px 4px 4px 4px">
       <h3>Version History</h3>
       <ul style="margin-top:16px; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.6">
+        <li style="margin-bottom:8px"><b>[v1.1.18]</b> Calendar subjects are now clickable! Clicking a subject opens a shared notepad for you to jot down notes about that specific subject or professor.</li>
         <li style="margin-bottom:8px"><b>[v1.1.17]</b> The highlight popup menu now automatically closes if you click anywhere else on the screen (natural close).</li>
         <li style="margin-bottom:8px"><b>[v1.1.16]</b> Improved hover tooltips to show the content of up to 3 notes directly when hovering over a highlight, instead of just showing the number of notes.</li>
         <li style="margin-bottom:8px"><b>[v1.1.15]</b> Fixed an edge case where highlights would still have tiny gaps if the font's bounding box varied slightly between letters.</li>
@@ -513,7 +526,6 @@
         <li style="margin-bottom:8px"><b>[v1.1.11]</b> Fixed text highlight rendering to look like a single seamless highlight instead of overlapping individual boxes.</li>
         <li style="margin-bottom:8px"><b>[v1.1.10]</b> Added Prof. Noel Lazaro to the CrimPro schedule.</li>
         <li style="margin-bottom:8px"><b>[v1.1.9]</b> Removed the "Set Start Page" button. The app will now automatically remember your last open page and resume from there.</li>
-        <li style="margin-bottom:8px"><b>[v1.1.8]</b> Added a manual refresh button to the sidebar.</li>
       </ul>
     </div>
     <div class="modal-acts" style="margin-top:16px">

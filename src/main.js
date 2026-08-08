@@ -61,6 +61,7 @@ async function init() {
   initZoom();
   initNavButtons();
   initNotepad();
+  initCalendar();
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
@@ -211,6 +212,29 @@ async function init() {
 
   // Hide recent wrap initially (no recents yet)
   document.getElementById('recent-wrap').style.display = 'none';
+}
+
+let curSubj = null;
+function initCalendar() {
+  document.addEventListener('click', e => {
+    const item = e.target.closest('.cal-item');
+    if (!item) return;
+    const strong = item.querySelector('strong');
+    if (!strong) return;
+    
+    curSubj = strong.textContent.trim();
+    document.getElementById('mo-subj-notes-title').textContent = curSubj + ' Notes';
+    const notes = localStorage.getItem('subj_notes_' + curSubj) || '';
+    document.getElementById('subj-notes-ta').value = notes;
+    openModal('mo-subj-notes');
+  });
+
+  document.getElementById('save-subj-notes')?.addEventListener('click', () => {
+    if (!curSubj) return;
+    const notes = document.getElementById('subj-notes-ta').value;
+    localStorage.setItem('subj_notes_' + curSubj, notes);
+    closeModal('mo-subj-notes');
+  });
 }
 
 init();
