@@ -627,10 +627,16 @@ function startInlineRename(nameEl, onSave) {
     inp.replaceWith(nameEl);
     if (save && val && val !== old) {
       nameEl.textContent = val;
+      nameEl.title = val;
       try { await onSave(val); }
-      catch { nameEl.textContent = old; toast('Rename failed'); }
+      catch { 
+        nameEl.textContent = old; 
+        nameEl.title = old;
+        toast('Rename failed'); 
+      }
     } else {
       nameEl.textContent = old;
+      nameEl.title = old;
     }
   };
 
