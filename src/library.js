@@ -575,8 +575,8 @@ export function initLibraryModals() {
 
   document.querySelectorAll('.ftype-btn').forEach(b =>
     b.addEventListener('click', () => {
-      document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
+      document.querySelectorAll('.ftype-btn').forEach(x => x.classList.remove('sel'));
+      b.classList.add('sel');
     })
   );
   
