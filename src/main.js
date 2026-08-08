@@ -62,6 +62,7 @@ async function init() {
   initNavButtons();
   initNotepad();
   initCalendar();
+  initLinks();
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
@@ -234,6 +235,61 @@ function initCalendar() {
     const notes = document.getElementById('subj-notes-ta').value;
     localStorage.setItem('subj_notes_' + curSubj, notes);
     closeModal('mo-subj-notes');
+  });
+}
+
+function initLinks() {
+  const btnLinks = document.getElementById('btn-links');
+  if (!btnLinks) return;
+  btnLinks.addEventListener('click', () => {
+    renderLinks();
+    openModal('mo-links');
+  });
+
+  document.getElementById('btn-add-link')?.addEventListener('click', () => {
+    const titleInp = document.getElementById('new-link-title');
+    const urlInp = document.getElementById('new-link-url');
+    const title = titleInp.value.trim();
+    let url = urlInp.value.trim();
+    if (!title || !url) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    const links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+    links.push({ id: Date.now().toString(), title, url });
+    localStorage.setItem('law_school_links', JSON.stringify(links));
+    titleInp.value = '';
+    urlInp.value = '';
+    renderLinks();
+  });
+}
+
+function renderLinks() {
+  const list = document.getElementById('links-list');
+  if (!list) return;
+  const links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+  list.innerHTML = '';
+  if (links.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted); font-size:12px; text-align:center; padding:10px">No links added yet.</div>';
+    return;
+  }
+  links.forEach(l => {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:var(--navy); padding:8px 10px; border:1px solid rgba(255,255,255,0.05); border-radius:6px';
+    d.innerHTML = `
+      <a href="${l.url}" target="_blank" style="color:var(--gold); text-decoration:none; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1" title="${l.url}">${l.title}</a>
+      <button class="btn-sec btn-del-link" data-id="${l.id}" style="padding:4px 8px; font-size:11px; margin-left:8px; flex-shrink:0">✕</button>
+    `;
+    list.appendChild(d);
+  });
+  list.querySelectorAll('.btn-del-link').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.target.dataset.id;
+      let links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+      links = links.filter(x => x.id !== id);
+      localStorage.setItem('law_school_links', JSON.stringify(links));
+      renderLinks();
+    });
   });
 }
 
