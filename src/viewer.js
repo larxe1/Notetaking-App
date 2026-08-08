@@ -13,6 +13,50 @@ const _boxDone  = new Set();
 const _drawDone = new Set();
 const _textDone = new Set();
 
+let _currentFolderDocId = null;
+let _folderDocDebounce = null;
+
+export async function openFolderDoc(fold) {
+  S.curPDF = null;
+  updateActivePDF();
+  
+  const { closeAnnPanel } = await import('./annotate.js');
+  closeAnnPanel();
+  const { clearSearchHighlights } = await import('./search.js');
+  clearSearchHighlights();
+
+  // Switch to Folder Document Mode
+  document.getElementById('viewer-wrap').style.display = 'none';
+  document.getElementById('notepad-panel').style.display = 'none';
+  document.getElementById('folder-doc-viewer').style.display = 'flex';
+
+  document.getElementById('folder-doc-title').textContent = fold.name;
+  const ed = document.getElementById('folder-doc-editor');
+  ed.value = fold.notes || '';
+  _currentFolderDocId = fold.id;
+
+  // Add listener only once
+  if (!ed.dataset.listener) {
+    ed.dataset.listener = 'true';
+    ed.addEventListener('input', async () => {
+      const { autosave } = await import('./ui.js');
+      autosave('saving');
+      clearTimeout(_folderDocDebounce);
+      _folderDocDebounce = setTimeout(async () => {
+        if (!_currentFolderDocId) return;
+        const text = ed.value;
+        const { dbUpdateFolderNotes } = await import('./db.js');
+        try {
+          await dbUpdateFolderNotes(_currentFolderDocId, text);
+          autosave('saved');
+        } catch {
+          autosave('err');
+        }
+      }, 1000);
+    });
+  }
+}
+
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 3) {
   S.curPDF = pdfFile;
@@ -23,6 +67,11 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
   const { clearSearchHighlights } = await import('./search.js');
   clearSearchHighlights();
+
+  // Switch to PDF mode
+  document.getElementById('folder-doc-viewer').style.display = 'none';
+  document.getElementById('viewer-wrap').style.display = 'flex';
+  document.getElementById('notepad-panel').style.display = 'flex';
 
   const scroll = document.getElementById('canvas-scroll');
   scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;

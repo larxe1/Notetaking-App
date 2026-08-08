@@ -14,7 +14,7 @@ import {
   dbLoadAnnCounts, dbUpdateFolderNotes
 } from './db.js';
 import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.js';
-import { openPDFFromLibrary, updateActivePDF } from './viewer.js';
+import { openPDFFromLibrary, updateActivePDF, openFolderDoc } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
 let _pdfToLink = null;
@@ -164,7 +164,6 @@ function buildFolderEl(fold) {
       <span>${icons[fold.folder_type] || '📁'}</span>
       <span class="li-fold-name">${fold.name}</span>
       <div class="li-acts">
-        <button class="li-act-btn" title="Folder Notes" data-act="notes">📝</button>
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
@@ -177,21 +176,31 @@ function buildFolderEl(fold) {
   const ch   = w.querySelector('.li-fold-ch');
   const chev = w.querySelector('.li-chev');
 
-  // Handle clicking the folder for expand/collapse OR selection
+  // Handle selection on pointerdown
   hd.addEventListener('pointerdown', e => {
     if (e.target.closest('.li-acts')) return;
     
-    // If holding modifier, handle selection instead of expanding
+    // If holding modifier, handle selection
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
       handleSelection(fold.id, e);
       return;
     }
+  });
 
-    // Normal click: just expand/collapse. Don't highlight it as selected!
-    // If they drag it, dragstart will automatically select it.
-    S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
-    chev.classList.toggle('closed');
-    ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
+  // Handle expand/collapse OR open document on click
+  hd.addEventListener('click', e => {
+    if (e.target.closest('.li-acts')) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+    
+    if (e.target.closest('.li-chev')) {
+      S.collapsedFold[fold.id] = !S.collapsedFold[fold.id];
+      chev.classList.toggle('closed');
+      ch.style.display = S.collapsedFold[fold.id] ? 'none' : 'flex';
+    } else {
+      // User clicked the folder name/icon: open full document view
+      openFolderDoc(fold);
+      closeSidebar();
+    }
   });
 
   w.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
@@ -200,14 +209,6 @@ function buildFolderEl(fold) {
     S.newFolderSubjId = fold.subject_id;
     document.getElementById('subfold-name').value = '';
     openModal('mo-subfold');
-  });
-
-  w.querySelector('[data-act="notes"]').addEventListener('click', e => {
-    e.stopPropagation();
-    _folderNotesId = fold.id;
-    document.getElementById('mo-fold-notes-title').textContent = fold.name + ' Notes';
-    document.getElementById('fold-notes-ta').value = fold.notes || '';
-    openModal('mo-fold-notes');
   });
 
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
@@ -606,26 +607,7 @@ export function initLibraryModals() {
     }
   });
   
-  // ── Folder Notes Save ──
-  document.getElementById('save-fold-notes')?.addEventListener('click', async () => {
-    if (!_folderNotesId) return;
-    const text = document.getElementById('fold-notes-ta').value;
-    try {
-      import('./ui.js').then(m => m.autosave('saving'));
-      await dbUpdateFolderNotes(_folderNotesId, text);
-      import('./ui.js').then(m => {
-        m.closeModal('mo-fold-notes');
-        m.toast('Folder Notes saved');
-        m.autosave('saved');
-      });
-    } catch (e) {
-      console.error(e);
-      import('./ui.js').then(m => {
-        m.toast('Failed to save notes');
-        m.autosave('err');
-      });
-    }
-  });
+  // Removed mo-fold-notes listener
 
   document.getElementById('save-fold').addEventListener('click', async () => {
     const name = document.getElementById('fold-name').value.trim();

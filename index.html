@@ -42,7 +42,7 @@
         <span id="app-title" style="cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">⚖ Legal Annotator</span>
         <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
       </div>
-      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.22</small>
+      <small id="app-version" style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;display:block;cursor:pointer;transition:color .15s" onmouseover="this.style.color='#e8e4db'" onmouseout="this.style.color='var(--muted)'">v1.1.23</small>
     </div>
 
     <!-- Sync + auto-save bar -->
@@ -70,6 +70,19 @@
       <button id="refresh-btn" title="Refresh App" style="padding:0 10px; background:var(--navy-l); border:1px solid var(--navy-b); border-radius:6px; color:var(--text); cursor:pointer; font-size:14px; transition:background .15s" onmouseover="this.style.background='var(--navy)'" onmouseout="this.style.background='var(--navy-l)'" onclick="window.location.reload()">⟳</button>
     </div>
     <div id="lib-tree"><div class="lib-empty">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════
+       FOLDER DOCUMENT VIEWER
+  ══════════════════════════════ -->
+  <div id="folder-doc-viewer" style="display:none; flex:1; background:var(--bg); flex-direction:column; overflow-y:auto; padding:40px; align-items:center">
+    <div style="width:100%; max-width:800px; display:flex; flex-direction:column; flex:1">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+        <h2 id="folder-doc-title" style="margin:0; font-weight:600; color:#e8e4db">Folder Notes</h2>
+        <span id="folder-doc-save-lbl" style="font-size:12px; color:var(--muted)"></span>
+      </div>
+      <textarea id="folder-doc-editor" placeholder="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; resize:none; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></textarea>
+    </div>
   </div>
 
   <!-- ══════════════════════════════
@@ -488,18 +501,6 @@
   </div>
 </div>
 
-<!-- Folder Notes Modal -->
-<div class="modal-ov" id="mo-fold-notes">
-  <div class="modal-box">
-    <h3 id="mo-fold-notes-title">Folder Notes</h3>
-    <textarea id="fold-notes-ta" style="width:100%; height:150px; background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:10px; color:#e8e4db; font-family:'Inter', sans-serif; font-size:13px; resize:vertical; outline:none; transition:border-color .15s" placeholder="Write general notes, provisions, or syllabus info for this folder..."></textarea>
-    <div class="modal-acts" style="margin-top:12px">
-      <button class="btn-sec" data-close="mo-fold-notes">Cancel</button>
-      <button class="btn-gold" id="save-fold-notes">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- Link PDF Modal -->
 <div class="modal-ov" id="mo-link-pdf">
   <div class="modal-box" style="width:320px">
@@ -565,6 +566,7 @@
     <div style="padding: 10px 4px 4px 4px">
       <h3>Version History</h3>
       <ul style="margin-top:16px; padding-left:20px; font-size:13px; color:var(--muted); line-height:1.6">
+        <li style="margin-bottom:8px"><b>[v1.1.23]</b> Folder Notes redesign! Removed the pop-up modal. Now, when you click on a folder name, it opens a full-screen blank document in the main reading area, just like Notion or Word. (Clicking the folder arrow still expands/collapses the folder list).</li>
         <li style="margin-bottom:8px"><b>[v1.1.22]</b> Added Folder Notes! Every single folder now has a 📝 (Notes) icon where you can jot down general notes, syllabus info, or provisions.</li>
         <li style="margin-bottom:8px"><b>[v1.1.21]</b> Added "Create Shortcut" feature! You can now link the same PDF to multiple folders. Annotations, drawings, and notes are perfectly synced across all shortcuts.</li>
         <li style="margin-bottom:8px"><b>[v1.1.20]</b> UI clarity fix: Changed "Connected" in the sidebar to "DB Sync Active" so it isn't confused with Google Drive connection status.</li>
@@ -574,7 +576,6 @@
         <li style="margin-bottom:8px"><b>[v1.1.16]</b> Improved hover tooltips to show the content of up to 3 notes directly when hovering over a highlight, instead of just showing the number of notes.</li>
         <li style="margin-bottom:8px"><b>[v1.1.15]</b> Fixed an edge case where highlights would still have tiny gaps if the font's bounding box varied slightly between letters.</li>
         <li style="margin-bottom:8px"><b>[v1.1.14]</b> Formatted version history to include version numbers and capped it at the last 10 changes.</li>
-        <li style="margin-bottom:8px"><b>[v1.1.13]</b> Fixed text highlight rendering to automatically bridge gaps between letters and words, creating one solid, continuous block per line.</li>
       </ul>
     </div>
     <div class="modal-acts" style="margin-top:16px">
