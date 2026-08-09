@@ -32,7 +32,7 @@ export async function openFolderDoc(fold) {
 
   document.getElementById('folder-doc-title').textContent = fold.name;
   const ed = document.getElementById('folder-doc-editor');
-  ed.value = fold.notes || '';
+  ed.innerHTML = fold.notes || '';
   _currentFolderDocId = fold.id;
 
   // Add listener only once
@@ -44,7 +44,7 @@ export async function openFolderDoc(fold) {
       clearTimeout(_folderDocDebounce);
       _folderDocDebounce = setTimeout(async () => {
         if (!_currentFolderDocId) return;
-        const text = ed.value;
+        const text = ed.innerHTML;
         const { dbUpdateFolderNotes } = await import('./db.js');
         try {
           await dbUpdateFolderNotes(_currentFolderDocId, text);
@@ -53,6 +53,16 @@ export async function openFolderDoc(fold) {
           autosave('err');
         }
       }, 1000);
+    });
+
+    // Bind toolbar commands
+    document.getElementById('folder-doc-toolbar').addEventListener('click', (e) => {
+      const btn = e.target.closest('.fmt-btn');
+      if (!btn) return;
+      const cmd = btn.dataset.cmd;
+      const val = btn.dataset.val || null;
+      document.execCommand(cmd, false, val);
+      ed.focus();
     });
   }
 }

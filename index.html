@@ -88,7 +88,20 @@
         <h2 id="folder-doc-title" style="margin:0; font-weight:600; color:#e8e4db">Folder Notes</h2>
         <span id="folder-doc-save-lbl" style="font-size:12px; color:var(--muted)"></span>
       </div>
-      <textarea id="folder-doc-editor" placeholder="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; resize:none; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></textarea>
+      <div class="fmt-bar" id="folder-doc-toolbar" style="margin-bottom:12px; border-radius:8px; display:flex; gap:4px">
+        <button class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+        <button class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+        <button class="fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button class="fmt-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
+        <button class="fmt-btn" data-cmd="formatBlock" data-val="H1" title="Heading 1"><b>H1</b></button>
+        <button class="fmt-btn" data-cmd="formatBlock" data-val="H2" title="Heading 2"><b>H2</b></button>
+        <button class="fmt-btn" data-cmd="formatBlock" data-val="P" title="Normal Text">P</button>
+        <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
+        <button class="fmt-btn" data-cmd="insertUnorderedList" title="Bulleted List">• List</button>
+        <button class="fmt-btn" data-cmd="insertOrderedList" title="Numbered List">1. List</button>
+      </div>
+      <div id="folder-doc-editor" contenteditable="true" data-ph="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
     </div>
   </div>
 
