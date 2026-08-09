@@ -38,6 +38,14 @@ export async function openFolderDoc(fold) {
   // Add listener only once
   if (!ed.dataset.listener) {
     ed.dataset.listener = 'true';
+    
+    ed.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+      }
+    });
+
     ed.addEventListener('input', async () => {
       const { autosave } = await import('./ui.js');
       autosave('saving');
