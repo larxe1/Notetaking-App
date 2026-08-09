@@ -258,8 +258,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .note-act-btn.del:hover { color: var(--red); border-color: var(--red); }
 #add-note-area { padding: 10px 14px 14px; border-top: 1px solid var(--navy-b); flex-shrink: 0; }
 .fmt-bar { display: flex; gap: 3px; margin-bottom: 6px; }
-.fmt-btn { background: rgba(255,255,255,.06); border: 1px solid var(--navy-b); color: #b0aaa0; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; transition: all .15s; font-family: 'Inter', sans-serif; min-width: 28px; text-align: center; }
-.fmt-btn:hover { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); }
+.fmt-btn, .folder-fmt-btn { background: rgba(255,255,255,.06); border: 1px solid var(--navy-b); color: #b0aaa0; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; transition: all .15s; font-family: 'Inter', sans-serif; min-width: 28px; text-align: center; }
+.fmt-btn:hover, .folder-fmt-btn:hover { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); }
 #note-editor { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 9px 10px; font-size: 13px; line-height: 1.6; color: #e8e4db; min-height: 70px; max-height: 150px; overflow-y: auto; outline: none; transition: border-color .15s; }
 #note-editor:focus { border-color: var(--gold); }
 #note-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }

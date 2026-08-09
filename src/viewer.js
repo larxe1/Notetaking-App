@@ -64,9 +64,12 @@ export async function openFolderDoc(fold) {
     });
 
     // Bind toolbar commands
+    document.getElementById('folder-doc-toolbar').addEventListener('mousedown', e => e.preventDefault());
     document.getElementById('folder-doc-toolbar').addEventListener('click', (e) => {
-      const btn = e.target.closest('.fmt-btn');
+      const btn = e.target.closest('.folder-fmt-btn');
       if (!btn) return;
+      
+      e.stopPropagation();
       const cmd = btn.dataset.cmd;
       const val = btn.dataset.val || null;
       document.execCommand(cmd, false, val);
