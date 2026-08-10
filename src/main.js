@@ -13,9 +13,10 @@ import { initDrawControls, initPinchZoom } from './draw.js';
 import {
   initModals, initSidebar, initZoom, initNavButtons,
   initKeyboard, exportAnnotations, toast, syncErr,
-  openModal, closeModal
+  openModal, closeModal, autosave
 } from './ui.js';
 import { initNotepad } from './notepad.js';
+import { initDictionary } from './dictionary.js';
 
 async function init() {
   // Init Google Drive bar
@@ -46,6 +47,12 @@ async function init() {
     S.curPDF = null;
     document.getElementById('canvas-scroll').innerHTML = welcomeHTML;
     document.getElementById('thumb-strip').innerHTML = '';
+    
+    // Reset view to Welcome (content-area visible, notepad/folder-doc hidden)
+    document.getElementById('folder-doc-viewer').style.display = 'none';
+    document.getElementById('notepad-panel').style.display = 'none';
+    document.getElementById('content-area').style.display = 'flex';
+
     const { updateActivePDF } = await import('./viewer.js');
     updateActivePDF();
   });
@@ -61,6 +68,7 @@ async function init() {
   initZoom();
   initNavButtons();
   initNotepad();
+  initDictionary();
   initCalendar();
   initLinks();
 
@@ -179,12 +187,23 @@ async function init() {
             div.addEventListener('mouseout', () => div.style.color = '');
             div.addEventListener('click', async () => {
               closeModal('mo-toc');
-              let dest = item.dest;
-              if (typeof dest === 'string') dest = await S.pdfDoc.getDestination(dest);
-              if (dest) {
-                const ref = dest[0];
-                const pageIdx = await S.pdfDoc.getPageIndex(ref);
-                import('./ui.js').then(m => m.jumpToPage(pageIdx + 1));
+              try {
+                let dest = item.dest;
+                if (typeof dest === 'string') dest = await S.pdfDoc.getDestination(dest);
+                if (Array.isArray(dest)) {
+                  let pageIdx = -1;
+                  const ref = dest[0];
+                  if (typeof ref === 'object' && ref !== null) {
+                    pageIdx = await S.pdfDoc.getPageIndex(ref);
+                  } else if (Number.isInteger(ref)) {
+                    pageIdx = ref;
+                  }
+                  if (pageIdx >= 0) {
+                    import('./ui.js').then(m => m.jumpToPage(pageIdx + 1));
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to resolve bookmark destination:', e);
               }
             });
             

@@ -362,10 +362,46 @@ export async function dbDelColorCat(id) {
 
 // ── PDF Notepad ──
 export async function dbLoadNotepad(pdf_id) {
-  const { data } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+  const { data, error } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+  if (error) {
+    alert("Database Load Error in PDF Notepad:\n" + error.message);
+    console.error(error);
+  }
   return data?.content || '';
 }
 
 export async function dbSaveNotepad(pdf_id, content) {
-  await db.from('pdf_notes').upsert({ pdf_id, content }, { onConflict: 'pdf_id' });
+  const { error } = await db.from('pdf_notes').upsert({ pdf_id, content }, { onConflict: 'pdf_id' });
+  if (error) {
+    alert("Database Error in PDF Notepad:\n" + error.message);
+    throw error;
+  }
+}
+
+// ───────────────────────────────────────────────
+// DICTIONARY
+// ───────────────────────────────────────────────
+export async function dbSearchDictionary(term) {
+  if (!term || term.trim() === '') return [];
+  const { data, error } = await db.from('dictionary')
+    .select('*')
+    .ilike('word', `%${term}%`)
+    .order('word', { ascending: true })
+    .limit(10);
+  
+  if (error) {
+    console.error('Dictionary search error:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function dbSaveDictionary(word, definition) {
+  // Try to find if word already exists to get ID (or just upsert on word if it's unique)
+  // Assuming 'word' is a unique constraint, we can just upsert.
+  const { error } = await db.from('dictionary').upsert({ word, definition }, { onConflict: 'word' });
+  if (error) {
+    alert("Database Error in Dictionary:\n" + error.message);
+    throw error;
+  }
 }

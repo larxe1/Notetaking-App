@@ -18,7 +18,7 @@ export async function openNotepad(pdfId) {
   const editor = $editor();
 
   // Clear and show loading state
-  editor.textContent = '';
+  editor.innerHTML = '';
   panel.classList.add('open');
 
   // Load existing notes
@@ -26,7 +26,7 @@ export async function openNotepad(pdfId) {
     const content = await dbLoadNotepad(pdfId);
     // Only populate if this PDF is still active (user didn't switch)
     if (_currentPdfId === pdfId) {
-      editor.textContent = content;
+      editor.innerHTML = content;
       // Move cursor to end
       const range = document.createRange();
       const sel   = window.getSelection();
@@ -48,7 +48,7 @@ export function closeNotepad() {
     clearTimeout(_saveTimer);
     _saveTimer = null;
     if (_currentPdfId) {
-      dbSaveNotepad(_currentPdfId, $editor().textContent).catch(() => {});
+      dbSaveNotepad(_currentPdfId, $editor().innerHTML).catch(() => {});
     }
   }
 }
@@ -63,7 +63,7 @@ function scheduleSave() {
   _saveTimer = setTimeout(async () => {
     if (!_currentPdfId) return;
     try {
-      await dbSaveNotepad(_currentPdfId, $editor().textContent);
+      await dbSaveNotepad(_currentPdfId, $editor().innerHTML);
       lbl.textContent = '✓ Saved';
       lbl.className = 'saved';
       setTimeout(() => { lbl.textContent = ''; lbl.className = ''; }, 2000);
@@ -87,13 +87,41 @@ export function initNotepad() {
         openNotepad(S.curPDF.linked_pdf_id || S.curPDF.id);
       } else {
         // No PDF open — just show empty panel with message
-        $editor().textContent = '';
+        $editor().innerHTML = '';
         panel.classList.add('open');
       }
     }
   });
 
   document.getElementById('np-close').addEventListener('click', closeNotepad);
+
+  // Bind formatting toolbar commands for PDF Notepad
+  const npToolbar = document.getElementById('np-toolbar');
+  if (npToolbar) {
+    npToolbar.addEventListener('mousedown', e => e.preventDefault()); // Keep focus on editor
+    npToolbar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.fmt-btn');
+      if (!btn) return;
+      
+      e.stopPropagation();
+      const cmd = btn.dataset.cmd;
+      let val = btn.dataset.val || null;
+      
+      // Some browsers require tags to be wrapped in brackets for formatBlock
+      if (cmd === 'formatBlock' && val && !val.startsWith('<')) {
+        val = `<${val}>`;
+      }
+      
+      try {
+        document.execCommand(cmd, false, val);
+      } catch (err) {
+        console.error('execCommand failed:', err);
+      } finally {
+        $editor().focus();
+        if (_currentPdfId) scheduleSave();
+      }
+    });
+  }
 
   $editor().addEventListener('input', () => {
     if (_currentPdfId) scheduleSave();
@@ -113,7 +141,7 @@ export function notepadOnPDFChange(newPdfId) {
   if (_saveTimer && _currentPdfId) {
     clearTimeout(_saveTimer);
     _saveTimer = null;
-    dbSaveNotepad(_currentPdfId, $editor().textContent).catch(() => {});
+    dbSaveNotepad(_currentPdfId, $editor().innerHTML).catch(() => {});
   }
   // If panel is open, load the new PDF's notes
   if ($panel().classList.contains('open')) {

@@ -79,35 +79,6 @@
     <div id="lib-tree"><div class="lib-empty">Loading…</div></div>
   </div>
 
-  <!-- ══════════════════════════════
-       FOLDER DOCUMENT VIEWER
-  ══════════════════════════════ -->
-  <div id="folder-doc-viewer" style="display:none; flex:1; background:var(--bg); flex-direction:column; overflow-y:auto; padding:40px; align-items:center">
-    <div style="width:100%; max-width:800px; display:flex; flex-direction:column; flex:1">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
-        <h2 id="folder-doc-title" style="margin:0; font-weight:600; color:#e8e4db">Folder Notes</h2>
-        <span id="folder-doc-save-lbl" style="font-size:12px; color:var(--muted)"></span>
-      </div>
-      <div class="fmt-bar" id="folder-doc-toolbar" style="margin-bottom:12px; border-radius:8px; display:flex; gap:4px">
-        <button class="folder-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
-        <button class="folder-fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
-        <button class="folder-fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
-        <button class="folder-fmt-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
-        <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
-        <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="H1" title="Heading 1"><b>H1</b></button>
-        <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="H2" title="Heading 2"><b>H2</b></button>
-        <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="P" title="Normal Text">P</button>
-        <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
-        <button class="folder-fmt-btn" data-cmd="fontSize" data-val="2" title="Small Font">Aa</button>
-        <button class="folder-fmt-btn" data-cmd="fontSize" data-val="3" title="Medium Font" style="font-size:14px">Aa</button>
-        <button class="folder-fmt-btn" data-cmd="fontSize" data-val="5" title="Large Font" style="font-size:16px; font-weight:bold">Aa</button>
-        <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
-        <button class="folder-fmt-btn" data-cmd="insertUnorderedList" title="Bulleted List">• List</button>
-        <button class="folder-fmt-btn" data-cmd="insertOrderedList" title="Numbered List">1. List</button>
-      </div>
-      <div id="folder-doc-editor" contenteditable="true" data-ph="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
-    </div>
-  </div>
 
   <!-- ══════════════════════════════
        VIEWER
@@ -174,6 +145,10 @@
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V19a2 2 0 002 2h14a2 2 0 002-2v-2"/></svg>
         Export
       </button>
+      <button class="tb-btn" id="btn-dict" title="Dictionary">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+        Dictionary
+      </button>
       <button class="tb-btn" id="btn-links" title="Important Links">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
         Links
@@ -234,6 +209,36 @@
         <button id="search-close-btn">✕</button>
       </div>
       <div id="search-ann-results"></div>
+    </div>
+
+    <!-- ══════════════════════════════
+         FOLDER DOCUMENT VIEWER
+    ══════════════════════════════ -->
+    <div id="folder-doc-viewer" style="display:none; flex:1; background:var(--bg); flex-direction:column; overflow-y:auto; padding:40px; align-items:center">
+      <div style="width:100%; max-width:800px; display:flex; flex-direction:column; flex:1">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+          <h2 id="folder-doc-title" style="margin:0; font-weight:600; color:#e8e4db">Folder Notes</h2>
+          <span id="folder-doc-save-lbl" style="font-size:12px; color:var(--muted)"></span>
+        </div>
+        <div class="fmt-bar" id="folder-doc-toolbar" style="margin-bottom:12px; border-radius:8px; display:flex; gap:4px">
+          <button class="folder-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+          <button class="folder-fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+          <button class="folder-fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+          <button class="folder-fmt-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+          <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
+          <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="H1" title="Heading 1"><b>H1</b></button>
+          <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="H2" title="Heading 2"><b>H2</b></button>
+          <button class="folder-fmt-btn" data-cmd="formatBlock" data-val="P" title="Normal Text">P</button>
+          <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
+          <button class="folder-fmt-btn" data-cmd="fontSize" data-val="2" title="Small Font">Aa</button>
+          <button class="folder-fmt-btn" data-cmd="fontSize" data-val="3" title="Medium Font" style="font-size:14px">Aa</button>
+          <button class="folder-fmt-btn" data-cmd="fontSize" data-val="5" title="Large Font" style="font-size:16px; font-weight:bold">Aa</button>
+          <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
+          <button class="folder-fmt-btn" data-cmd="insertUnorderedList" title="Bulleted List">• List</button>
+          <button class="folder-fmt-btn" data-cmd="insertOrderedList" title="Numbered List">1. List</button>
+        </div>
+        <div id="folder-doc-editor" contenteditable="true" data-ph="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
+      </div>
     </div>
 
     <!-- Main content: PDF canvas + thumbnail strip -->
@@ -395,6 +400,23 @@
       <span id="np-save-lbl"></span>
       <button class="ap-close" id="np-close">✕</button>
     </div>
+    <!-- Notepad Toolbar -->
+    <div id="np-toolbar" class="toolbar-strip" style="padding:6px 14px; border-bottom:1px solid var(--navy-b); background:var(--navy-m); gap:6px; align-items:center; display:flex; flex-wrap:wrap;">
+      <button class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+      <button class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+      <button class="fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+      <button class="fmt-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+      <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" data-cmd="formatBlock" data-val="H1" title="Heading 1" style="font-weight:bold;font-size:11px">H1</button>
+      <button class="fmt-btn" data-cmd="formatBlock" data-val="H2" title="Heading 2" style="font-weight:bold;font-size:11px">H2</button>
+      <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" data-cmd="insertUnorderedList" title="Bullet List">• List</button>
+      <button class="fmt-btn" data-cmd="insertOrderedList" title="Number List">1. List</button>
+      <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" data-cmd="fontSize" data-val="2" title="Small Text">S</button>
+      <button class="fmt-btn" data-cmd="fontSize" data-val="3" title="Normal Text">M</button>
+      <button class="fmt-btn" data-cmd="fontSize" data-val="5" title="Large Text">L</button>
+    </div>
     <div id="np-body">
       <div
         id="np-editor"
@@ -402,6 +424,29 @@
         data-ph="Write general notes about this PDF here…"
         spellcheck="true"
       ></div>
+    </div>
+  </div>
+
+  <!-- Dictionary Panel -->
+  <div id="dict-panel">
+    <div class="np-hd">
+      <span class="np-title">📖 Dictionary</span>
+      <span id="dict-save-lbl"></span>
+      <button class="ap-close" id="dict-close">×</button>
+    </div>
+    <div style="padding:14px; display:flex; flex-direction:column; gap:12px; height:100%; box-sizing:border-box;">
+      <input type="text" id="dict-search-input" placeholder="Search for a word..." style="width:100%; padding:8px 12px; background:var(--navy-d); border:1px solid var(--navy-b); color:var(--text); border-radius:6px; outline:none; font-family:'Inter', sans-serif;">
+      
+      <div id="dict-results" style="flex:1; overflow-y:auto; font-size:14px; line-height:1.6; color:var(--text-d);">
+        <div style="color:var(--muted); font-style:italic;">Type a word to search or add...</div>
+      </div>
+      
+      <div id="dict-editor-area" style="display:none; flex-direction:column; gap:8px; border-top:1px solid var(--navy-b); padding-top:12px; margin-top:auto;">
+        <div style="font-weight:600; color:var(--gold); font-size:13px;" id="dict-editor-title">Add Definition</div>
+        <input type="text" id="dict-word-input" placeholder="Word" style="width:100%; padding:8px; background:var(--navy-d); border:1px solid var(--navy-b); color:var(--text); border-radius:4px; font-weight:bold;" disabled>
+        <textarea id="dict-def-input" placeholder="Enter definition here..." rows="4" style="width:100%; padding:8px; background:var(--navy-d); border:1px solid var(--navy-b); color:var(--text); border-radius:4px; resize:vertical; font-family:'Inter', sans-serif;"></textarea>
+        <button id="dict-save-btn" class="btn-gold" style="padding:8px; border-radius:4px; cursor:pointer;">Save Definition</button>
+      </div>
     </div>
   </div>
 

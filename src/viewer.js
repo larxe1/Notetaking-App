@@ -26,7 +26,7 @@ export async function openFolderDoc(fold) {
   clearSearchHighlights();
 
   // Switch to Folder Document Mode
-  document.getElementById('viewer-wrap').style.display = 'none';
+  document.getElementById('content-area').style.display = 'none';
   document.getElementById('notepad-panel').style.display = 'none';
   document.getElementById('folder-doc-viewer').style.display = 'flex';
 
@@ -71,9 +71,20 @@ export async function openFolderDoc(fold) {
       
       e.stopPropagation();
       const cmd = btn.dataset.cmd;
-      const val = btn.dataset.val || null;
-      document.execCommand(cmd, false, val);
-      ed.focus();
+      let val = btn.dataset.val || null;
+      
+      // Some browsers require tags to be wrapped in brackets for formatBlock
+      if (cmd === 'formatBlock' && val && !val.startsWith('<')) {
+        val = `<${val}>`;
+      }
+      
+      try {
+        document.execCommand(cmd, false, val);
+      } catch (err) {
+        console.error('execCommand failed:', err);
+      } finally {
+        ed.focus();
+      }
     });
   }
 }
@@ -88,10 +99,14 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
   const { clearSearchHighlights } = await import('./search.js');
   clearSearchHighlights();
+  
+  const trueId = pdfFile.linked_pdf_id || pdfFile.id;
+  const { notepadOnPDFChange } = await import('./notepad.js');
+  notepadOnPDFChange(trueId);
 
   // Switch to PDF mode
   document.getElementById('folder-doc-viewer').style.display = 'none';
-  document.getElementById('viewer-wrap').style.display = 'flex';
+  document.getElementById('content-area').style.display = 'flex';
   document.getElementById('notepad-panel').style.display = 'flex';
 
   const scroll = document.getElementById('canvas-scroll');
@@ -125,7 +140,6 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
-    const trueId = pdfFile.linked_pdf_id || pdfFile.id;
     await dbLoadBookmarks(trueId);
     await dbLoadAnnotations(trueId);
     await dbLoadDrawings(trueId);
@@ -137,10 +151,6 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Track recent PDFs
     pushRecent(pdfFile);
-
-    // Notify notepad of PDF change
-    const { notepadOnPDFChange } = await import('./notepad.js');
-    notepadOnPDFChange(pdfFile.id);
 
     // Jump to bookmarked page (or stay on page 1)
     const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
