@@ -100,7 +100,7 @@ export function initNotepad() {
   if (npToolbar) {
     npToolbar.addEventListener('mousedown', e => e.preventDefault()); // Keep focus on editor
     npToolbar.addEventListener('click', (e) => {
-      const btn = e.target.closest('.fmt-btn');
+      const btn = e.target.closest('.np-fmt-btn');
       if (!btn) return;
       
       e.stopPropagation();
