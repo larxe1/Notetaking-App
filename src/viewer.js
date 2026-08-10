@@ -79,7 +79,12 @@ export async function openFolderDoc(fold) {
       }
       
       try {
-        document.execCommand(cmd, false, val);
+        if (cmd === 'insertTable') {
+          const tbl = `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;"><tbody><tr><td style="border:1px solid var(--navy-b); padding:6px;"><br></td><td style="border:1px solid var(--navy-b); padding:6px;"><br></td></tr><tr><td style="border:1px solid var(--navy-b); padding:6px;"><br></td><td style="border:1px solid var(--navy-b); padding:6px;"><br></td></tr></tbody></table><br>`;
+          document.execCommand('insertHTML', false, tbl);
+        } else {
+          document.execCommand(cmd, false, val);
+        }
       } catch (err) {
         console.error('execCommand failed:', err);
       } finally {
