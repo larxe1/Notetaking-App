@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
+import { showTablePicker } from './tablepicker.js';
 
 let _saveTimer = null;
 let _currentPdfId = null;
@@ -114,8 +115,7 @@ export function initNotepad() {
       
       try {
         if (cmd === 'insertTable') {
-          const tbl = `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;"><tbody><tr><td style="border:1px solid var(--navy-b); padding:6px;"><br></td><td style="border:1px solid var(--navy-b); padding:6px;"><br></td></tr><tr><td style="border:1px solid var(--navy-b); padding:6px;"><br></td><td style="border:1px solid var(--navy-b); padding:6px;"><br></td></tr></tbody></table><br>`;
-          document.execCommand('insertHTML', false, tbl);
+          showTablePicker(btn, document.getElementById('np-editor'));
         } else {
           document.execCommand(cmd, false, val);
         }
