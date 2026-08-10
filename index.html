@@ -754,8 +754,21 @@
 </script>
 
 <!-- Main app (ES module) -->
-<script type="module" src="src/main.js"></script>
+<script type="module" src="./src/main.js"></script>
 <script type="module" src="src/quiz.js"></script>
+
+<!-- Table Context Menu -->
+<div id="table-ctx-menu" style="display:none; position:absolute; z-index:9999; background:var(--navy-d); border:1px solid var(--navy-b); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.6); flex-direction:column; padding:4px; min-width:140px;">
+  <div class="ctx-item" id="ctx-row-above">Add Row Above</div>
+  <div class="ctx-item" id="ctx-row-below">Add Row Below</div>
+  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
+  <div class="ctx-item" id="ctx-col-left">Add Column Left</div>
+  <div class="ctx-item" id="ctx-col-right">Add Column Right</div>
+  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
+  <div class="ctx-item" id="ctx-del-row" style="color:var(--red);">Delete Row</div>
+  <div class="ctx-item" id="ctx-del-col" style="color:var(--red);">Delete Column</div>
+  <div class="ctx-item" id="ctx-del-table" style="color:var(--red);">Delete Table</div>
+</div>
 
 </body>
 </html>

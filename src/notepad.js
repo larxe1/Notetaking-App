@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
-import { showTablePicker } from './tablepicker.js';
+import { showTablePicker, handlePaste } from './tablepicker.js';
 
 let _saveTimer = null;
 let _currentPdfId = null;
@@ -131,6 +131,8 @@ export function initNotepad() {
   $editor().addEventListener('input', () => {
     if (_currentPdfId) scheduleSave();
   });
+  
+  $editor().addEventListener('paste', handlePaste);
 
   // Close on Esc
   document.addEventListener('keydown', e => {

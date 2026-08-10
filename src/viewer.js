@@ -7,7 +7,7 @@ import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { renderThumbnails } from './thumbnails.js';
-import { showTablePicker } from './tablepicker.js';
+import { showTablePicker, handlePaste } from './tablepicker.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
 const _boxDone  = new Set();
@@ -63,6 +63,8 @@ export async function openFolderDoc(fold) {
         }
       }, 1000);
     });
+
+    ed.addEventListener('paste', handlePaste);
 
     // Bind toolbar commands
     document.getElementById('folder-doc-toolbar').addEventListener('mousedown', e => e.preventDefault());

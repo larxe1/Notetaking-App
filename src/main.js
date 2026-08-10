@@ -17,6 +17,8 @@ import {
 } from './ui.js';
 import { initNotepad } from './notepad.js';
 import { initDictionary } from './dictionary.js';
+import { initThumbnails } from './thumbnails.js';
+import { initTableContextMenu } from './tablepicker.js';
 
 async function init() {
   // Init Google Drive bar
@@ -68,6 +70,8 @@ async function init() {
   initZoom();
   initNavButtons();
   initNotepad();
+  initThumbnails();
+  initTableContextMenu();
   initDictionary();
   initCalendar();
   initLinks();
