@@ -214,13 +214,13 @@
     <!-- ══════════════════════════════
          FOLDER DOCUMENT VIEWER
     ══════════════════════════════ -->
-    <div id="folder-doc-viewer" style="display:none; flex:1; background:var(--bg); flex-direction:column; overflow-y:auto; padding:40px; align-items:center">
+    <div id="folder-doc-viewer" style="display:none; flex:1; background:var(--navy); flex-direction:column; overflow-y:auto; padding:40px; align-items:center">
       <div style="width:100%; max-width:800px; display:flex; flex-direction:column; flex:1">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
           <h2 id="folder-doc-title" style="margin:0; font-weight:600; color:#e8e4db">Folder Notes</h2>
           <span id="folder-doc-save-lbl" style="font-size:12px; color:var(--muted)"></span>
         </div>
-        <div class="fmt-bar" id="folder-doc-toolbar" style="position: sticky; top: -40px; z-index: 100; background: var(--bg); padding: 40px 0 12px 0; margin-top: -20px; margin-bottom:12px; display:flex; gap:4px">
+        <div class="fmt-bar" id="folder-doc-toolbar" style="position: sticky; top: -40px; z-index: 100; background: var(--navy); padding: 40px 0 12px 0; margin-top: -20px; margin-bottom:12px; display:flex; gap:4px">
           <button class="folder-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
           <button class="folder-fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
           <button class="folder-fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
@@ -336,7 +336,7 @@
           <!-- State: API Key Setup -->
           <div id="quiz-setup" style="display:none; text-align:center; padding:20px 0">
             <p style="margin-bottom:16px; color:var(--text)">Please enter your free Gemini API Key from Google AI Studio.</p>
-            <input type="password" id="quiz-api-key" placeholder="AIzaSy..." style="width:100%; margin-bottom:12px; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--bg); color:var(--text); box-sizing:border-box">
+            <input type="password" id="quiz-api-key" placeholder="AIzaSy..." style="width:100%; margin-bottom:12px; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--navy); color:var(--text); box-sizing:border-box">
             <br>
             <button class="btn-gold" id="btn-save-key">Save Key</button>
           </div>
@@ -346,11 +346,11 @@
             <div style="background:rgba(201,168,76,0.1); padding:16px; border-radius:6px; margin-bottom:24px; border-left:3px solid var(--gold)">
               <div style="margin-bottom:12px">
                 <label style="color:var(--gold); font-size:13px; font-weight:600; display:block; margin-bottom:6px">Pages to Read (Optional)</label>
-                <input type="text" id="quiz-page-range" placeholder="e.g. 1-10, 15" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--bg); color:var(--text); box-sizing:border-box">
+                <input type="text" id="quiz-page-range" placeholder="e.g. 1-10, 15" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--navy); color:var(--text); box-sizing:border-box">
               </div>
               <div>
                 <label style="color:var(--gold); font-size:13px; font-weight:600; display:block; margin-bottom:6px">Focus Topics (Optional)</label>
-                <input type="text" id="quiz-topic" placeholder="e.g. 'Mens Rea' or 'Self-Defense'" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--bg); color:var(--text); box-sizing:border-box">
+                <input type="text" id="quiz-topic" placeholder="e.g. 'Mens Rea' or 'Self-Defense'" style="width:100%; padding:8px; border-radius:4px; border:1px solid var(--navy-b); background:var(--navy); color:var(--text); box-sizing:border-box">
               </div>
             </div>
             <p style="margin-bottom:16px; color:var(--muted); text-align:center">Select quiz format:</p>
@@ -379,7 +379,7 @@
           <!-- State: Essay -->
           <div id="quiz-essay-ui" style="display:none; flex-direction:column">
             <div id="essay-question" style="font-weight:600; margin-bottom:16px; font-size:15px; color:#e8e4db; line-height:1.5"></div>
-            <textarea id="essay-answer" placeholder="Write your essay here..." style="width:100%; height:200px; background:var(--bg); color:var(--text); border:1px solid var(--navy-b); border-radius:6px; padding:12px; font-family:'Inter',sans-serif; resize:vertical; margin-bottom:16px; outline:none; box-sizing:border-box"></textarea>
+            <textarea id="essay-answer" placeholder="Write your essay here..." style="width:100%; height:200px; background:var(--navy); color:var(--text); border:1px solid var(--navy-b); border-radius:6px; padding:12px; font-family:'Inter',sans-serif; resize:vertical; margin-bottom:16px; outline:none; box-sizing:border-box"></textarea>
             <button class="btn-gold" id="btn-submit-essay">Submit Essay</button>
             
             <div id="essay-result" style="display:none; margin-top:20px; padding:16px; background:rgba(201,168,76,0.1); border-left:3px solid var(--gold); border-radius:4px">
@@ -403,7 +403,7 @@
       <button class="ap-close" id="np-close">✕</button>
     </div>
     <!-- Notepad Toolbar -->
-    <div id="np-toolbar" class="toolbar-strip" style="position:sticky; top:0; z-index:100; padding:6px 14px; border-bottom:1px solid var(--navy-b); background:var(--navy-m); gap:6px; align-items:center; display:flex; flex-wrap:wrap;">
+    <div id="np-toolbar" class="toolbar-strip" style="position:sticky; top:0; z-index:100; padding:6px 14px; border-bottom:1px solid var(--navy-b); background:var(--navy-l); gap:6px; align-items:center; display:flex; flex-wrap:wrap;">
       <button class="np-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
       <button class="np-fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
       <button class="np-fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
