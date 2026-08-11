@@ -1,4 +1,5 @@
 import { dbSearchDictionary, dbSaveDictionary } from './db.js';
+import { closeOtherPanels } from './ui.js';
 
 let searchTimer = null;
 let currentTerm = '';
@@ -19,6 +20,9 @@ export function initDictionary() {
   if (!btnDict || !panel) return;
 
   btnDict.addEventListener('click', () => {
+    if (!panel.classList.contains('open')) {
+      closeOtherPanels('dict-panel');
+    }
     panel.classList.toggle('open');
     if (panel.classList.contains('open')) {
       searchInput.focus();

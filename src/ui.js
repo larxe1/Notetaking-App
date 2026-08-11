@@ -45,6 +45,14 @@ export function toast(msg) {
 export function openModal(id)  { document.getElementById(id)?.classList.add('open'); }
 export function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
+export function closeOtherPanels(exceptId) {
+  const panels = ['notepad-panel', 'dict-panel', 'search-panel'];
+  if (window.innerWidth <= 1024) panels.push('ann-panel');
+  panels.forEach(id => {
+    if (id !== exceptId) document.getElementById(id)?.classList.remove('open');
+  });
+}
+
 // Wire all [data-close] buttons and backdrop clicks
 export function initModals() {
   document.querySelectorAll('[data-close]').forEach(b =>

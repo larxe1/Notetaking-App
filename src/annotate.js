@@ -2,7 +2,7 @@
 // ANNOTATE — highlights, annotation panel, notes
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { toast, autosave, openModal, closeModal } from './ui.js';
+import { toast, autosave, openModal, closeModal, closeOtherPanels } from './ui.js';
 import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
@@ -129,6 +129,7 @@ export function openAnnPanel(ann) {
   renderAnnColors();
   renderNotes(ann);
   document.getElementById('note-editor').innerHTML = '';
+  closeOtherPanels('ann-panel');
   document.getElementById('ann-panel').classList.add('open');
 }
 

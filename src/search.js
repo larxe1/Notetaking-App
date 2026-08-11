@@ -2,10 +2,12 @@
 // SEARCH — PDF text search + annotation search
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
+import { closeOtherPanels } from './ui.js';
 
 let searchMode = 'pdf'; // 'pdf' | 'ann'
 
 export function openSearch() {
+  closeOtherPanels('search-panel');
   document.getElementById('search-panel').classList.add('open');
   document.getElementById('search-input').focus();
   document.getElementById('search-ann-results').style.display = searchMode === 'ann' ? 'block' : 'none';

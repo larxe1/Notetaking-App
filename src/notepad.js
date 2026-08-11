@@ -4,6 +4,7 @@
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
 import { showTablePicker, handlePaste } from './tablepicker.js';
+import { closeOtherPanels } from './ui.js';
 
 let _saveTimer = null;
 let _currentPdfId = null;
@@ -20,6 +21,7 @@ export async function openNotepad(pdfId) {
 
   // Clear and show loading state
   editor.innerHTML = '';
+  closeOtherPanels('notepad-panel');
   panel.classList.add('open');
 
   // Load existing notes
