@@ -398,25 +398,10 @@ export async function dbSearchDictionary(term) {
 }
 
 export async function dbSaveDictionary(word, definition) {
-  // Since 'word' doesn't have a unique constraint, manual update/insert
-  const { data, error: updateError } = await db.from('dictionary')
-    .update({ definition })
-    .eq('word', word)
-    .select();
-
-  if (updateError) {
-    alert("Database Error in Dictionary Update:\n" + updateError.message);
-    throw updateError;
-  }
-
-  if (data && data.length > 0) return;
-
-  const { error: insertError } = await db.from('dictionary')
-    .insert({ word, definition });
-
-  if (insertError) {
-    alert("Database Error in Dictionary Insert:\n" + insertError.message);
-    throw insertError;
+  const { error } = await db.from('dictionary').upsert({ word, definition }, { onConflict: 'word' });
+  if (error) {
+    alert("Database Error in Dictionary:\n" + error.message);
+    throw error;
   }
 }
 
@@ -431,16 +416,6 @@ export async function dbLoadLinks() {
 }
 
 export async function dbSaveLinks(links) {
-  const def = JSON.stringify(links);
-  const { data, error: updateError } = await db.from('dictionary')
-    .update({ definition: def })
-    .eq('word', '__sys_links')
-    .select();
-
-  if (data && data.length > 0) return;
-
-  const { error: insertError } = await db.from('dictionary')
-    .insert({ word: '__sys_links', definition: def });
-    
-  if (insertError) console.error('Failed to save links:', insertError);
+  const { error } = await db.from('dictionary').upsert({ word: '__sys_links', definition: JSON.stringify(links) }, { onConflict: 'word' });
+  if (error) console.error('Failed to save links:', error);
 }
