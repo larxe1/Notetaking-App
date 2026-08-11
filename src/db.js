@@ -386,6 +386,7 @@ export async function dbSearchDictionary(term) {
   const { data, error } = await db.from('dictionary')
     .select('*')
     .ilike('word', `%${term}%`)
+    .not('word', 'like', '__sys_%')
     .order('word', { ascending: true })
     .limit(10);
   
@@ -404,4 +405,19 @@ export async function dbSaveDictionary(word, definition) {
     alert("Database Error in Dictionary:\n" + error.message);
     throw error;
   }
+}
+
+export async function dbLoadLinks() {
+  const { data, error } = await db.from('dictionary').select('definition').eq('word', '__sys_links').maybeSingle();
+  if (error || !data) return [];
+  try {
+    return JSON.parse(data.definition) || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function dbSaveLinks(links) {
+  const { error } = await db.from('dictionary').upsert({ word: '__sys_links', definition: JSON.stringify(links) }, { onConflict: 'word' });
+  if (error) console.error('Failed to save links:', error);
 }

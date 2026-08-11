@@ -74,4 +74,7 @@ export const S = {
 
   // Annotation counts cache: pdf_id → count
   annCounts: {},
+  
+  // Toolbar links
+  links: [],
 };

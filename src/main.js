@@ -2,7 +2,7 @@
 // MAIN — entry point, wires everything together
 // ═══════════════════════════════════════════════
 import { S }                  from './state.js';
-import { dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark } from './db.js';
+import { dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks } from './db.js';
 import { initDriveBar }       from './drive.js';
 import { renderLibrary, initLibraryModals, initLibrarySelection } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
@@ -279,15 +279,37 @@ function initCalendar() {
   });
 }
 
-function initLinks() {
+async function initLinks() {
   const btnLinks = document.getElementById('btn-links');
   if (!btnLinks) return;
+  
+  // Migration + Load
+  let links = await dbLoadLinks();
+  const localLinks = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+  
+  if (localLinks.length > 0) {
+    // Merge local links if they aren't already in the db
+    const existingUrls = new Set(links.map(l => l.url));
+    let added = false;
+    for (const l of localLinks) {
+      if (!existingUrls.has(l.url)) {
+        links.push(l);
+        added = true;
+      }
+    }
+    if (added) await dbSaveLinks(links);
+    // Clear local cache to prevent re-merging
+    localStorage.removeItem('law_school_links');
+  }
+  
+  S.links = links;
+
   btnLinks.addEventListener('click', () => {
     renderLinks();
     openModal('mo-links');
   });
 
-  document.getElementById('btn-add-link')?.addEventListener('click', () => {
+  document.getElementById('btn-add-link')?.addEventListener('click', async () => {
     const titleInp = document.getElementById('new-link-title');
     const urlInp = document.getElementById('new-link-url');
     const title = titleInp.value.trim();
@@ -296,9 +318,10 @@ function initLinks() {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
-    const links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
-    links.push({ id: Date.now().toString(), title, url });
-    localStorage.setItem('law_school_links', JSON.stringify(links));
+    
+    S.links.push({ id: Date.now().toString(), title, url });
+    await dbSaveLinks(S.links);
+    
     titleInp.value = '';
     urlInp.value = '';
     renderLinks();
@@ -308,27 +331,25 @@ function initLinks() {
 function renderLinks() {
   const list = document.getElementById('links-list');
   if (!list) return;
-  const links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
   list.innerHTML = '';
-  if (links.length === 0) {
+  if (!S.links || S.links.length === 0) {
     list.innerHTML = '<div style="color:var(--muted); font-size:12px; text-align:center; padding:10px">No links added yet.</div>';
     return;
   }
-  links.forEach(l => {
+  S.links.forEach(l => {
     const d = document.createElement('div');
     d.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:var(--navy); padding:8px 10px; border:1px solid rgba(255,255,255,0.05); border-radius:6px';
     d.innerHTML = `
       <a href="${l.url}" target="_blank" style="color:var(--gold); text-decoration:none; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1" title="${l.url}">${l.title}</a>
-      <button class="btn-sec btn-del-link" data-id="${l.id}" style="padding:4px 8px; font-size:11px; margin-left:8px; flex-shrink:0">✕</button>
+      <button class="btn-sec btn-del-link" data-id="${l.id}" style="padding:4px 8px; font-size:11px; margin-left:8px; flex-shrink:0">×</button>
     `;
     list.appendChild(d);
   });
   list.querySelectorAll('.btn-del-link').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       const id = e.target.dataset.id;
-      let links = JSON.parse(localStorage.getItem('law_school_links') || '[]');
-      links = links.filter(x => x.id !== id);
-      localStorage.setItem('law_school_links', JSON.stringify(links));
+      S.links = S.links.filter(x => x.id !== id);
+      await dbSaveLinks(S.links);
       renderLinks();
     });
   });
