@@ -46,8 +46,7 @@ export function openModal(id)  { document.getElementById(id)?.classList.add('ope
 export function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
 export function closeOtherPanels(exceptId) {
-  const panels = ['notepad-panel', 'dict-panel', 'search-panel'];
-  if (window.innerWidth <= 1024) panels.push('ann-panel');
+  const panels = ['notepad-panel', 'dict-panel', 'search-panel', 'ann-panel'];
   panels.forEach(id => {
     if (id !== exceptId) document.getElementById(id)?.classList.remove('open');
   });
