@@ -160,6 +160,10 @@ export function initKeyboard(deps) {
   });
   document.getElementById('note-editor').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) document.getElementById('btn-add-note').click();
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+    }
   });
 }
 

@@ -130,6 +130,13 @@ export function initNotepad() {
     });
   }
 
+  $editor().addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+    }
+  });
+
   $editor().addEventListener('input', () => {
     if (_currentPdfId) scheduleSave();
   });
