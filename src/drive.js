@@ -9,6 +9,7 @@ const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_NAME = 'Legal Annotator';
 
 let _tokenRefreshTimer = null;
+let _healthCheckInterval = null;
 
 // ── Internal: request/refresh an access token ──
 // silent=true → no popup (works if user already granted + has active Google session)
@@ -40,7 +41,8 @@ function _requestToken(silent = false) {
         S.driveFolderId = await ensureAppFolder();
         localStorage.setItem('driveFolderId', S.driveFolderId);
         updateDriveBar();
-        _scheduleRefresh(); // schedule the next silent refresh
+        _scheduleRefresh();   // schedule the next silent refresh
+        _startHealthCheck(); // begin periodic token health checks
         resolve();
       },
     });
@@ -50,17 +52,115 @@ function _requestToken(silent = false) {
   });
 }
 
-// ── Schedule a silent token refresh ~50 mins from now ──
+// -- Schedule a silent token refresh ~50 mins from now --
 function _scheduleRefresh() {
   if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
   _tokenRefreshTimer = setTimeout(async () => {
     try {
       await _requestToken(true); // silent
+      await _verifyToken();      // confirm it actually works
     } catch {
-      // Silent refresh failed (Google session expired) — just update the UI
-      updateDriveBar();
+      // Silent refresh failed — Google session may have expired.
+      // Don't hard-sign-out: show a warning banner so the user can
+      // reconnect with one click. The health-check will keep trying.
+      showDriveWarning('Google Drive session could not be refreshed automatically. Click "Sign in again" to reconnect.');
     }
   }, 50 * 60 * 1000); // 50 minutes
+}
+
+// -- Start a periodic health check every 5 minutes --
+function _startHealthCheck() {
+  _stopHealthCheck(); // clear any existing interval first
+  _healthCheckInterval = setInterval(async () => {
+    // Only check if we think we're signed in
+    if (S.driveToken) {
+      await _verifyToken();
+    }
+  }, 5 * 60 * 1000); // every 5 minutes
+}
+
+// -- Stop the periodic health check --
+function _stopHealthCheck() {
+  if (_healthCheckInterval) {
+    clearInterval(_healthCheckInterval);
+    _healthCheckInterval = null;
+  }
+}
+
+// -- Ping Drive API to confirm token is actually valid --
+async function _verifyToken() {
+  if (!S.driveToken) { _onSessionExpired(); return; }
+  try {
+    const r = await fetch(
+      'https://www.googleapis.com/drive/v3/about?fields=user',
+      { headers: { Authorization: `Bearer ${S.driveToken}` } }
+    );
+    if (r.status === 401 || r.status === 403) {
+      _onSessionExpired();
+    } else {
+      hideDriveWarning();
+    }
+  } catch {
+    // Network error — don't sign out, just warn
+    showDriveWarning('No internet connection. Drive is offline.');
+  }
+}
+
+// -- Called when we detect the Drive session is definitely dead --
+function _onSessionExpired() {
+  _stopHealthCheck();
+  if (_tokenRefreshTimer) { clearTimeout(_tokenRefreshTimer); _tokenRefreshTimer = null; }
+  S.driveToken    = null;
+  S.driveUser     = null;
+  S.driveFolderId = null;
+  localStorage.removeItem('driveToken');
+  localStorage.removeItem('driveUser');
+  localStorage.removeItem('driveTokenExpiry');
+  localStorage.removeItem('driveFolderId');
+  updateDriveBar();
+  showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
+}
+
+// -- Show / hide the Drive warning banner --
+export function showDriveWarning(msg) {
+  let banner = document.getElementById('drive-warn-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'drive-warn-banner';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9999',
+      'background:#7f1d1d', 'color:#fecaca',
+      'font-size:13px', 'font-family:Inter,sans-serif',
+      'padding:10px 16px', 'display:flex', 'align-items:center', 'gap:12px',
+      'box-shadow:0 4px 12px rgba(0,0,0,.5)',
+      'border-bottom:1px solid #991b1b',
+      'animation:slideDown .25s ease',
+    ].join(';');
+    document.head.insertAdjacentHTML('beforeend',
+      '<style>@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}</style>');
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = `
+    <span style="font-size:18px">⚠️</span>
+    <span style="flex:1">${msg}</span>
+    <button id="drive-warn-signin" style="background:#991b1b;border:1px solid #ef4444;color:#fecaca;
+      border-radius:5px;padding:4px 12px;cursor:pointer;font-size:12px;font-family:Inter,sans-serif;
+      white-space:nowrap;transition:background .15s">Sign in again</button>
+    <button id="drive-warn-close" style="background:none;border:none;color:#fca5a5;font-size:18px;
+      cursor:pointer;padding:0 2px;line-height:1" title="Dismiss">×</button>
+  `;
+  document.getElementById('drive-warn-signin')?.addEventListener('click', async () => {
+    try {
+      await driveSignIn();
+      hideDriveWarning();
+      toast('Google Drive reconnected!');
+    } catch { toast('Sign-in failed. Try again.'); }
+  });
+  document.getElementById('drive-warn-close')?.addEventListener('click', hideDriveWarning);
+}
+
+export function hideDriveWarning() {
+  document.getElementById('drive-warn-banner')?.remove();
 }
 
 // ── Sign in (user-initiated, shows account picker) ──
@@ -71,6 +171,7 @@ export async function driveSignIn() {
 export function driveSignOut() {
   if (S.driveToken) google.accounts.oauth2.revoke(S.driveToken);
   if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
+  _stopHealthCheck();
   S.driveToken = null;
   S.driveUser  = null;
   S.driveFolderId = null;
@@ -78,6 +179,7 @@ export function driveSignOut() {
   localStorage.removeItem('driveUser');
   localStorage.removeItem('driveTokenExpiry');
   localStorage.removeItem('driveFolderId');
+  hideDriveWarning();
   updateDriveBar();
 }
 
@@ -163,7 +265,10 @@ export async function driveFetchPDF(drive_file_id) {
   // Cache by file ID (fix bug #4)
   if (S.pdfCache[drive_file_id]) return S.pdfCache[drive_file_id];
 
-  if (!S.driveToken) throw new Error('Not signed in to Google Drive');
+  if (!S.driveToken) {
+    showDriveWarning('Not signed in to Google Drive. Click "Sign in again" to reconnect.');
+    throw new Error('Not signed in to Google Drive');
+  }
   syncSpin('Downloading from Drive…');
 
   const resp = await fetch(
@@ -171,10 +276,11 @@ export async function driveFetchPDF(drive_file_id) {
     { headers: { Authorization: `Bearer ${S.driveToken}` } }
   );
   if (!resp.ok) {
-    if (resp.status === 401) {
-      driveSignOut();
+    if (resp.status === 401 || resp.status === 403) {
+      _onSessionExpired(); // update UI immediately, show banner
       throw new Error('Google Drive session expired. Please sign in again.');
     }
+    syncErr('Download failed');
     throw new Error('Drive download failed: ' + resp.status);
   }
   const buf = await resp.arrayBuffer();
@@ -194,6 +300,7 @@ export async function driveDeleteFile(drive_file_id) {
 // ── Helper: authenticated GET ──
 async function driveGet(url) {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${S.driveToken}` } });
+  if (r.status === 401 || r.status === 403) { _onSessionExpired(); throw new Error('Drive session expired'); }
   return r.json();
 }
 
@@ -207,6 +314,7 @@ async function drivePost(url, body) {
     },
     body: JSON.stringify(body),
   });
+  if (r.status === 401 || r.status === 403) { _onSessionExpired(); throw new Error('Drive session expired'); }
   return r.json();
 }
 
@@ -217,29 +325,28 @@ export function initDriveBar() {
   const user   = localStorage.getItem('driveUser');
 
   if (token && expiry && Date.now() < parseInt(expiry)) {
-    // Token still valid — restore session and schedule a refresh
+    // Token still valid from cache — restore session
     S.driveToken    = token;
     S.driveUser     = user;
     S.driveFolderId = localStorage.getItem('driveFolderId');
     updateDriveBar();
+    // Verify the cached token is actually still accepted by Google
+    // (It may have been revoked, even if it hasn't expired yet)
+    setTimeout(() => _verifyToken(), 2000);
     _scheduleRefresh();
+    _startHealthCheck(); // begin 5-min periodic checks
   } else if (user) {
     // Token expired but user previously signed in — try silent refresh
     S.driveUser = user; // keep name visible while refreshing
     updateDriveBar();
-    // Wait for Google Identity Services to be ready, then silently refresh
-    const trySilent = () => {
-      _requestToken(true).catch(() => {
-        // Silent refresh failed (Google session gone) — clear state
-        S.driveUser = null;
-        localStorage.removeItem('driveToken');
-        localStorage.removeItem('driveUser');
-        localStorage.removeItem('driveTokenExpiry');
-        localStorage.removeItem('driveFolderId');
-        updateDriveBar();
-      });
+    const trySilent = async () => {
+      try {
+        await _requestToken(true);
+        await _verifyToken();
+      } catch {
+        _onSessionExpired();
+      }
     };
-    // Give the Google script ~1s to initialise before trying
     if (typeof google !== 'undefined') {
       trySilent();
     } else {
