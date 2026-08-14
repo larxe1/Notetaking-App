@@ -4,7 +4,7 @@
 import { S }                  from './state.js';
 import { dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks } from './db.js';
 import { initDriveBar }       from './drive.js';
-import { renderLibrary, initLibraryModals, initLibrarySelection } from './library.js';
+import { renderLibrary, initLibraryModals, initLibrarySelection, initContextMenu } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
 import { setMode }            from './viewer.js';
 import { initAnnPanel }       from './annotate.js';
@@ -18,6 +18,7 @@ import {
 import { initNotepad } from './notepad.js';
 import { initDictionary } from './dictionary.js';
 import { initTableContextMenu } from './tablepicker.js';
+import { initDualView } from './dualview.js';
 
 async function init() {
   // Init Google Drive bar
@@ -47,7 +48,6 @@ async function init() {
   document.getElementById('app-title')?.addEventListener('click', async () => {
     S.curPDF = null;
     document.getElementById('canvas-scroll').innerHTML = welcomeHTML;
-    document.getElementById('thumb-strip').innerHTML = '';
     
     // Reset view to Welcome (content-area visible, notepad/folder-doc hidden)
     document.getElementById('folder-doc-viewer').style.display = 'none';
@@ -71,6 +71,8 @@ async function init() {
   initNotepad();
   initTableContextMenu();
   initDictionary();
+  initDualView();
+  initContextMenu();
   initCalendar();
   initLinks();
 

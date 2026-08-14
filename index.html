@@ -187,6 +187,12 @@
         Notepad
       </button>
 
+      <!-- Swap panes button (only visible in dual view) -->
+      <button class="tb-btn" id="btn-swap-panes" title="Swap Primary / Reference" style="display:none; color:var(--gold)">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+        Swap
+      </button>
+
       <!-- Quiz button -->
       <button class="tb-btn" id="btn-quiz-pdf" title="Generate AI Quiz" style="color:var(--gold)">
         ✨ Quiz Me
@@ -243,9 +249,16 @@
       </div>
     </div>
 
-    <!-- Main content: PDF canvas + thumbnail strip -->
+    <!-- Main content: dual-pane PDF area -->
     <div id="content-area">
-      <div id="canvas-scroll">
+
+      <!-- Pane A (Primary — full features) -->
+      <div id="pane-a" class="pdf-pane">
+        <div class="pane-header" id="pane-a-header" style="display:none">
+          <span class="pane-badge primary">🅐 Primary</span>
+          <span class="pane-pdf-name" id="pane-a-name"></span>
+        </div>
+        <div id="canvas-scroll">
         <div id="welcome">
           <div id="welcome-calendar">
             <div class="cal-header">
@@ -392,6 +405,25 @@
           </div>
         </div>
       </div>
+        </div>
+        <!-- Thumbnail strip removed -->
+      </div>
+      <!-- END pane-a -->
+
+      <!-- Draggable divider (hidden until dual view) -->
+      <div id="dual-divider"></div>
+
+      <!-- Pane B (Reference — read-only) -->
+      <div id="pane-b" class="pdf-pane" style="display:none">
+        <div class="pane-header" id="pane-b-header">
+          <span class="pane-badge reference">🅑 Reference</span>
+          <span class="pane-pdf-name" id="pane-b-name"></span>
+          <button class="pane-close-btn" id="btn-close-pane-b" title="Close Reference Pane">✕</button>
+        </div>
+        <div id="canvas-scroll-b"></div>
+      </div>
+      <!-- END pane-b -->
+
     </div>
   </div>
 
@@ -768,6 +800,12 @@
   <div class="ctx-item" id="ctx-del-row" style="color:var(--red);">Delete Row</div>
   <div class="ctx-item" id="ctx-del-col" style="color:var(--red);">Delete Column</div>
   <div class="ctx-item" id="ctx-del-table" style="color:var(--red);">Delete Table</div>
+</div>
+
+<!-- Library Right-Click Context Menu -->
+<div id="lib-ctx-menu">
+  <div class="ctx-item" id="lib-ctx-open">📖 Open</div>
+  <div class="ctx-item" id="lib-ctx-reference">📑 Open as Reference</div>
 </div>
 
 </body>

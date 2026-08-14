@@ -6,7 +6,6 @@ import { syncOK, syncSpin, jumpToPage } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
-import { renderThumbnails } from './thumbnails.js';
 import { showTablePicker, handlePaste } from './tablepicker.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
@@ -141,10 +140,6 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
       await renderPage(p, scroll, expectedId);
     }
 
-    // Render thumbnails
-    if (S.curPDF?.id !== expectedId) return;
-    await renderThumbnails(expectedId);
-
     // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
     await dbLoadBookmarks(trueId);
@@ -196,7 +191,6 @@ export async function reRenderAll() {
   await new Promise(r => setTimeout(r, 30));
   scroll.innerHTML = '';
   for (let p = 1; p <= S.totalPages; p++) await renderPage(p, scroll);
-  await renderThumbnails();
   const { redrawAllAnnotations } = await import('./annotate.js');
   const { redrawAllDrawings }    = await import('./draw.js');
   redrawAllAnnotations();
@@ -276,6 +270,63 @@ export async function renderPage(pageNum, container, expectedId) {
   // Set up interaction listeners exactly once per page (fixes bug #3)
   setupAllListeners(pageNum);
   applyModeVisuals(pageNum);
+}
+
+// ── Render a single page into an arbitrary container (for dual-view pane B) ──
+// Uses its own paneState object instead of global S so it doesn't clobber pane A.
+export async function renderPageInto(pageNum, container, pdfDocObj, paneState) {
+  const page = await pdfDocObj.getPage(pageNum);
+  const scale = paneState.scale || S.scale;
+  const vp = page.getViewport({ scale });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'pg-wrap';
+  wrap.dataset.page = pageNum;
+  wrap.style.width  = vp.width  + 'px';
+  wrap.style.height = vp.height + 'px';
+
+  const pdfCanvas  = document.createElement('canvas');
+  pdfCanvas.width  = vp.width;
+  pdfCanvas.height = vp.height;
+
+  // Minimal layers for read-only viewing
+  const drawCanvas  = document.createElement('canvas');
+  drawCanvas.width  = vp.width;
+  drawCanvas.height = vp.height;
+  drawCanvas.className = 'draw-canvas';
+
+  const txtLayer = document.createElement('div');
+  txtLayer.className = 'txt-layer'; // pointer-events disabled via CSS for pane-b
+  txtLayer.style.width  = vp.width  + 'px';
+  txtLayer.style.height = vp.height + 'px';
+
+  const annOv = document.createElement('div');
+  annOv.className = 'ann-ov';
+  annOv.dataset.page = pageNum;
+  annOv.style.width  = vp.width  + 'px';
+  annOv.style.height = vp.height + 'px';
+
+  wrap.append(pdfCanvas, annOv, txtLayer, drawCanvas);
+  container.appendChild(wrap);
+
+  await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
+
+  // Build text items for display only
+  const tc = await page.getTextContent();
+  for (const item of tc.items) {
+    if (!item.str || !item.transform) continue;
+    const span = document.createElement('span');
+    const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
+    const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+    const angle = Math.atan2(tx[1], tx[0]);
+    span.textContent = item.str;
+    span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
+    if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
+    txtLayer.appendChild(span);
+  }
+
+  if (!paneState.pages) paneState.pages = {};
+  paneState.pages[pageNum] = { wrap, pdfCanvas, drawCanvas, txtLayer, annOv, viewport: vp };
 }
 
 // ── Mode ──

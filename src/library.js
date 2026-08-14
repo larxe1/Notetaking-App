@@ -20,6 +20,72 @@ import { closeSidebar } from './ui.js';
 let _pdfToLink = null;
 let _folderNotesId = null;
 
+// ── Library Right-Click Context Menu ──
+let _ctxTargetPdf = null;
+
+function showLibCtxMenu(pdf, x, y) {
+  _ctxTargetPdf = pdf;
+  const menu = document.getElementById('lib-ctx-menu');
+  if (!menu) return;
+  menu.classList.add('open');
+
+  // Position menu, keeping it on-screen
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const mw = 190, mh = 80;
+  menu.style.left = (x + mw > vw ? vw - mw - 4 : x) + 'px';
+  menu.style.top  = (y + mh > vh ? vh - mh - 4 : y) + 'px';
+}
+
+function hideLibCtxMenu() {
+  document.getElementById('lib-ctx-menu')?.classList.remove('open');
+  _ctxTargetPdf = null;
+}
+
+export function initContextMenu() {
+  const menu = document.getElementById('lib-ctx-menu');
+  if (!menu) return;
+
+  // "Open" — normal open in primary pane
+  document.getElementById('lib-ctx-open').addEventListener('click', () => {
+    if (!_ctxTargetPdf) return;
+    hideLibCtxMenu();
+    openPDFFromLibrary(_ctxTargetPdf);
+    closeSidebar();
+  });
+
+  // "Open as Reference" — open in pane B
+  document.getElementById('lib-ctx-reference').addEventListener('click', async () => {
+    if (!_ctxTargetPdf) return;
+    const pdf = _ctxTargetPdf;
+    hideLibCtxMenu();
+
+    if (!S.curPDF) {
+      // No primary PDF open yet — open it normally first
+      openPDFFromLibrary(pdf);
+      closeSidebar();
+      return;
+    }
+    if (pdf.id === (S.curPDF?.id)) {
+      toast('This PDF is already open as the primary.');
+      return;
+    }
+    const { openPDFInPaneB } = await import('./dualview.js');
+    openPDFInPaneB(pdf);
+    closeSidebar();
+  });
+
+  // Dismiss on outside click
+  document.addEventListener('mousedown', e => {
+    if (!e.target.closest('#lib-ctx-menu')) hideLibCtxMenu();
+  });
+
+  // Dismiss on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideLibCtxMenu();
+  });
+}
+
 // ── Selection Logic ──
 function getFlatLibraryItems() {
   const items = [];
@@ -540,6 +606,13 @@ function buildPdfEl(pdf) {
       openPDFFromLibrary(pdf);
       closeSidebar();
     }
+  });
+
+  // Right-click context menu
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    showLibCtxMenu(pdf, e.clientX, e.clientY);
   });
 
   el.querySelector('[data-act="link"]').addEventListener('click', e => {
