@@ -42,7 +42,6 @@ async function init() {
 
   // Wire all UI
   initModals();
-  document.getElementById('app-version')?.addEventListener('click', () => openModal('mo-changelog'));
   
   const welcomeHTML = document.getElementById('canvas-scroll').innerHTML;
   document.getElementById('app-title')?.addEventListener('click', async () => {
