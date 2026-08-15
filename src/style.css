@@ -60,6 +60,19 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #drive-sign-btn { background: var(--gold-bg); border: 1px solid var(--gold); color: var(--gold); border-radius: 4px; padding: 3px 8px; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif; transition: background .15s; white-space: nowrap; }
 #drive-sign-btn:hover { background: var(--gold-hov); }
 
+/* Backup bar */
+#backup-bar { display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-bottom: 1px solid var(--navy-b); flex-shrink: 0; background: var(--navy); }
+.backup-last { flex: 1; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#backup-dl-btn, #backup-drive-btn {
+  background: rgba(255,255,255,.05); border: 1px solid var(--navy-b);
+  color: #9a9490; border-radius: 4px; padding: 3px 7px;
+  font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;
+  transition: all .15s; white-space: nowrap; flex-shrink: 0;
+}
+#backup-dl-btn:hover   { background: rgba(255,255,255,.1); color: #e8e4db; border-color: #4a5a80; }
+#backup-drive-btn:hover { background: var(--gold-bg); color: var(--gold); border-color: var(--gold); }
+#backup-dl-btn:disabled, #backup-drive-btn:disabled { opacity: .5; cursor: not-allowed; }
+
 /* Recent PDFs */
 #recent-wrap { padding: 6px 12px 0; flex-shrink: 0; }
 .recent-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin-bottom: 4px; display: block; }

@@ -62,6 +62,13 @@
       <button id="drive-sign-btn">Sign in</button>
     </div>
 
+    <!-- Backup bar (self-contained, independent of main app) -->
+    <div id="backup-bar">
+      <span id="backup-last-lbl" class="backup-last"></span>
+      <button id="backup-dl-btn" title="Download all data as a JSON file">⬇ Download Backup</button>
+      <button id="backup-drive-btn" title="Backup to Google Drive (auto-runs every 30 min)">☁ Drive Backup</button>
+    </div>
+
     <!-- Recent PDFs -->
     <div id="recent-wrap" style="display:none">
       <span class="recent-lbl">Recent</span>
@@ -762,6 +769,9 @@
 <!-- Main app (ES module) -->
 <script type="module" src="./src/main.js"></script>
 <script type="module" src="src/quiz.js"></script>
+
+<!-- Backup (completely independent module — zero imports from main app) -->
+<script type="module" src="./src/backup.js"></script>
 
 <!-- Table Context Menu -->
 <div id="table-ctx-menu" style="display:none; position:absolute; z-index:9999; background:var(--navy-d); border:1px solid var(--navy-b); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.6); flex-direction:column; padding:4px; min-width:140px;">
