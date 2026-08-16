@@ -197,7 +197,51 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #content-area { flex: 1; display: flex; overflow: hidden; }
 
 /* ── Canvas Scroll ── */
-#canvas-scroll { flex: 1; overflow-y: auto; overflow-x: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 20px; gap: 24px; background: #2a2a2c; -webkit-overflow-scrolling: touch; }
+#canvas-scroll {
+  flex: 1;
+  overflow-y: scroll; /* always reserve scrollbar track on right */
+  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px;
+  gap: 24px;
+  background: #2a2a2c;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto;
+  scrollbar-color: #50628a rgba(20, 28, 45, 0.85);
+}
+
+#canvas-scroll::-webkit-scrollbar,
+#canvas-scroll-b::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+#canvas-scroll::-webkit-scrollbar-track,
+#canvas-scroll-b::-webkit-scrollbar-track {
+  background: rgba(20, 28, 45, 0.85);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#canvas-scroll::-webkit-scrollbar-thumb,
+#canvas-scroll-b::-webkit-scrollbar-thumb {
+  background: #4e6088;
+  border-radius: 7px;
+  border: 3px solid rgba(20, 28, 45, 0.85);
+  min-height: 44px;
+}
+
+#canvas-scroll::-webkit-scrollbar-thumb:hover,
+#canvas-scroll-b::-webkit-scrollbar-thumb:hover {
+  background: var(--gold);
+}
+
+#canvas-scroll::-webkit-scrollbar-thumb:active,
+#canvas-scroll-b::-webkit-scrollbar-thumb:active {
+  background: var(--gold-l);
+}
+
 .pg-wrap { position: relative; box-shadow: 0 8px 32px rgba(0,0,0,.55); background: var(--parchment); display: inline-block; }
 .pg-wrap canvas { display: block; }
 .txt-layer { position: absolute; top: 0; left: 0; overflow: hidden; pointer-events: none; user-select: none; -webkit-user-select: none; }
