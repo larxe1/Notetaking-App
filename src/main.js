@@ -188,25 +188,51 @@ async function init() {
             
             div.addEventListener('mouseover', () => div.style.color = 'var(--gold)');
             div.addEventListener('mouseout', () => div.style.color = '');
-            div.addEventListener('click', async () => {
-              closeModal('mo-toc');
+            div.addEventListener('click', async (e) => {
+              e.stopPropagation(); // prevent click leaking to elements beneath the modal
+              
+              // Capture pdfDoc NOW before any awaits — prevents race condition if
+              // another PDF is opened while this async handler is running
+              const doc = S.pdfDoc;
+              if (!doc) return;
+
               try {
+                // Resolve destination: item.dest can be a string (named dest),
+                // an array (explicit dest), or null (action-only item)
                 let dest = item.dest;
-                if (typeof dest === 'string') dest = await S.pdfDoc.getDestination(dest);
-                if (Array.isArray(dest)) {
-                  let pageIdx = -1;
-                  const ref = dest[0];
-                  if (typeof ref === 'object' && ref !== null) {
-                    pageIdx = await S.pdfDoc.getPageIndex(ref);
-                  } else if (Number.isInteger(ref)) {
-                    pageIdx = ref;
-                  }
-                  if (pageIdx >= 0) {
-                    import('./ui.js').then(m => m.jumpToPage(pageIdx + 1));
-                  }
+
+                // Some PDFs store the destination inside an action object
+                if (!dest && item.action?.dest) dest = item.action.dest;
+
+                if (typeof dest === 'string') {
+                  dest = await doc.getDestination(dest);
                 }
-              } catch (e) {
-                console.warn('Failed to resolve bookmark destination:', e);
+
+                if (!Array.isArray(dest)) {
+                  // No resolvable page destination — close and do nothing
+                  closeModal('mo-toc');
+                  return;
+                }
+
+                let pageIdx = -1;
+                const ref = dest[0];
+                if (typeof ref === 'object' && ref !== null) {
+                  pageIdx = await doc.getPageIndex(ref);
+                } else if (Number.isInteger(ref)) {
+                  pageIdx = ref;
+                }
+
+                // Validate within bounds before navigating
+                const page = pageIdx + 1;
+                if (pageIdx >= 0 && page <= S.totalPages) {
+                  closeModal('mo-toc');
+                  import('./ui.js').then(m => m.jumpToPage(page));
+                } else {
+                  closeModal('mo-toc');
+                }
+              } catch (err) {
+                console.warn('Failed to resolve PDF bookmark destination:', err);
+                closeModal('mo-toc');
               }
             });
             
