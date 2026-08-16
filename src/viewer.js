@@ -95,6 +95,11 @@ export async function openFolderDoc(fold) {
   }
 }
 
+// ── Virtualized Page Rendering Observer ──
+let _pageObserver = null;
+let _renderedPages = new Set();
+const MAX_ACTIVE_CANVASES = 30; // Keeps DOM memory lean (prevents browser canvas crash on large PDFs)
+
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 3) {
   S.curPDF = pdfFile;
@@ -132,19 +137,61 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
     _boxDone.clear();
     _drawDone.clear();
     _textDone.clear();
+    _renderedPages.clear();
 
-    // Render all pages sequentially
-    const expectedId = pdfFile.id;
-    for (let p = 1; p <= S.totalPages; p++) {
-      if (S.curPDF?.id !== expectedId) return;
-      await renderPage(p, scroll, expectedId);
+    if (_pageObserver) {
+      _pageObserver.disconnect();
+      _pageObserver = null;
     }
+
+    // Get page 1 viewport for default aspect ratio
+    const p1 = await S.pdfDoc.getPage(1);
+    const vp1 = p1.getViewport({ scale: S.scale });
+
+    // Instantly create lightweight placeholders for all pages
+    // Scrollbar and page navigation work immediately across all 700+ pages!
+    for (let p = 1; p <= S.totalPages; p++) {
+      const wrap = document.createElement('div');
+      wrap.className = 'pg-wrap';
+      wrap.dataset.page = p;
+      wrap.style.width = vp1.width + 'px';
+      wrap.style.height = vp1.height + 'px';
+      wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif;letter-spacing:.05em">Page ${p}</div>`;
+      scroll.appendChild(wrap);
+      S.pages[p] = { wrap, rendered: false, rendering: false, viewport: vp1, textItems: [] };
+    }
+
+    // IntersectionObserver renders pages as they scroll into view (with 800px pre-render margin)
+    _pageObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const pNum = parseInt(entry.target.dataset.page);
+        if (entry.isIntersecting) {
+          ensurePageRendered(pNum);
+        }
+      }
+    }, {
+      root: scroll,
+      rootMargin: '800px 0px 800px 0px',
+    });
+
+    for (let p = 1; p <= S.totalPages; p++) {
+      _pageObserver.observe(S.pages[p].wrap);
+    }
+
+    // Determine starting page (saved bookmark or page 1)
+    const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
+    const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
+
+    // Render starting page immediately
+    await ensurePageRendered(startPage);
 
     // Load annotations + drawings + bookmarks
     syncSpin('Loading annotations…');
     await dbLoadBookmarks(trueId);
     await dbLoadAnnotations(trueId);
     await dbLoadDrawings(trueId);
+
+    // Redraw on any already rendered page
     const { redrawAllAnnotations } = await import('./annotate.js');
     const { redrawAllDrawings }    = await import('./draw.js');
     redrawAllAnnotations();
@@ -154,10 +201,8 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
     // Track recent PDFs
     pushRecent(pdfFile);
 
-    // Jump to bookmarked page (or stay on page 1)
-    const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
-    if (savedStart) {
-      import('./ui.js').then(m => m.jumpToPage(parseInt(savedStart)));
+    if (startPage > 1) {
+      import('./ui.js').then(m => m.jumpToPage(startPage));
     }
 
     syncOK('Ready');
@@ -180,97 +225,172 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 // ── Re-render all pages (after zoom change) ──
 export async function reRenderAll() {
   if (!S.pdfDoc) return;
-  const scroll = document.getElementById('canvas-scroll');
-  scroll.innerHTML = '<div class="spin-w"><div class="spinner"></div>Re-rendering…</div>';
-  S.pages = {};
+  const p1 = await S.pdfDoc.getPage(1);
+  const vp1 = p1.getViewport({ scale: S.scale });
+
+  // Update sizes on all page wrappers
+  for (let p = 1; p <= S.totalPages; p++) {
+    const pg = S.pages[p];
+    if (pg?.wrap) {
+      pg.wrap.style.width = vp1.width + 'px';
+      pg.wrap.style.height = vp1.height + 'px';
+      if (pg.rendered) {
+        pg.rendered = false;
+        pg.wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif">Page ${p}</div>`;
+      }
+    }
+  }
+
   _boxDone.clear();
   _drawDone.clear();
   _textDone.clear();
+  _renderedPages.clear();
 
-  // Small delay so spinner renders
-  await new Promise(r => setTimeout(r, 30));
-  scroll.innerHTML = '';
-  for (let p = 1; p <= S.totalPages; p++) await renderPage(p, scroll);
-  const { redrawAllAnnotations } = await import('./annotate.js');
-  const { redrawAllDrawings }    = await import('./draw.js');
-  redrawAllAnnotations();
-  redrawAllDrawings();
+  // Re-render current page and visible pages
+  await ensurePageRendered(S.curPage);
 }
 
-// ── Render a single page ──
-export async function renderPage(pageNum, container, expectedId) {
-  const page = await S.pdfDoc.getPage(pageNum);
-  if (expectedId && S.curPDF?.id !== expectedId) return;
-  const vp   = page.getViewport({ scale: S.scale });
+// ── Render a single page on-demand ──
+export async function ensurePageRendered(pageNum) {
+  if (!S.pdfDoc || !S.pages[pageNum]) return;
+  const pgState = S.pages[pageNum];
+  if (pgState.rendered || pgState.rendering) return;
+  pgState.rendering = true;
 
-  const wrap = document.createElement('div');
-  wrap.className  = 'pg-wrap';
-  wrap.dataset.page = pageNum;
-  wrap.style.width  = vp.width  + 'px';
-  wrap.style.height = vp.height + 'px';
+  try {
+    const page = await S.pdfDoc.getPage(pageNum);
+    const vp = page.getViewport({ scale: S.scale });
+    pgState.viewport = vp;
 
-  const pdfCanvas  = document.createElement('canvas');
-  pdfCanvas.width  = vp.width;
-  pdfCanvas.height = vp.height;
+    const wrap = pgState.wrap;
+    wrap.style.width  = vp.width  + 'px';
+    wrap.style.height = vp.height + 'px';
+    wrap.innerHTML = ''; // remove placeholder
 
-  const drawCanvas  = document.createElement('canvas');
-  drawCanvas.width  = vp.width;
-  drawCanvas.height = vp.height;
-  drawCanvas.className   = 'draw-canvas';
-  drawCanvas.dataset.page = pageNum;
+    const pdfCanvas = document.createElement('canvas');
+    pdfCanvas.width  = vp.width;
+    pdfCanvas.height = vp.height;
 
-  const txtLayer = document.createElement('div');
-  txtLayer.className = 'txt-layer';
-  txtLayer.style.width  = vp.width  + 'px';
-  txtLayer.style.height = vp.height + 'px';
+    const drawCanvas = document.createElement('canvas');
+    drawCanvas.width  = vp.width;
+    drawCanvas.height = vp.height;
+    drawCanvas.className   = 'draw-canvas' + (S.mode === 'draw' ? ' active' : '');
+    drawCanvas.dataset.page = pageNum;
 
-  const annOv = document.createElement('div');
-  annOv.className       = 'ann-ov';
-  annOv.dataset.page    = pageNum;
-  annOv.style.width  = vp.width  + 'px';
-  annOv.style.height = vp.height + 'px';
+    const txtLayer = document.createElement('div');
+    txtLayer.className = 'txt-layer' + (S.mode === 'text' ? ' sel' : '');
+    txtLayer.style.width  = vp.width  + 'px';
+    txtLayer.style.height = vp.height + 'px';
 
-  const srchOv = document.createElement('div');
-  srchOv.className    = 'srch-ov';
-  srchOv.dataset.page = pageNum;
-  srchOv.style.width  = vp.width  + 'px';
-  srchOv.style.height = vp.height + 'px';
+    const annOv = document.createElement('div');
+    annOv.className       = 'ann-ov';
+    annOv.dataset.page    = pageNum;
+    annOv.style.width  = vp.width  + 'px';
+    annOv.style.height = vp.height + 'px';
 
-  wrap.append(pdfCanvas, annOv, srchOv, txtLayer, drawCanvas);
-  container.appendChild(wrap);
+    const srchOv = document.createElement('div');
+    srchOv.className    = 'srch-ov';
+    srchOv.dataset.page = pageNum;
+    srchOv.style.width  = vp.width  + 'px';
+    srchOv.style.height = vp.height + 'px';
 
-  // Render PDF page
-  await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
+    wrap.append(pdfCanvas, annOv, srchOv, txtLayer, drawCanvas);
 
-  // Build text items
-  const tc        = await page.getTextContent();
-  if (expectedId && S.curPDF?.id !== expectedId) return;
-  const textItems = [];
-  for (const item of tc.items) {
-    if (!item.str || !item.transform) continue;
-    const span = document.createElement('span');
-    const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
-    const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-    const angle = Math.atan2(tx[1], tx[0]);
-    span.textContent = item.str;
-    span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
-    if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
-    txtLayer.appendChild(span);
-    textItems.push({
-      str: item.str,
-      x: item.transform[4] * S.scale,
-      y: vp.height - item.transform[5] * S.scale,
-      w: (item.width  || 0) * S.scale,
-      h: (item.height || fh) * S.scale,
-    });
+    // Render PDF page canvas
+    await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
+
+    // Build text layer
+    const tc = await page.getTextContent();
+    const textItems = [];
+    for (const item of tc.items) {
+      if (!item.str || !item.transform) continue;
+      const span = document.createElement('span');
+      const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
+      const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+      const angle = Math.atan2(tx[1], tx[0]);
+      span.textContent = item.str;
+      span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
+      if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
+      txtLayer.appendChild(span);
+      textItems.push({
+        str: item.str,
+        x: item.transform[4] * S.scale,
+        y: vp.height - item.transform[5] * S.scale,
+        w: (item.width  || 0) * S.scale,
+        h: (item.height || fh) * S.scale,
+      });
+    }
+
+    pgState.pdfCanvas = pdfCanvas;
+    pgState.drawCanvas = drawCanvas;
+    pgState.txtLayer = txtLayer;
+    pgState.annOv = annOv;
+    pgState.srchOv = srchOv;
+    pgState.textItems = textItems;
+    pgState.rendered = true;
+
+    // Setup listeners & visuals
+    setupAllListeners(pageNum);
+    applyModeVisuals(pageNum);
+
+    // Redraw annotations on this page
+    const { drawAnnotation } = await import('./annotate.js');
+    for (const ann of S.annotations.filter(a => a.page === pageNum)) {
+      drawAnnotation(ann);
+    }
+
+    // Redraw drawings on this page
+    if (S.drawData[pageNum]) {
+      const { renderCanvas } = await import('./draw.js');
+      renderCanvas(drawCanvas, S.drawData[pageNum]);
+    }
+
+    // Redraw search highlights on this page
+    const { drawSearchHL } = await import('./search.js');
+    for (let i = 0; i < S.searchResults.length; i++) {
+      const res = S.searchResults[i];
+      if (res.page === pageNum) {
+        drawSearchHL(res, S.searchIdx === i);
+      }
+    }
+
+    _renderedPages.add(pageNum);
+
+    // Prune canvases if exceeding limit to prevent out-of-memory
+    if (_renderedPages.size > MAX_ACTIVE_CANVASES) {
+      unrenderFarthestPages(S.curPage);
+    }
+  } catch (err) {
+    console.error(`Failed to render page ${pageNum}:`, err);
+  } finally {
+    pgState.rendering = false;
   }
-
-  S.pages[pageNum] = { wrap, pdfCanvas, drawCanvas, txtLayer, annOv, srchOv, viewport: vp, textItems };
-
-  // Set up interaction listeners exactly once per page (fixes bug #3)
-  setupAllListeners(pageNum);
-  applyModeVisuals(pageNum);
 }
+
+// ── Unrender pages far from current viewport to save canvas memory ──
+function unrenderFarthestPages(centerPage) {
+  const sorted = Array.from(_renderedPages).sort((a, b) => Math.abs(b - centerPage) - Math.abs(a - centerPage));
+  while (sorted.length > MAX_ACTIVE_CANVASES) {
+    const p = sorted.shift();
+    _renderedPages.delete(p);
+    const pg = S.pages[p];
+    if (pg && pg.rendered) {
+      pg.rendered = false;
+      pg.wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif">Page ${p}</div>`;
+      pg.pdfCanvas = null;
+      pg.drawCanvas = null;
+      pg.txtLayer = null;
+      pg.annOv = null;
+      pg.srchOv = null;
+      _textDone.delete(p);
+      _boxDone.delete(p);
+      _drawDone.delete(p);
+    }
+  }
+}
+
+// Backward compatibility alias
+export const renderPage = ensurePageRendered;
 
 // ── Render a single page into an arbitrary container (for dual-view pane B) ──
 // Uses its own paneState object instead of global S so it doesn't clobber pane A.

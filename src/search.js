@@ -66,12 +66,45 @@ function runSearch() {
   else                      runAnnSearch(q);
 }
 
-// ── PDF text search — highlights exact substring (fixes bug #9) ──
-function runPDFSearch(q) {
-  S.searchResults = [];
+let _searchQueryId = 0;
 
-  for (const [pn, pg] of Object.entries(S.pages)) {
-    for (const item of pg.textItems) {
+// ── PDF text search — searches full PDF document on-demand ──
+async function runPDFSearch(q) {
+  const currentQueryId = ++_searchQueryId;
+  S.searchResults = [];
+  document.getElementById('search-count').textContent = 'Searching…';
+
+  if (!S.pdfDoc) return;
+
+  for (let pn = 1; pn <= S.totalPages; pn++) {
+    if (currentQueryId !== _searchQueryId) return; // cancelled by new search query
+
+    let textItems = S.pages[pn]?.textItems;
+    if (!textItems || !textItems.length) {
+      try {
+        const page = await S.pdfDoc.getPage(pn);
+        const vp = page.getViewport({ scale: S.scale });
+        const tc = await page.getTextContent();
+        textItems = [];
+        for (const item of tc.items) {
+          if (!item.str || !item.transform) continue;
+          const tx = pdfjsLib.Util.transform(vp.transform, item.transform);
+          const fh = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+          textItems.push({
+            str: item.str,
+            x: item.transform[4] * S.scale,
+            y: vp.height - item.transform[5] * S.scale,
+            w: (item.width || 0) * S.scale,
+            h: (item.height || fh) * S.scale,
+          });
+        }
+        if (S.pages[pn]) S.pages[pn].textItems = textItems;
+      } catch (err) {
+        continue;
+      }
+    }
+
+    for (const item of textItems) {
       const lower = item.str.toLowerCase();
       let start = 0;
       while (true) {
@@ -84,7 +117,7 @@ function runPDFSearch(q) {
         const matchW = q.length * charW;
 
         S.searchResults.push({
-          page: parseInt(pn),
+          page: pn,
           item,
           matchX,
           matchW,
@@ -97,20 +130,21 @@ function runPDFSearch(q) {
     }
   }
 
+  if (currentQueryId !== _searchQueryId) return;
+
   for (const res of S.searchResults) drawSearchHL(res, false);
   S.searchIdx = 0;
 
   if (S.searchResults.length) {
     highlightCurrentResult();
-    document.getElementById('search-count').textContent =
-      `${S.searchResults.length} result${S.searchResults.length === 1 ? '' : 's'}`;
   } else {
     document.getElementById('search-count').textContent = 'No results';
   }
 }
 
-function drawSearchHL(res, isCurrent) {
-  const pg = S.pages[res.page]; if (!pg) return;
+export function drawSearchHL(res, isCurrent) {
+  const pg = S.pages[res.page];
+  if (!pg || !pg.rendered || !pg.srchOv) return;
   const d  = document.createElement('div');
   d.className = 'srch-hi' + (isCurrent ? ' current' : '');
   // Use exact match sub-rect (not entire word box)
@@ -119,12 +153,15 @@ function drawSearchHL(res, isCurrent) {
   pg.srchOv.appendChild(d);
 }
 
-function highlightCurrentResult() {
+async function highlightCurrentResult() {
   document.querySelectorAll('.srch-hi').forEach(el => el.classList.remove('current'));
   const res = S.searchResults[S.searchIdx]; if (!res) return;
-  const el  = document.querySelector(`.srch-hi[data-sridx="${S.searchIdx}"]`);
+  
+  const { jumpToPage } = await import('./ui.js');
+  await jumpToPage(res.page);
+
+  const el = document.querySelector(`.srch-hi[data-sridx="${S.searchIdx}"]`);
   if (el) el.classList.add('current');
-  S.pages[res.page]?.wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
   document.getElementById('search-count').textContent = `${S.searchIdx + 1} / ${S.searchResults.length}`;
 }
 
@@ -159,8 +196,9 @@ function runAnnSearch(q) {
       `<div class="sar-ex">"${ann.highlighted_text.slice(0, 60)}${ann.highlighted_text.length > 60 ? '…' : ''}"</div>` +
       (noteMatch ? `<div class="sar-note">${stripHTML(noteMatch.note_html).slice(0, 70)}</div>` : '') +
       `<div class="sar-page">Page ${ann.page}</div>`;
-    item.addEventListener('click', () => {
-      S.pages[ann.page]?.wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.addEventListener('click', async () => {
+      const { jumpToPage } = await import('./ui.js');
+      await jumpToPage(ann.page);
       import('./annotate.js').then(({ openAnnPanel }) => setTimeout(() => openAnnPanel(ann), 300));
     });
     results.appendChild(item);

@@ -91,7 +91,9 @@ export function renderCanvas(canvas, strokes) {
 
 export function redrawAllDrawings() {
   for (const [pn, pg] of Object.entries(S.pages)) {
-    renderCanvas(pg.drawCanvas, S.drawData[parseInt(pn)] || []);
+    if (pg?.drawCanvas && pg.rendered) {
+      renderCanvas(pg.drawCanvas, S.drawData[parseInt(pn)] || []);
+    }
   }
 }
 

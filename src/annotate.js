@@ -40,7 +40,7 @@ export async function createAnnotation(pageNum, rects, text, mode_) {
 
 // ── Draw annotation overlay ──
 export function drawAnnotation(ann) {
-  const pg = S.pages[ann.page]; if (!pg) return;
+  const pg = S.pages[ann.page]; if (!pg || !pg.rendered || !pg.annOv) return;
   pg.annOv.querySelector(`[data-id="${ann.id}"]`)?.remove();
 
   const grp = document.createElement('div');

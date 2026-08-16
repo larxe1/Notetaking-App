@@ -110,34 +110,42 @@ export function initNavButtons() {
     const v = parseInt(this.value);
     if (v >= 1 && v <= S.totalPages) jumpToPage(v);
   });
-  document.getElementById('canvas-scroll').addEventListener('scroll', function () {
-    for (const [p, { wrap }] of Object.entries(S.pages)) {
-      const r = wrap.getBoundingClientRect();
-      if (r.top <= 200 && r.bottom > 200) {
-        const pg = parseInt(p);
-        if (pg !== S.curPage) {
+
+  let _scrollTimer = null;
+  const scrollEl = document.getElementById('canvas-scroll');
+  scrollEl.addEventListener('scroll', function () {
+    if (_scrollTimer) return;
+    _scrollTimer = setTimeout(() => {
+      _scrollTimer = null;
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const probeY = scrollRect.top + 150;
+      const probeX = scrollRect.left + scrollRect.width / 2;
+      const el = document.elementFromPoint(probeX, probeY);
+      const wrap = el?.closest('.pg-wrap');
+      if (wrap?.dataset.page) {
+        const pg = parseInt(wrap.dataset.page);
+        if (pg && pg !== S.curPage && pg >= 1 && pg <= S.totalPages) {
           S.curPage = pg;
           document.getElementById('pg-input').value = pg;
           if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
-          // Sync thumbnail strip active state
-          document.querySelectorAll('.thumb-item').forEach(el =>
-            el.classList.toggle('active', parseInt(el.dataset.page) === pg)
-          );
         }
-        break;
       }
-    }
+    }, 80);
   });
 }
 
-export function jumpToPage(pg) {
+export async function jumpToPage(pg) {
+  if (pg < 1 || pg > S.totalPages) return;
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
   if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
-  S.pages[pg]?.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  document.querySelectorAll('.thumb-item').forEach(el =>
-    el.classList.toggle('active', parseInt(el.dataset.page) === pg)
-  );
+  
+  const pageState = S.pages[pg];
+  if (pageState?.wrap) {
+    pageState.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const { ensurePageRendered } = await import('./viewer.js');
+    ensurePageRendered(pg);
+  }
 }
 
 // ── Keyboard shortcuts ──
