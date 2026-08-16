@@ -98,25 +98,29 @@ export function initZoom() {
   document.getElementById('btn-zout').addEventListener('click', () => changeZoom(-0.25));
 }
 
+let _scrollTimer = null;
+let _isJumping = false;
+
 // ── Page navigation ──
 export function initNavButtons() {
   document.getElementById('btn-prev').addEventListener('click', () => {
-    if (S.curPage > 1) jumpToPage(S.curPage - 1);
+    if (S.curPage > 1) jumpToPage(S.curPage - 1, true);
   });
   document.getElementById('btn-next').addEventListener('click', () => {
-    if (S.curPage < S.totalPages) jumpToPage(S.curPage + 1);
+    if (S.curPage < S.totalPages) jumpToPage(S.curPage + 1, true);
   });
   document.getElementById('pg-input').addEventListener('change', function () {
     const v = parseInt(this.value);
-    if (v >= 1 && v <= S.totalPages) jumpToPage(v);
+    if (v >= 1 && v <= S.totalPages) jumpToPage(v, false);
   });
 
-  let _scrollTimer = null;
   const scrollEl = document.getElementById('canvas-scroll');
   scrollEl.addEventListener('scroll', function () {
+    if (_isJumping) return;
     if (_scrollTimer) return;
     _scrollTimer = setTimeout(() => {
       _scrollTimer = null;
+      if (_isJumping) return;
       const scrollRect = scrollEl.getBoundingClientRect();
       const probeY = scrollRect.top + 150;
       const probeX = scrollRect.left + scrollRect.width / 2;
@@ -128,21 +132,45 @@ export function initNavButtons() {
           S.curPage = pg;
           document.getElementById('pg-input').value = pg;
           if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
+          document.querySelectorAll('.thumb-item').forEach(th =>
+            th.classList.toggle('active', parseInt(th.dataset.page) === pg)
+          );
         }
       }
     }, 80);
   });
 }
 
-export async function jumpToPage(pg) {
+export async function jumpToPage(pg, smooth = false) {
   if (pg < 1 || pg > S.totalPages) return;
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
   if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
+
+  document.querySelectorAll('.thumb-item').forEach(el =>
+    el.classList.toggle('active', parseInt(el.dataset.page) === pg)
+  );
   
   const pageState = S.pages[pg];
   if (pageState?.wrap) {
-    pageState.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const scrollEl = document.getElementById('canvas-scroll');
+    _isJumping = true;
+
+    // Use smooth scroll only if adjacent navigation (<= 3 pages).
+    // For large jumps (or auto-loading bookmark on page 1000), direct scrollTop is 100% reliable
+    // and prevents browser smooth-scroll distance timeouts at page ~700.
+    if (smooth && Math.abs(pg - S.curPage) <= 3) {
+      pageState.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      if (scrollEl) {
+        scrollEl.scrollTop = pageState.wrap.offsetTop;
+      } else {
+        pageState.wrap.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+    }
+
+    setTimeout(() => { _isJumping = false; }, 350);
+
     const { ensurePageRendered } = await import('./viewer.js');
     ensurePageRendered(pg);
   }
