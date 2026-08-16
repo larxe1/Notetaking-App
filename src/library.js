@@ -32,7 +32,7 @@ function showLibCtxMenu(pdf, x, y) {
   // Position menu, keeping it on-screen
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const mw = 190, mh = 80;
+  const mw = 200, mh = 125;
   menu.style.left = (x + mw > vw ? vw - mw - 4 : x) + 'px';
   menu.style.top  = (y + mh > vh ? vh - mh - 4 : y) + 'px';
 }
@@ -73,6 +73,22 @@ export function initContextMenu() {
     const { openPDFInPaneB } = await import('./dualview.js');
     openPDFInPaneB(pdf);
     closeSidebar();
+  });
+
+  // "Open in Google Drive" — opens file directly in Google Drive in new tab
+  document.getElementById('lib-ctx-gdrive')?.addEventListener('click', () => {
+    if (!_ctxTargetPdf) return;
+    const pdf = _ctxTargetPdf;
+    hideLibCtxMenu();
+
+    const driveId = pdf.drive_file_id || S.pdfs.find(p => p.id === pdf.linked_pdf_id)?.drive_file_id;
+    if (!driveId) {
+      toast('No Google Drive file linked to this PDF.');
+      return;
+    }
+
+    const driveUrl = `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/view`;
+    window.open(driveUrl, '_blank', 'noopener,noreferrer');
   });
 
   // Dismiss on outside click
