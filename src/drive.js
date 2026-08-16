@@ -52,6 +52,8 @@ function _requestToken(silent = false) {
   });
 }
 
+let _isAutoPrompting = false;
+
 // -- Schedule a silent token refresh ~50 mins from now --
 function _scheduleRefresh() {
   if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
@@ -60,10 +62,8 @@ function _scheduleRefresh() {
       await _requestToken(true); // silent
       await _verifyToken();      // confirm it actually works
     } catch {
-      // Silent refresh failed — Google session may have expired.
-      // Don't hard-sign-out: show a warning banner so the user can
-      // reconnect with one click. The health-check will keep trying.
-      showDriveWarning('Google Drive session could not be refreshed automatically. Click "Sign in again" to reconnect.');
+      // Silent refresh failed — automatically trigger account picker prompt
+      _onSessionExpired();
     }
   }, 50 * 60 * 1000); // 50 minutes
 }
@@ -106,8 +106,8 @@ async function _verifyToken() {
   }
 }
 
-// -- Called when we detect the Drive session is definitely dead --
-function _onSessionExpired() {
+// -- Called when we detect the Drive session is dead / needs login --
+export function _onSessionExpired() {
   _stopHealthCheck();
   if (_tokenRefreshTimer) { clearTimeout(_tokenRefreshTimer); _tokenRefreshTimer = null; }
   S.driveToken    = null;
@@ -118,7 +118,25 @@ function _onSessionExpired() {
   localStorage.removeItem('driveTokenExpiry');
   localStorage.removeItem('driveFolderId');
   updateDriveBar();
-  showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
+
+  // Automatically trigger the Google Account Picker prompt so user just clicks their email
+  if (!_isAutoPrompting && typeof google !== 'undefined' && google.accounts?.oauth2) {
+    _isAutoPrompting = true;
+    showDriveWarning('Google Drive session expired. Opening sign-in prompt...');
+    _requestToken(false)
+      .then(() => {
+        _isAutoPrompting = false;
+        hideDriveWarning();
+        toast('Google Drive reconnected!');
+      })
+      .catch(err => {
+        _isAutoPrompting = false;
+        console.warn('Auto-login prompt cancelled or blocked:', err);
+        showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
+      });
+  } else {
+    showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
+  }
 }
 
 // -- Show / hide the Drive warning banner --
@@ -266,7 +284,7 @@ export async function driveFetchPDF(drive_file_id) {
   if (S.pdfCache[drive_file_id]) return S.pdfCache[drive_file_id];
 
   if (!S.driveToken) {
-    showDriveWarning('Not signed in to Google Drive. Click "Sign in again" to reconnect.');
+    _onSessionExpired();
     throw new Error('Not signed in to Google Drive');
   }
   syncSpin('Downloading from Drive…');
