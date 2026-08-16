@@ -383,6 +383,26 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 /* Keyboard Help Modal */
 #mo-keys .modal-box { width: 460px; }
+
+/* Edit Note Modal - Resizable */
+#mo-edit-note .modal-box {
+  width: 480px;
+  min-width: 320px;
+  max-width: 92vw;
+  min-height: 280px;
+  max-height: 90vh;
+  resize: both;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+#mo-edit-note #edit-note-ed {
+  flex: 1;
+  min-height: 120px;
+  resize: vertical;
+  overflow-y: auto;
+}
+
 .key-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
 .key-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b0aaa0; }
 kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--gold); font-family: 'Inter', sans-serif; font-weight: 600; }
