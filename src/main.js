@@ -295,6 +295,22 @@ async function init() {
       if (lbl) {
         lbl.textContent = `${stats.count} PDF${stats.count === 1 ? '' : 's'} (${stats.formattedSize})`;
       }
+
+      const dirNameEl = document.getElementById('cache-dir-name');
+      const resetBtn = document.getElementById('btn-reset-folder');
+      const chooseBtn = document.getElementById('btn-choose-folder');
+
+      if (!stats.isCustomSupported && chooseBtn) {
+        chooseBtn.style.display = 'none';
+      }
+
+      if (stats.customDir) {
+        if (dirNameEl) dirNameEl.textContent = stats.customDir;
+        if (resetBtn) resetBtn.style.display = 'inline-block';
+      } else {
+        if (dirNameEl) dirNameEl.textContent = 'Default Browser Storage';
+        if (resetBtn) resetBtn.style.display = 'none';
+      }
     } catch {}
   }
 
@@ -310,6 +326,34 @@ async function init() {
     closeModal('mo-settings');
     openModal('mo-keys');
   });
+
+  // Custom Cache Folder Picker (File System Access API)
+  document.getElementById('btn-choose-folder')?.addEventListener('click', async () => {
+    try {
+      const { chooseCustomDirectory } = await import('./pdfcache.js');
+      const dirName = await chooseCustomDirectory();
+      if (dirName) {
+        await refreshCacheStats();
+        toast(`📁 Storage folder set to: ${dirName}`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast('Failed to set storage folder.');
+    }
+  });
+
+  // Reset to Default Sandbox Storage
+  document.getElementById('btn-reset-folder')?.addEventListener('click', async () => {
+    try {
+      const { resetToDefaultStorage } = await import('./pdfcache.js');
+      await resetToDefaultStorage();
+      await refreshCacheStats();
+      toast('Reset to default browser storage.');
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
   document.getElementById('btn-clear-cache')?.addEventListener('click', async () => {
     if (!confirm('Clear all offline-cached PDFs from this device? (Your annotations and cloud files in Google Drive will remain safe)')) return;
     try {

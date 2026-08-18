@@ -1,10 +1,12 @@
 // ═══════════════════════════════════════════════
-// PDF CACHE — Persistent IndexedDB Cache for PDFs
+// PDF CACHE — Persistent IndexedDB & Custom Folder Storage
+// Supports both Browser Sandboxed IndexedDB and Custom PC Folders (File System Access API)
 // ═══════════════════════════════════════════════
 
 const DB_NAME = 'LegalAnnotatorCache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'pdf_blobs';
+const CONFIG_STORE = 'fs_config';
 
 let _dbPromise = null;
 
@@ -19,6 +21,9 @@ function getDB() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(CONFIG_STORE)) {
+        db.createObjectStore(CONFIG_STORE, { keyPath: 'key' });
       }
     };
     request.onsuccess = (e) => resolve(e.target.result);
@@ -42,6 +47,140 @@ export async function requestPersistentStorage() {
     }
   }
   return false;
+}
+
+// ── Custom Directory Handle Management (File System Access API) ──
+async function getStoredDirHandle() {
+  try {
+    const db = await getDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(CONFIG_STORE, 'readonly');
+      const store = tx.objectStore(CONFIG_STORE);
+      const req = store.get('custom_dir_handle');
+      req.onsuccess = () => resolve(req.result ? req.result.handle : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function setStoredDirHandle(handle, name) {
+  try {
+    const db = await getDB();
+    if (!db) return;
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    const store = tx.objectStore(CONFIG_STORE);
+    store.put({ key: 'custom_dir_handle', handle, name, saved_at: Date.now() });
+  } catch (e) {
+    console.warn('[PDFCache] Failed to store custom directory handle:', e);
+  }
+}
+
+async function clearStoredDirHandle() {
+  try {
+    const db = await getDB();
+    if (!db) return;
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    const store = tx.objectStore(CONFIG_STORE);
+    store.delete('custom_dir_handle');
+  } catch (e) {
+    console.warn('[PDFCache] Failed to clear custom directory handle:', e);
+  }
+}
+
+async function verifyPermission(fileHandle, readWrite = false) {
+  if (!fileHandle) return false;
+  const options = { mode: readWrite ? 'readwrite' : 'read' };
+  try {
+    if ((await fileHandle.queryPermission(options)) === 'granted') return true;
+    if ((await fileHandle.requestPermission(options)) === 'granted') return true;
+  } catch (e) {
+    console.warn('[PDFCache] Permission verification failed:', e);
+  }
+  return false;
+}
+
+// ── User-Facing: Pick a Custom Storage Folder on PC ──
+export async function chooseCustomDirectory() {
+  if (!('showDirectoryPicker' in window)) {
+    alert('Custom folder storage is not supported in this browser. Using default browser storage.');
+    return null;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({
+      id: 'legal_annotator_pdf_vault',
+      mode: 'readwrite',
+      startIn: 'documents'
+    });
+
+    const ok = await verifyPermission(handle, true);
+    if (!ok) {
+      alert('Permission to write to the selected folder was not granted.');
+      return null;
+    }
+
+    await setStoredDirHandle(handle, handle.name);
+    localStorage.setItem('custom_cache_dir_name', handle.name);
+
+    // Sync all currently cached PDFs into the new folder
+    await exportAllCachedToCustomDir(handle);
+
+    return handle.name;
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error('[PDFCache] Directory picker error:', e);
+    }
+    return null;
+  }
+}
+
+// ── User-Facing: Reset back to Default Browser Sandbox ──
+export async function resetToDefaultStorage() {
+  await clearStoredDirHandle();
+  localStorage.removeItem('custom_cache_dir_name');
+}
+
+export function getCustomDirectoryName() {
+  return localStorage.getItem('custom_cache_dir_name') || null;
+}
+
+// ── Write binary to custom folder ──
+async function writeToCustomDir(dirHandle, fileId, buffer, filename) {
+  try {
+    const safeBaseName = (filename || fileId).replace(/[/\\?%*:|"<>]/g, '_').trim();
+    const finalName = safeBaseName.toLowerCase().endsWith('.pdf') ? safeBaseName : `${safeBaseName}.pdf`;
+    
+    const fileHandle = await dirHandle.getFileHandle(finalName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(buffer);
+    await writable.close();
+    console.log(`[PDFCache] Saved "${finalName}" directly to custom folder "${dirHandle.name}"`);
+  } catch (e) {
+    console.warn('[PDFCache] Could not write to custom directory handle:', e);
+  }
+}
+
+// Copy all IndexedDB cached PDFs to custom directory
+async function exportAllCachedToCustomDir(dirHandle) {
+  try {
+    const db = await getDB();
+    if (!db) return;
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.getAll();
+    req.onsuccess = async () => {
+      const items = req.result || [];
+      for (const item of items) {
+        if (item.buffer) {
+          await writeToCustomDir(dirHandle, item.id, item.buffer, item.name);
+        }
+      }
+    };
+  } catch (e) {
+    console.warn('[PDFCache] Export to custom dir failed:', e);
+  }
 }
 
 export async function isPDFCached(fileId) {
@@ -82,6 +221,8 @@ export async function setCachedPDF(fileId, buffer, name = '') {
   try {
     const db = await getDB();
     if (!db || !buffer) return;
+    
+    // 1. Always save in IndexedDB for fast random access
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     store.put({
@@ -91,6 +232,15 @@ export async function setCachedPDF(fileId, buffer, name = '') {
       buffer: buffer,
       saved_at: Date.now(),
     });
+
+    // 2. Also save to Custom PC Folder if configured
+    const dirHandle = await getStoredDirHandle();
+    if (dirHandle) {
+      const hasPerm = await verifyPermission(dirHandle, true);
+      if (hasPerm) {
+        await writeToCustomDir(dirHandle, fileId, buffer, name);
+      }
+    }
   } catch (err) {
     console.warn('[PDFCache] setCachedPDF failed', err);
   }
@@ -112,7 +262,12 @@ export async function deleteCachedPDF(fileId) {
 export async function getCacheStorageStats() {
   try {
     const db = await getDB();
-    if (!db) return { count: 0, totalBytes: 0, formattedSize: '0 MB' };
+    const customDir = getCustomDirectoryName();
+    const isCustomSupported = 'showDirectoryPicker' in window;
+
+    if (!db) {
+      return { count: 0, totalBytes: 0, formattedSize: '0 MB', customDir, isCustomSupported };
+    }
     return new Promise((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
@@ -127,14 +282,16 @@ export async function getCacheStorageStats() {
         resolve({
           count: items.length,
           totalBytes,
-          formattedSize: `${mb} MB`
+          formattedSize: `${mb} MB`,
+          customDir,
+          isCustomSupported
         });
       };
-      req.onerror = () => resolve({ count: 0, totalBytes: 0, formattedSize: '0 MB' });
+      req.onerror = () => resolve({ count: 0, totalBytes: 0, formattedSize: '0 MB', customDir, isCustomSupported });
     });
   } catch (e) {
     console.warn('[PDFCache] getCacheStorageStats failed', e);
-    return { count: 0, totalBytes: 0, formattedSize: '0 MB' };
+    return { count: 0, totalBytes: 0, formattedSize: '0 MB', customDir: null, isCustomSupported: false };
   }
 }
 

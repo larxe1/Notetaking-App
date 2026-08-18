@@ -757,8 +757,21 @@
           <div style="font-size:13px; font-weight:600; color:#e8e4db;">📱 Offline PDF Storage</div>
           <span id="cache-stats-lbl" style="font-size:10px; color:var(--gold); font-weight:500;">Calculating…</span>
         </div>
-        <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Opened PDFs are cached locally on your device for instant offline reading and annotation without Wi-Fi.</div>
-        <button class="btn-sec" id="btn-clear-cache" style="width:100%; padding:7px 10px; font-size:12px; color:var(--red);" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor=''">🗑 Clear Offline PDF Cache</button>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">Opened PDFs are cached locally on your device for instant offline reading and annotation without Wi-Fi.</div>
+        
+        <!-- Storage Folder Path Display -->
+        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--navy-b); border-radius:4px; padding:6px 8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:11px; color:#e8e4db; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" id="cache-dir-display">
+            📁 Location: <span style="color:var(--gold);" id="cache-dir-name">Default Browser Storage</span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:6px; margin-bottom:8px;" id="custom-folder-actions">
+          <button class="btn-sec" id="btn-choose-folder" style="flex:1; padding:6px 8px; font-size:11px;" title="Select a custom folder on your PC to store cached PDFs">📁 Choose Folder…</button>
+          <button class="btn-sec" id="btn-reset-folder" style="display:none; padding:6px 8px; font-size:11px;" title="Reset back to default browser sandbox">↩ Default</button>
+        </div>
+
+        <button class="btn-sec" id="btn-clear-cache" style="width:100%; padding:6px 8px; font-size:11px; color:var(--red);" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor=''">🗑 Clear Offline PDF Cache</button>
       </div>
 
       <!-- Keyboard Shortcuts -->
