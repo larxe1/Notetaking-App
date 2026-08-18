@@ -10,16 +10,16 @@
   "theme_color": "#0c1322",
   "icons": [
     {
+      "src": "remielle.gif",
+      "sizes": "192x192 512x512",
+      "type": "image/gif",
+      "purpose": "any"
+    },
+    {
       "src": "icon.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
-    },
-    {
-      "src": "thinking.gif",
-      "sizes": "192x192",
-      "type": "image/gif",
-      "purpose": "any"
     }
   ]
 }
