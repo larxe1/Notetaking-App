@@ -46,10 +46,24 @@ export function openModal(id)  { document.getElementById(id)?.classList.add('ope
 export function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
 export function closeOtherPanels(exceptId) {
-  const panels = ['notepad-panel', 'dict-panel', 'search-panel', 'ann-panel'];
-  panels.forEach(id => {
-    if (id !== exceptId) document.getElementById(id)?.classList.remove('open');
-  });
+  if (exceptId !== 'notepad-panel') {
+    import('./notepad.js').then(m => m.closeNotepad?.()).catch(() => {
+      document.getElementById('notepad-panel')?.classList.remove('open');
+    });
+  }
+  if (exceptId !== 'ann-panel') {
+    import('./annotate.js').then(m => m.closeAnnPanel?.()).catch(() => {
+      document.getElementById('ann-panel')?.classList.remove('open');
+    });
+  }
+  if (exceptId !== 'search-panel') {
+    import('./search.js').then(m => m.closeSearch?.()).catch(() => {
+      document.getElementById('search-panel')?.classList.remove('open');
+    });
+  }
+  if (exceptId !== 'dict-panel') {
+    document.getElementById('dict-panel')?.classList.remove('open');
+  }
 }
 
 // Wire all [data-close] buttons and backdrop clicks
