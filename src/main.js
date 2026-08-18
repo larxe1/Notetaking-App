@@ -2,7 +2,7 @@
 // MAIN — entry point, wires everything together
 // ═══════════════════════════════════════════════
 import { S }                  from './state.js';
-import { dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks } from './db.js';
 import { initDriveBar }       from './drive.js';
 import { renderLibrary, initLibraryModals, initLibrarySelection, initContextMenu } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
@@ -20,6 +20,7 @@ import { initDictionary } from './dictionary.js';
 import { initTableContextMenu } from './tablepicker.js';
 import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
+import { initOutbox } from './outbox.js';
 
 // Global Error Boundary to prevent tab-freezing crashes
 function setupGlobalErrorBoundary() {
@@ -106,6 +107,7 @@ async function init() {
   safeInit(initCalendar, 'Calendar');
   safeInit(initLinks, 'Links');
   safeInit(initRealtimeSync, 'RealtimeSync');
+  safeInit(() => initOutbox(db), 'OutboxSync');
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>

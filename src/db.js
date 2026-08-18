@@ -4,6 +4,7 @@
 import { S } from './state.js';
 import { driveDeleteFile } from './drive.js';
 import { broadcastSync } from './sync.js';
+import { safeDbWrite } from './outbox.js';
 
 // Inline sync helpers (avoids circular dep with ui.js)
 const _el = id => document.getElementById(id);
@@ -112,15 +113,14 @@ export async function dbLoadAnnCounts() {
 // ── Subjects ──
 export async function dbCreateSubject(name, hex_color) {
   const id = 'subj_' + Date.now();
-  const { error } = await db.from('subjects').insert({ id, name, hex_color });
-  if (error) throw error;
+  await safeDbWrite(db, 'subjects', 'upsert', { id, name, hex_color });
   S.subjects.push({ id, name, hex_color });
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
 
 export async function dbRenameSubject(id, name) {
-  await db.from('subjects').update({ name }).eq('id', id);
+  await safeDbWrite(db, 'subjects', 'upsert', { id, name });
   const subj = S.subjects.find(s => s.id === id);
   if (subj) subj.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -138,11 +138,11 @@ export async function dbDelSubject(id) {
     const { data: anns } = await db.from('annotations').select('id').in('pdf_file_id', pids);
     const annIds = (anns || []).map(a => a.id);
     if (annIds.length) {
-      await db.from('annotation_notes').delete().in('annotation_id', annIds);
-      await db.from('annotations').delete().in('id', annIds);
+      await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: annIds });
+      await safeDbWrite(db, 'annotations', 'delete', null, { id: annIds });
     }
-    await db.from('drawings').delete().in('pdf_file_id', pids);
-    await db.from('pdf_files').delete().in('id', pids);
+    await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: pids });
+    await safeDbWrite(db, 'pdf_files', 'delete', null, { id: pids });
     
     // Also remove from Google Drive
     for (const p of pdfsToDelete) {
@@ -151,8 +151,10 @@ export async function dbDelSubject(id) {
       }
     }
   }
-  if (fids.length) await db.from('folders').delete().in('id', fids);
-  await db.from('subjects').delete().eq('id', id);
+  if (fids.length) {
+    for (const fid of fids) await safeDbWrite(db, 'folders', 'delete', null, { id: fid });
+  }
+  await safeDbWrite(db, 'subjects', 'delete', null, { id });
 
   S.pdfs     = S.pdfs.filter(p => !pids.includes(p.id));
   S.folders  = S.folders.filter(f => f.subject_id !== id);
@@ -170,29 +172,28 @@ export async function dbCreateFolder(subject_id, name, folder_type, parent_folde
   const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
   const sort_order = Math.max(m1, m2) + 1;
 
-  const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
-  if (error) throw error;
+  await safeDbWrite(db, 'folders', 'upsert', { id, subject_id, name, folder_type, sort_order, parent_folder_id });
   S.folders.push({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
 
 export async function dbRenameFolder(id, name) {
-  await db.from('folders').update({ name }).eq('id', id);
+  await safeDbWrite(db, 'folders', 'upsert', { id, name });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbReorderFolder(id, sort_order) {
-  await db.from('folders').update({ sort_order }).eq('id', id);
+  await safeDbWrite(db, 'folders', 'upsert', { id, sort_order });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.sort_order = sort_order;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbUpdateFolderNotes(id, notes) {
-  await db.from('folders').update({ notes }).eq('id', id);
+  await safeDbWrite(db, 'folders', 'upsert', { id, notes });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.notes = notes;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -246,31 +247,29 @@ export async function dbRegisterPDF(folder_id, name, drive_file_id, linked_pdf_i
   const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
   const sort_order = Math.max(m1, m2) + 1;
 
-  // storage_path kept as empty string for backward compat with old schema
-  const { error } = await db.from('pdf_files').insert({ id, folder_id, name, drive_file_id, linked_pdf_id, storage_path: '', sort_order });
-  if (error) throw error;
-  const rec = { id, folder_id, name, drive_file_id, linked_pdf_id, sort_order };
+  const rec = { id, folder_id, name, drive_file_id, linked_pdf_id, storage_path: '', sort_order };
+  await safeDbWrite(db, 'pdf_files', 'upsert', rec);
   S.pdfs.push(rec);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return rec;
 }
 
 export async function dbRenamePDF(id, name) {
-  await db.from('pdf_files').update({ name }).eq('id', id);
+  await safeDbWrite(db, 'pdf_files', 'upsert', { id, name });
   const pdf = S.pdfs.find(p => p.id === id);
   if (pdf) pdf.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMovePDF(id, folder_id) {
-  await db.from('pdf_files').update({ folder_id }).eq('id', id);
+  await safeDbWrite(db, 'pdf_files', 'upsert', { id, folder_id });
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.folder_id = folder_id;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMoveFolder(id, parent_folder_id, subject_id) {
-  await db.from('folders').update({ parent_folder_id, subject_id }).eq('id', id);
+  await safeDbWrite(db, 'folders', 'upsert', { id, parent_folder_id, subject_id });
   const f = S.folders.find(x => x.id === id);
   if (f) {
     f.parent_folder_id = parent_folder_id;
@@ -280,7 +279,7 @@ export async function dbMoveFolder(id, parent_folder_id, subject_id) {
 }
 
 export async function dbReorderPDF(id, sort_order) {
-  await db.from('pdf_files').update({ sort_order }).eq('id', id);
+  await safeDbWrite(db, 'pdf_files', 'upsert', { id, sort_order });
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.sort_order = sort_order;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -291,11 +290,11 @@ export async function dbDelPDF(id) {
   const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', id);
   const annIds = (anns || []).map(a => a.id);
   if (annIds.length) {
-    await db.from('annotation_notes').delete().in('annotation_id', annIds);
-    await db.from('annotations').delete().in('id', annIds);
+    await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: annIds });
+    await safeDbWrite(db, 'annotations', 'delete', null, { id: annIds });
   }
-  await db.from('drawings').delete().eq('pdf_file_id', id);
-  await db.from('pdf_files').delete().eq('id', id);
+  await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: id });
+  await safeDbWrite(db, 'pdf_files', 'delete', null, { id });
   // Also remove from memory any shortcuts that point to this PDF
   S.pdfs = S.pdfs.filter(p => p.id !== id && p.linked_pdf_id !== id);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -331,7 +330,7 @@ export async function dbLoadAnnotations(pfid) {
 }
 
 export async function dbCreateAnnotation(ann) {
-  const { error } = await db.from('annotations').insert({
+  const annRec = {
     id: ann.id,
     pdf_file_id: ann.pdf_file_id,
     page: ann.page,
@@ -339,21 +338,24 @@ export async function dbCreateAnnotation(ann) {
     highlighted_text: ann.highlighted_text,
     hex_color: ann.hex_color,
     highlight_mode: ann.highlight_mode,
-  });
-  if (error) throw error;
+  };
+  await safeDbWrite(db, 'annotations', 'upsert', annRec);
+  try { localStorage.setItem('local_anns_' + ann.pdf_file_id, JSON.stringify(S.annotations)); } catch {}
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: ann.pdf_file_id });
 }
 
 export async function dbUpdateAnnColor(id, hex_color) {
-  await db.from('annotations').update({ hex_color }).eq('id', id);
+  await safeDbWrite(db, 'annotations', 'upsert', { id, hex_color });
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 export async function dbDelAnnotation(id) {
-  const { data: notes } = await db.from('annotation_notes').select('id').eq('annotation_id', id);
-  if (notes?.length) await db.from('annotation_notes').delete().eq('annotation_id', id);
-  await db.from('annotations').delete().eq('id', id);
+  await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: id });
+  await safeDbWrite(db, 'annotations', 'delete', null, { id });
   S.annotations = S.annotations.filter(a => a.id !== id);
+  if (S.currentPdfId) {
+    try { localStorage.setItem('local_anns_' + S.currentPdfId, JSON.stringify(S.annotations)); } catch {}
+  }
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
@@ -374,37 +376,40 @@ export async function dbLoadBookmarks(pfid) {
 
 export async function dbCreateBookmark(pfid, page, title) {
   const id = 'bm_' + Date.now();
-  const { error } = await db.from('pdf_bookmarks').insert({ id, pdf_file_id: pfid, page, title });
-  if (error) throw error;
   const bm = { id, pdf_file_id: pfid, page, title };
+  await safeDbWrite(db, 'pdf_bookmarks', 'upsert', bm);
   S.bookmarks.push(bm);
   S.bookmarks.sort((a, b) => a.page - b.page);
+  try { localStorage.setItem('local_bms_' + pfid, JSON.stringify(S.bookmarks)); } catch {}
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
   return bm;
 }
 
 export async function dbDelBookmark(id) {
-  await db.from('pdf_bookmarks').delete().eq('id', id);
+  await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { id });
   S.bookmarks = S.bookmarks.filter(b => b.id !== id);
+  if (S.currentPdfId) {
+    try { localStorage.setItem('local_bms_' + S.currentPdfId, JSON.stringify(S.bookmarks)); } catch {}
+  }
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 // ── Notes ──
 export async function dbCreateNote(annotation_id, note_html, order_index) {
   const id = 'note_' + Date.now();
-  const { error } = await db.from('annotation_notes').insert({ id, annotation_id, note_html, order_index });
-  if (error) throw error;
+  const noteRec = { id, annotation_id, note_html, order_index };
+  await safeDbWrite(db, 'annotation_notes', 'upsert', noteRec);
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
-  return { id, annotation_id, note_html, order_index };
+  return noteRec;
 }
 
 export async function dbUpdateNote(id, note_html) {
-  await db.from('annotation_notes').update({ note_html }).eq('id', id);
+  await safeDbWrite(db, 'annotation_notes', 'upsert', { id, note_html });
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 export async function dbDelNote(id) {
-  await db.from('annotation_notes').delete().eq('id', id);
+  await safeDbWrite(db, 'annotation_notes', 'delete', null, { id });
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
@@ -426,44 +431,47 @@ export async function dbLoadDrawings(pfid) {
 
 export async function dbSaveDrawings(pfid, page, strokes) {
   const id = `draw_${pfid}_${page}`;
-  await db.from('drawings').upsert({
+  const drawObj = {
     id, pdf_file_id: pfid, page, strokes,
     updated_at: new Date().toISOString(),
-  });
+  };
+  await safeDbWrite(db, 'drawings', 'upsert', drawObj);
+  try { localStorage.setItem('local_draws_' + pfid, JSON.stringify(S.drawData)); } catch {}
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
 }
 
 // ── Color Categories ──
 export async function dbCreateColorCat(name, hex_color) {
   const id = 'cc_' + Date.now();
-  await db.from('color_categories').insert({ id, name, hex_color });
   const cat = { id, name, hex_color };
+  await safeDbWrite(db, 'color_categories', 'upsert', cat);
   S.colorCats.push(cat);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return cat;
 }
 
 export async function dbDelColorCat(id) {
-  await db.from('color_categories').delete().eq('id', id);
+  await safeDbWrite(db, 'color_categories', 'delete', null, { id });
   S.colorCats = S.colorCats.filter(c => c.id !== id);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 // ── PDF Notepad ──
 export async function dbLoadNotepad(pdf_id) {
-  const { data, error } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
-  if (error) {
-    console.error('[PDF Notepad load error]', error);
+  try {
+    const { data, error } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+    if (error) throw error;
+    const content = data?.content || '';
+    try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
+    return content;
+  } catch {
+    return localStorage.getItem('local_notepad_' + pdf_id) || '';
   }
-  return data?.content || '';
 }
 
 export async function dbSaveNotepad(pdf_id, content) {
-  const { error } = await db.from('pdf_notes').upsert({ pdf_id, content }, { onConflict: 'pdf_id' });
-  if (error) {
-    console.error('[PDF Notepad save error]', error);
-    throw error;
-  }
+  await safeDbWrite(db, 'pdf_notes', 'upsert', { pdf_id, content });
+  try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
   broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content });
 }
 
@@ -472,39 +480,41 @@ export async function dbSaveNotepad(pdf_id, content) {
 // ───────────────────────────────────────────────
 export async function dbSearchDictionary(term) {
   if (!term || term.trim() === '') return [];
-  const { data, error } = await db.from('dictionary')
-    .select('*')
-    .ilike('word', `%${term}%`)
-    .not('word', 'like', '__sys_%')
-    .order('word', { ascending: true })
-    .limit(10);
-  
-  if (error) {
-    console.error('Dictionary search error:', error);
-    return [];
-  }
-  return data || [];
-}
-
-export async function dbSaveDictionary(word, definition) {
-  const { error } = await db.from('dictionary').upsert({ word, definition }, { onConflict: 'word' });
-  if (error) {
-    console.error('[Dictionary save error]', error);
-    throw error;
-  }
-}
-
-export async function dbLoadLinks() {
-  const { data, error } = await db.from('dictionary').select('definition').eq('word', '__sys_links').maybeSingle();
-  if (error || !data) return [];
   try {
-    return JSON.parse(data.definition) || [];
+    const { data, error } = await db.from('dictionary')
+      .select('*')
+      .ilike('word', `%${term}%`)
+      .not('word', 'like', '__sys_%')
+      .order('word', { ascending: true })
+      .limit(10);
+    if (error) throw error;
+    return data || [];
   } catch {
     return [];
   }
 }
 
+export async function dbSaveDictionary(word, definition) {
+  await safeDbWrite(db, 'dictionary', 'upsert', { word, definition });
+}
+
+export async function dbLoadLinks() {
+  try {
+    const { data, error } = await db.from('dictionary').select('definition').eq('word', '__sys_links').maybeSingle();
+    if (error || !data) return [];
+    const links = JSON.parse(data.definition) || [];
+    try { localStorage.setItem('local_sys_links', JSON.stringify(links)); } catch {}
+    return links;
+  } catch {
+    try {
+      return JSON.parse(localStorage.getItem('local_sys_links') || '[]');
+    } catch {
+      return [];
+    }
+  }
+}
+
 export async function dbSaveLinks(links) {
-  const { error } = await db.from('dictionary').upsert({ word: '__sys_links', definition: JSON.stringify(links) }, { onConflict: 'word' });
-  if (error) console.error('Failed to save links:', error);
+  await safeDbWrite(db, 'dictionary', 'upsert', { word: '__sys_links', definition: JSON.stringify(links) });
+  try { localStorage.setItem('local_sys_links', JSON.stringify(links)); } catch {}
 }
