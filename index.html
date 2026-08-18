@@ -767,6 +767,37 @@
 
 <!-- Wire help button (simple, no module needed) -->
 <script>
+  // Pre-flight reset: ensure all panels start closed on page load
+  document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel').forEach(function(el) {
+    el.classList.remove('open');
+  });
+
+  // Zero-dependency fallback close handlers (guaranteed to work even if JS modules fail)
+  var fallbackCloseMap = {
+    'ap-close': 'ann-panel',
+    'np-close': 'notepad-panel',
+    'dict-close': 'dict-panel',
+    'search-close-btn': 'search-panel'
+  };
+  Object.keys(fallbackCloseMap).forEach(function(btnId) {
+    var btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', function() {
+        var panel = document.getElementById(fallbackCloseMap[btnId]);
+        if (panel) panel.classList.remove('open');
+      });
+    }
+  });
+
+  // Fallback Escape listener
+  window.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel').forEach(function(el) {
+        el.classList.remove('open');
+      });
+    }
+  });
+
   document.getElementById('btn-help').addEventListener('click', () => {
     document.getElementById('mo-keys').classList.add('open');
   });

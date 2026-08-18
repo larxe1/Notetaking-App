@@ -21,61 +21,91 @@ import { initTableContextMenu } from './tablepicker.js';
 import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
 
-async function init() {
-  // Init Google Drive bar
-  initDriveBar();
+// Global Error Boundary to prevent tab-freezing crashes
+function setupGlobalErrorBoundary() {
+  let errorCount = 0;
+  window.addEventListener('error', (event) => {
+    console.error('[Global Crash Boundary caught error]', event.error || event.message);
+    errorCount++;
+    if (errorCount <= 3) {
+      document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel')
+        .forEach(el => el.classList.remove('open'));
+    }
+  });
 
-  // Load data from Supabase
+  window.addEventListener('unhandledrejection', (event) => {
+    console.warn('[Global Crash Boundary caught unhandled promise]', event.reason);
+  });
+}
+
+async function init() {
+  // 1. Setup crash boundary and pre-flight reset
+  setupGlobalErrorBoundary();
+  document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel')
+    .forEach(el => el.classList.remove('open'));
+
+  // 2. Init Google Drive bar (guarded)
+  try { initDriveBar(); } catch (e) { console.error('[Init] DriveBar error:', e); }
+
+  // 3. Load data from Supabase (guarded)
   try {
     await dbLoad();
     await dbLoadAnnCounts();
-  } catch {
-    // dbLoad already called syncErr — just stop init (fixes bug #12)
-    return;
+  } catch (err) {
+    console.error('[Init] Database load error:', err);
   }
 
-  // Render library
-  renderLibrary();
+  // 4. Render library (guarded)
+  try { renderLibrary(); } catch (e) { console.error('[Init] Library render error:', e); }
 
-  // Set initial active color from first category
-  if (S.colorCats.length) S.activeColor = S.colorCats[0].hex_color;
-  renderColorDots();
+  // 5. Active color (guarded)
+  try {
+    if (S.colorCats.length) S.activeColor = S.colorCats[0].hex_color;
+    renderColorDots();
+  } catch (e) { console.error('[Init] Colors render error:', e); }
 
-  // Wire all UI
-  initModals();
+  // 6. Wire all UI independently (a failure in one module never breaks the others)
+  const safeInit = (fn, name) => {
+    try { fn(); } catch (err) { console.error(`[Init] ${name} error:`, err); }
+  };
+
+  safeInit(initModals, 'Modals');
   
-  const welcomeHTML = document.getElementById('canvas-scroll').innerHTML;
+  const welcomeHTML = document.getElementById('canvas-scroll')?.innerHTML;
   document.getElementById('app-title')?.addEventListener('click', async () => {
     S.curPDF = null;
-    document.getElementById('canvas-scroll').innerHTML = welcomeHTML;
+    const scroll = document.getElementById('canvas-scroll');
+    if (scroll && welcomeHTML) scroll.innerHTML = welcomeHTML;
     
     // Reset view to Welcome (content-area visible, notepad/folder-doc hidden)
     document.getElementById('folder-doc-viewer').style.display = 'none';
     document.getElementById('notepad-panel').style.display = 'none';
     document.getElementById('content-area').style.display = 'flex';
 
-    const { updateActivePDF } = await import('./viewer.js');
-    updateActivePDF();
+    try {
+      const { updateActivePDF } = await import('./viewer.js');
+      updateActivePDF();
+    } catch {}
   });
 
-  initSidebar();
-  initLibraryModals();
-  initLibrarySelection();
-  initColors();
-  initAnnPanel();
-  initSearch();
-  initDrawControls();
-  initPinchZoom();
-  initZoom();
-  initNavButtons();
-  initNotepad();
-  initTableContextMenu();
-  initDictionary();
-  initDualView();
-  initContextMenu();
-  initCalendar();
-  initLinks();
-  initRealtimeSync();
+  safeInit(initSidebar, 'Sidebar');
+  safeInit(initLibraryModals, 'LibraryModals');
+  safeInit(initLibrarySelection, 'LibrarySelection');
+  safeInit(initColors, 'Colors');
+  safeInit(initAnnPanel, 'AnnPanel');
+  safeInit(initSearch, 'Search');
+  safeInit(initDrawControls, 'DrawControls');
+  safeInit(initPinchZoom, 'PinchZoom');
+  safeInit(initZoom, 'Zoom');
+  safeInit(initNavButtons, 'NavButtons');
+  safeInit(initNotepad, 'Notepad');
+  safeInit(initTableContextMenu, 'TableContextMenu');
+  safeInit(initDictionary, 'Dictionary');
+  safeInit(initDualView, 'DualView');
+  safeInit(initContextMenu, 'ContextMenu');
+  safeInit(initCalendar, 'Calendar');
+  safeInit(initLinks, 'Links');
+  safeInit(initRealtimeSync, 'RealtimeSync');
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
