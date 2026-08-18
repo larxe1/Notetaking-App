@@ -445,4 +445,63 @@ export function initAnnPanel() {
       }
     }
   });
+
+  initAnnPanelResizer();
+}
+
+function initAnnPanelResizer() {
+  const panel = document.getElementById('ann-panel');
+  const handle = document.getElementById('ap-resize-handle');
+  if (!handle || !panel) return;
+
+  // Restore saved width from localStorage
+  const savedWidth = localStorage.getItem('ann_panel_width');
+  if (savedWidth) {
+    const w = parseInt(savedWidth);
+    if (w >= 260 && w <= window.innerWidth * 0.85) {
+      panel.style.width = w + 'px';
+    }
+  }
+
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = panel.offsetWidth;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('resizing');
+    panel.style.transition = 'none'; // disable CSS transition while dragging for instant responsiveness
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!isResizing) return;
+    const deltaX = startX - e.clientX; // dragging left increases width
+    const minW = 260;
+    const maxW = Math.floor(window.innerWidth * 0.85);
+    const newWidth = Math.max(minW, Math.min(maxW, startWidth + deltaX));
+    panel.style.width = newWidth + 'px';
+  });
+
+  const stopResize = (e) => {
+    if (!isResizing) return;
+    isResizing = false;
+    handle.classList.remove('resizing');
+    panel.style.transition = '';
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try {
+      handle.releasePointerCapture(e.pointerId);
+    } catch {}
+    localStorage.setItem('ann_panel_width', panel.offsetWidth);
+  };
+
+  handle.addEventListener('pointerup', stopResize);
+  handle.addEventListener('pointercancel', stopResize);
 }
