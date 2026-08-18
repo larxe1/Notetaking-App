@@ -217,6 +217,9 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
       import('./ui.js').then(m => m.jumpToPage(startPage, false));
     }
 
+    // Start background full-document text indexing across all 1000+ pages
+    import('./search.js').then(m => m.indexAllPagesText(S.pdfDoc)).catch(() => {});
+
     syncOK('Ready');
   } catch (e) {
     if (retries > 0) {

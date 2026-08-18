@@ -172,7 +172,7 @@ export async function jumpToPage(pg, smooth = false) {
     setTimeout(() => { _isJumping = false; }, 350);
 
     const { ensurePageRendered } = await import('./viewer.js');
-    ensurePageRendered(pg);
+    await ensurePageRendered(pg);
   }
 }
 

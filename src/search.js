@@ -68,65 +68,116 @@ function runSearch() {
 
 let _searchQueryId = 0;
 
-// ── PDF text search — searches full PDF document on-demand ──
+export async function extractPageText(doc, pageNum) {
+  if (S.pages[pageNum]?.textItems?.length) return S.pages[pageNum].textItems;
+  try {
+    const page = await doc.getPage(pageNum);
+    const vp = page.getViewport({ scale: S.scale });
+    const tc = await page.getTextContent();
+    const textItems = [];
+    for (const item of tc.items) {
+      if (!item.str || !item.transform) continue;
+      const tx = pdfjsLib.Util.transform(vp.transform, item.transform);
+      const fh = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+      textItems.push({
+        str: item.str,
+        x: item.transform[4] * S.scale,
+        y: vp.height - item.transform[5] * S.scale,
+        w: (item.width || 0) * S.scale,
+        h: (item.height || fh) * S.scale,
+      });
+    }
+    if (S.pages[pageNum]) S.pages[pageNum].textItems = textItems;
+    return textItems;
+  } catch (err) {
+    return [];
+  }
+}
+
+// Background indexer for all pages when PDF opens
+export async function indexAllPagesText(doc) {
+  if (!doc || !S.totalPages) return;
+  const total = S.totalPages;
+  const BATCH_SIZE = 30;
+  for (let i = 1; i <= total; i += BATCH_SIZE) {
+    if (doc !== S.pdfDoc) return; // switched PDF
+    const batch = [];
+    for (let p = i; p < i + BATCH_SIZE && p <= total; p++) {
+      if (!S.pages[p]?.textItems?.length) {
+        batch.push(extractPageText(doc, p));
+      }
+    }
+    if (batch.length) {
+      await Promise.all(batch);
+    }
+    // Small yield to main thread so UI stays 100% responsive
+    await new Promise(r => setTimeout(r, 15));
+  }
+}
+
+// ── PDF text search — searches full PDF document concurrently across all pages ──
 async function runPDFSearch(q) {
   const currentQueryId = ++_searchQueryId;
   S.searchResults = [];
-  document.getElementById('search-count').textContent = 'Searching…';
+  const countEl = document.getElementById('search-count');
+  countEl.textContent = 'Searching…';
 
-  if (!S.pdfDoc) return;
+  if (!S.pdfDoc || !S.totalPages) return;
 
-  for (let pn = 1; pn <= S.totalPages; pn++) {
-    if (currentQueryId !== _searchQueryId) return; // cancelled by new search query
+  const doc = S.pdfDoc;
+  const total = S.totalPages;
+  const BATCH_SIZE = 35;
 
-    let textItems = S.pages[pn]?.textItems;
-    if (!textItems || !textItems.length) {
-      try {
-        const page = await S.pdfDoc.getPage(pn);
-        const vp = page.getViewport({ scale: S.scale });
-        const tc = await page.getTextContent();
-        textItems = [];
-        for (const item of tc.items) {
-          if (!item.str || !item.transform) continue;
-          const tx = pdfjsLib.Util.transform(vp.transform, item.transform);
-          const fh = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-          textItems.push({
-            str: item.str,
-            x: item.transform[4] * S.scale,
-            y: vp.height - item.transform[5] * S.scale,
-            w: (item.width || 0) * S.scale,
-            h: (item.height || fh) * S.scale,
+  for (let i = 1; i <= total; i += BATCH_SIZE) {
+    if (currentQueryId !== _searchQueryId) return; // Cancelled if new search started
+
+    const batchPages = [];
+    for (let p = i; p < i + BATCH_SIZE && p <= total; p++) {
+      batchPages.push(p);
+    }
+
+    // Extract text concurrently for all pages in this batch
+    const textItemsResults = await Promise.all(
+      batchPages.map(p => extractPageText(doc, p))
+    );
+
+    if (currentQueryId !== _searchQueryId) return;
+
+    // Search matches within this batch
+    for (let b = 0; b < batchPages.length; b++) {
+      const pn = batchPages[b];
+      const textItems = textItemsResults[b] || [];
+
+      for (const item of textItems) {
+        const lower = item.str.toLowerCase();
+        let start = 0;
+        while (true) {
+          const idx = lower.indexOf(q, start);
+          if (idx < 0) break;
+
+          // Calculate sub-rect for the matched portion only
+          const charW  = item.w / (item.str.length || 1);
+          const matchX = item.x + idx * charW;
+          const matchW = q.length * charW;
+
+          S.searchResults.push({
+            page: pn,
+            item,
+            matchX,
+            matchW,
+            matchY: item.y,
+            matchH: item.h,
+            q,
           });
+          start = idx + q.length;
         }
-        if (S.pages[pn]) S.pages[pn].textItems = textItems;
-      } catch (err) {
-        continue;
       }
     }
 
-    for (const item of textItems) {
-      const lower = item.str.toLowerCase();
-      let start = 0;
-      while (true) {
-        const idx = lower.indexOf(q, start);
-        if (idx < 0) break;
-
-        // Calculate sub-rect for the matched portion only
-        const charW  = item.w / (item.str.length || 1);
-        const matchX = item.x + idx * charW;
-        const matchW = q.length * charW;
-
-        S.searchResults.push({
-          page: pn,
-          item,
-          matchX,
-          matchW,
-          matchY: item.y,
-          matchH: item.h,
-          q,
-        });
-        start = idx + q.length;
-      }
+    // Show live progress on large PDFs
+    if (total > 50 && i + BATCH_SIZE <= total) {
+      const progress = Math.min(100, Math.round(((i + BATCH_SIZE) / total) * 100));
+      countEl.textContent = `Searching… ${progress}% (${S.searchResults.length} found)`;
     }
   }
 
@@ -138,16 +189,21 @@ async function runPDFSearch(q) {
   if (S.searchResults.length) {
     highlightCurrentResult();
   } else {
-    document.getElementById('search-count').textContent = 'No results';
+    countEl.textContent = 'No results';
   }
 }
 
 export function drawSearchHL(res, isCurrent) {
   const pg = S.pages[res.page];
   if (!pg || !pg.rendered || !pg.srchOv) return;
+  // Prevent duplicate highlights
+  const existing = pg.srchOv.querySelector(`.srch-hi[data-sridx="${S.searchResults.indexOf(res)}"]`);
+  if (existing) {
+    existing.classList.toggle('current', isCurrent);
+    return;
+  }
   const d  = document.createElement('div');
   d.className = 'srch-hi' + (isCurrent ? ' current' : '');
-  // Use exact match sub-rect (not entire word box)
   d.style.cssText = `left:${res.matchX}px;top:${res.matchY - res.matchH * .1}px;width:${res.matchW}px;height:${res.matchH * 1.2}px`;
   d.dataset.sridx = S.searchResults.indexOf(res);
   pg.srchOv.appendChild(d);
@@ -160,6 +216,7 @@ async function highlightCurrentResult() {
   const { jumpToPage } = await import('./ui.js');
   await jumpToPage(res.page);
 
+  drawSearchHL(res, true);
   const el = document.querySelector(`.srch-hi[data-sridx="${S.searchIdx}"]`);
   if (el) el.classList.add('current');
   document.getElementById('search-count').textContent = `${S.searchIdx + 1} / ${S.searchResults.length}`;
