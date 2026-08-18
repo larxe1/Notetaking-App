@@ -82,31 +82,20 @@ export function drawAnnotation(ann) {
   }
   grp.addEventListener('click', e => { e.stopPropagation(); openAnnPanel(ann); });
   grp.addEventListener('mouseenter', e => {
-    if (!ann.notes.length) return;
+    const genNotes = ann.notes.filter(n => getNoteType(n) === 'general');
+    if (!genNotes.length) return;
     
     let html = '';
-    const genNotes = ann.notes.filter(n => getNoteType(n) === 'general');
-    const caseNotes = ann.notes.filter(n => getNoteType(n) === 'case');
-
-    let count = 0;
-    for (const n of genNotes) {
-      if (count >= 3) break;
-      if (count > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
-      html += `<div style="font-size:10px; color:var(--muted); margin-bottom:2px">📝 Note:</div>` + getNoteBody(n);
-      count++;
-    }
-
-    for (const c of caseNotes) {
-      if (count >= 3) break;
-      if (count > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
-      html += `<div style="font-size:10px; color:var(--gold); font-weight:600; margin-bottom:2px">⚖️ Case Summary:</div>` + getNoteBody(c);
-      count++;
+    const toShow = Math.min(genNotes.length, 3);
+    for (let i = 0; i < toShow; i++) {
+      if (i > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
+      html += getNoteBody(genNotes[i]);
     }
     
-    if (ann.notes.length > 3) {
-      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">...and ${ann.notes.length - 3} more (click to view)</div>`;
-    } else if (ann.notes.length > 1) {
-      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">(click to view notes & cases)</div>`;
+    if (genNotes.length > 3) {
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">...and ${genNotes.length - 3} more notes (click to view)</div>`;
+    } else if (genNotes.length > 1) {
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">(click to manage notes)</div>`;
     }
     
     showTip(e, html);
