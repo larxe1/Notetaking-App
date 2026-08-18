@@ -500,6 +500,15 @@
     <div class="ap-colors" id="ap-colors">
       <div class="ap-colors-lbl">Highlight Color</div>
     </div>
+    <!-- Note Category Tabs -->
+    <div class="ap-tabs">
+      <button class="ap-tab active" data-aptab="general" id="aptab-general">
+        <span>📝 Notes</span> <span class="aptab-badge" id="badge-general">0</span>
+      </button>
+      <button class="ap-tab" data-aptab="case" id="aptab-case">
+        <span>⚖️ Case Summaries</span> <span class="aptab-badge" id="badge-case">0</span>
+      </button>
+    </div>
     <div id="ann-notes"></div>
     <div id="add-note-area">
       <div class="fmt-bar">
@@ -639,7 +648,7 @@
 <!-- Edit Note -->
 <div class="modal-ov" id="mo-edit-note">
   <div class="modal-box">
-    <h3>Edit Note</h3>
+    <h3 id="mo-edit-note-title">Edit Note</h3>
     <div class="fmt-bar">
       <button class="fmt-btn" data-cmd2="bold"><b>B</b></button>
       <button class="fmt-btn" data-cmd2="italic"><i>I</i></button>

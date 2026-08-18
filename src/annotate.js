@@ -38,6 +38,31 @@ export async function createAnnotation(pageNum, rects, text, mode_) {
   }
 }
 
+let activeNoteTab = 'general'; // 'general' | 'case'
+
+export function getNoteType(note) {
+  if (!note || !note.note_html) return 'general';
+  if (note.note_html.includes('data-note-type="case"') || note.note_html.includes("data-note-type='case'")) {
+    return 'case';
+  }
+  return 'general';
+}
+
+export function getNoteBody(note) {
+  if (!note || !note.note_html) return '';
+  const html = note.note_html;
+  const match = html.match(/^<div\s+data-note-type=["'](?:case|general)["'][^>]*>([\s\S]*)<\/div>$/i);
+  if (match) return match[1];
+  return html;
+}
+
+export function wrapNoteHtml(html, type) {
+  if (type === 'case') {
+    return `<div data-note-type="case">${html}</div>`;
+  }
+  return html;
+}
+
 // ── Draw annotation overlay ──
 export function drawAnnotation(ann) {
   const pg = S.pages[ann.page]; if (!pg || !pg.rendered || !pg.annOv) return;
@@ -60,16 +85,28 @@ export function drawAnnotation(ann) {
     if (!ann.notes.length) return;
     
     let html = '';
-    const toShow = Math.min(ann.notes.length, 3);
-    for (let i = 0; i < toShow; i++) {
-      if (i > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
-      html += ann.notes[i].note_html;
+    const genNotes = ann.notes.filter(n => getNoteType(n) === 'general');
+    const caseNotes = ann.notes.filter(n => getNoteType(n) === 'case');
+
+    let count = 0;
+    for (const n of genNotes) {
+      if (count >= 3) break;
+      if (count > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
+      html += `<div style="font-size:10px; color:var(--muted); margin-bottom:2px">📝 Note:</div>` + getNoteBody(n);
+      count++;
+    }
+
+    for (const c of caseNotes) {
+      if (count >= 3) break;
+      if (count > 0) html += '<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px;"></div>';
+      html += `<div style="font-size:10px; color:var(--gold); font-weight:600; margin-bottom:2px">⚖️ Case Summary:</div>` + getNoteBody(c);
+      count++;
     }
     
     if (ann.notes.length > 3) {
-      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">...and ${ann.notes.length - 3} more notes (click to view)</div>`;
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">...and ${ann.notes.length - 3} more (click to view)</div>`;
     } else if (ann.notes.length > 1) {
-      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">(click to manage notes)</div>`;
+      html += `<div style="border-top: 1px solid rgba(255,255,255,0.15); margin: 6px 0; padding-top: 6px; font-size: 0.9em; color: #b0aaa0; text-align: center; font-style: italic;">(click to view notes & cases)</div>`;
     }
     
     showTip(e, html);
@@ -162,17 +199,53 @@ function renderAnnColors() {
   }
 }
 
+function updateTabBadges(ann) {
+  if (!ann) return;
+  const genCount = ann.notes.filter(n => getNoteType(n) === 'general').length;
+  const caseCount = ann.notes.filter(n => getNoteType(n) === 'case').length;
+  const bgGen = document.getElementById('badge-general');
+  const bgCase = document.getElementById('badge-case');
+  if (bgGen) bgGen.textContent = genCount;
+  if (bgCase) bgCase.textContent = caseCount;
+}
+
+function updateEditorState() {
+  const ed = document.getElementById('note-editor');
+  const addBtn = document.getElementById('btn-add-note');
+  if (activeNoteTab === 'case') {
+    if (ed) ed.setAttribute('data-ph', 'Case Title / G.R. No. (e.g. Laurel v. Garcia), Ruling, Ratio…');
+    if (addBtn) addBtn.textContent = 'Add Case Summary';
+  } else {
+    if (ed) ed.setAttribute('data-ph', 'Add a note, doctrine, citation…');
+    if (addBtn) addBtn.textContent = 'Add Note';
+  }
+}
+
 function renderNotes(ann) {
   const list = document.getElementById('ann-notes');
   list.innerHTML = '';
-  if (!ann.notes.length) {
-    list.innerHTML = '<div class="note-empty">No notes yet — add one below.</div>';
+  updateTabBadges(ann);
+  updateEditorState();
+
+  const filtered = ann.notes.filter(n => getNoteType(n) === activeNoteTab);
+
+  if (!filtered.length) {
+    const emptyMsg = activeNoteTab === 'case'
+      ? 'No case summaries yet — add a case digest or ruling below.'
+      : 'No notes yet — add one below.';
+    list.innerHTML = `<div class="note-empty">${emptyMsg}</div>`;
     return;
   }
-  ann.notes.forEach((note, i) => {
+
+  filtered.forEach((note, i) => {
     const card = document.createElement('div');
-    card.className = 'note-card';
-    card.innerHTML = `<div class="note-num">Note ${i + 1}</div><div class="note-body">${note.note_html}</div><div class="note-actions"><button class="note-act-btn">✏ Edit</button><button class="note-act-btn del">🗑 Delete</button></div>`;
+    const isCase = activeNoteTab === 'case';
+    card.className = 'note-card' + (isCase ? ' case-card' : '');
+    
+    const cardTitle = isCase ? `⚖️ Case Summary ${i + 1}` : `📝 Note ${i + 1}`;
+    const cleanBody = getNoteBody(note);
+
+    card.innerHTML = `<div class="note-num">${cardTitle}</div><div class="note-body">${cleanBody}</div><div class="note-actions"><button class="note-act-btn">✏ Edit</button><button class="note-act-btn del">🗑 Delete</button></div>`;
     
     // Intercept PDF links
     card.querySelectorAll('[data-pdf-link]').forEach(link => {
@@ -190,19 +263,21 @@ function renderNotes(ann) {
 
     card.querySelector('.note-act-btn').addEventListener('click', () => {
       S.editingNoteId = note.id;
-      document.getElementById('edit-note-ed').innerHTML = note.note_html;
+      const modalTitle = document.getElementById('mo-edit-note-title');
+      if (modalTitle) modalTitle.textContent = isCase ? 'Edit Case Summary' : 'Edit Note';
+      document.getElementById('edit-note-ed').innerHTML = cleanBody;
       import('./ui.js').then(m => m.openModal('mo-edit-note'));
     });
+
     card.querySelector('.note-act-btn.del').addEventListener('click', async () => {
       autosave('saving');
       await dbDelNote(note.id);
       ann.notes = ann.notes.filter(n => n.id !== note.id);
-      const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id;
-      if (trueId) S.annCounts[trueId] = Math.max(0, (S.annCounts[trueId] || 1) - 0);
       renderNotes(ann);
       autosave('saved');
-      import('./ui.js').then(m => m.toast('Note deleted'));
+      import('./ui.js').then(m => m.toast(isCase ? 'Case summary deleted' : 'Note deleted'));
     });
+
     list.appendChild(card);
   });
 }
@@ -210,6 +285,16 @@ function renderNotes(ann) {
 // ── Wire annotation panel buttons ──
 export function initAnnPanel() {
   document.getElementById('ap-close').addEventListener('click', closeAnnPanel);
+
+  // Tab switching
+  document.querySelectorAll('.ap-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeNoteTab = btn.dataset.aptab;
+      document.querySelectorAll('.ap-tab').forEach(b => b.classList.toggle('active', b === btn));
+      if (S.selAnn) renderNotes(S.selAnn);
+      else updateEditorState();
+    });
+  });
 
   document.getElementById('btn-del-hi').addEventListener('click', async () => {
     if (!S.selAnn) return;
@@ -227,36 +312,39 @@ export function initAnnPanel() {
     toast('Highlight deleted');
   });
 
-  // Add note — with empty-editor shake (fixes bug #5)
+  // Add note / Case summary — with empty-editor shake (fixes bug #5)
   document.getElementById('btn-add-note').addEventListener('click', async () => {
     const ed   = document.getElementById('note-editor');
-    const html = ed.innerHTML.trim();
-    if (!html || html === '<br>' || !S.selAnn) {
+    const rawHtml = ed.innerHTML.trim();
+    if (!rawHtml || rawHtml === '<br>' || !S.selAnn) {
       ed.classList.remove('shake');
       void ed.offsetWidth; // reflow to restart animation
       ed.classList.add('shake');
       return;
     }
+    const htmlToSave = wrapNoteHtml(rawHtml, activeNoteTab);
     autosave('saving');
-    const note = await dbCreateNote(S.selAnn.id, html, S.selAnn.notes.length);
+    const note = await dbCreateNote(S.selAnn.id, htmlToSave, S.selAnn.notes.length);
     S.selAnn.notes.push(note);
     ed.innerHTML = '';
     renderNotes(S.selAnn);
     autosave('saved');
-    toast('Note added');
+    toast(activeNoteTab === 'case' ? 'Case summary added' : 'Note added');
   });
 
-  // Save edited note
+  // Save edited note / Case summary
   document.getElementById('save-edit-note').addEventListener('click', async () => {
-    const html = document.getElementById('edit-note-ed').innerHTML.trim();
-    if (!html) return;
-    autosave('saving');
-    await dbUpdateNote(S.editingNoteId, html);
+    const rawHtml = document.getElementById('edit-note-ed').innerHTML.trim();
+    if (!rawHtml) return;
     const note = S.selAnn?.notes.find(n => n.id === S.editingNoteId);
-    if (note) { note.note_html = html; renderNotes(S.selAnn); }
+    const noteType = getNoteType(note);
+    const htmlToSave = wrapNoteHtml(rawHtml, noteType);
+    autosave('saving');
+    await dbUpdateNote(S.editingNoteId, htmlToSave);
+    if (note) { note.note_html = htmlToSave; renderNotes(S.selAnn); }
     closeModal('mo-edit-note');
     autosave('saved');
-    toast('Note updated');
+    toast(noteType === 'case' ? 'Case summary updated' : 'Note updated');
   });
 
   // Format buttons (add-note editor)

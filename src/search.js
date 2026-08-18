@@ -247,11 +247,13 @@ function runAnnSearch(q) {
   const sorted = [...matches].sort((a, b) => a.page - b.page);
   for (const ann of sorted) {
     const noteMatch = ann.notes.find(n => stripHTML(n.note_html).toLowerCase().includes(q));
+    const isCase = noteMatch?.note_html?.includes('data-note-type="case"');
     const item = document.createElement('div');
     item.className = 'sar-item';
+    const tag = noteMatch ? (isCase ? '<span style="color:var(--gold);font-size:10px;font-weight:600">⚖️ Case: </span>' : '<span style="color:var(--muted);font-size:10px">📝 Note: </span>') : '';
     item.innerHTML =
       `<div class="sar-ex">"${ann.highlighted_text.slice(0, 60)}${ann.highlighted_text.length > 60 ? '…' : ''}"</div>` +
-      (noteMatch ? `<div class="sar-note">${stripHTML(noteMatch.note_html).slice(0, 70)}</div>` : '') +
+      (noteMatch ? `<div class="sar-note">${tag}${stripHTML(noteMatch.note_html).slice(0, 70)}</div>` : '') +
       `<div class="sar-page">Page ${ann.page}</div>`;
     item.addEventListener('click', async () => {
       const { jumpToPage } = await import('./ui.js');
