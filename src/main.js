@@ -284,8 +284,17 @@ async function init() {
     }
   });
 
-  // Export button
-  document.getElementById('btn-export').addEventListener('click', exportAnnotations);
+  // Settings & Export buttons
+  document.getElementById('btn-settings')?.addEventListener('click', () => openModal('mo-settings'));
+  document.getElementById('btn-export-settings')?.addEventListener('click', () => {
+    closeModal('mo-settings');
+    exportAnnotations();
+  });
+  document.getElementById('btn-open-keys')?.addEventListener('click', () => {
+    closeModal('mo-settings');
+    openModal('mo-keys');
+  });
+  document.getElementById('btn-export')?.addEventListener('click', exportAnnotations);
 
   // Keyboard shortcuts (with deps injected)
   initKeyboard({
