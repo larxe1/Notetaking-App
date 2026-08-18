@@ -100,18 +100,89 @@ function insertTable(rows, cols, editorElement) {
 }
 
 // ───────────────────────────────────────────────
-// PASTE SANITIZER
+// PASTE SANITIZER & TABLE IMPORTER
 // ───────────────────────────────────────────────
+function parseTextToTable(text) {
+  if (!text) return null;
+  const lines = text.split(/\r?\n/).map(l => l.trimEnd()).filter(l => l.length > 0);
+  if (lines.length < 2) return null;
+
+  let rows = [];
+  const hasTabs = lines.some(l => l.includes('\t'));
+
+  if (hasTabs) {
+    rows = lines.map(l => l.split('\t').map(c => c.trim()));
+  } else {
+    // Check if lines have markdown | separators
+    const isMarkdownTable = lines.some(l => l.includes('|'));
+    if (isMarkdownTable) {
+      rows = lines
+        .filter(l => !l.match(/^[\s|:-]+$/)) // Skip markdown divider like |---|---|
+        .map(l => l.split('|').map(c => c.trim()).filter((c, idx, arr) => {
+          return (idx > 0 && idx < arr.length - 1) || (idx === 0 && c !== '') || (idx === arr.length - 1 && c !== '');
+        }));
+    } else {
+      // Check for 2+ consecutive spaces (standard PDF table column spacing)
+      const candidateRows = lines.map(l => l.split(/\s{2,}/).map(c => c.trim()));
+      const colCounts = candidateRows.map(r => r.length);
+      const isMultiCol = colCounts.length >= 2 && colCounts[0] >= 2 && colCounts.every(c => c === colCounts[0] || c === colCounts[0] - 1);
+      if (isMultiCol) {
+        rows = candidateRows;
+      }
+    }
+  }
+
+  // Must have at least 2 rows and 2 columns
+  if (rows.length >= 2 && rows[0].length >= 2) {
+    let html = `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;"><tbody>`;
+    for (let r = 0; r < rows.length; r++) {
+      html += `<tr>`;
+      for (let c = 0; c < rows[r].length; c++) {
+        const cellText = rows[r][c] || '';
+        const tag = r === 0 ? 'th' : 'td';
+        const style = r === 0
+          ? 'border:1px solid var(--navy-b); padding:8px; background:rgba(255,255,255,0.06); font-weight:bold;'
+          : 'border:1px solid var(--navy-b); padding:8px;';
+        html += `<${tag} style="${style}">${cellText ? cellText.replace(/\n/g, '<br>') : '<br>'}</${tag}>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table><br>`;
+    return html;
+  }
+  return null;
+}
+
 export function handlePaste(e) {
   const html = e.clipboardData.getData('text/html');
   const text = e.clipboardData.getData('text/plain');
   
-  if (!html) return; // Let browser handle pure plain text
+  // If plain text represents a tabular copy (TSV / multi-column from PDF)
+  if (!html && text) {
+    const tableHtml = parseTextToTable(text);
+    if (tableHtml) {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, tableHtml);
+      return;
+    }
+    return; // Allow native plain text paste
+  }
+  
+  if (!html) return;
   
   e.preventDefault();
   
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  
+  const hasHtmlTable = doc.querySelector('table');
+
+  if (!hasHtmlTable && text) {
+    const tableFromText = parseTextToTable(text);
+    if (tableFromText) {
+      document.execCommand('insertHTML', false, tableFromText);
+      return;
+    }
+  }
+
   function cleanNode(node) {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent;
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -126,14 +197,30 @@ export function handlePaste(e) {
       return `<${tag}>${inner}</${tag}>`;
     }
     
+    // Preserve tables
+    if (tag === 'table') {
+      return `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;">${inner}</table><br>`;
+    }
+    if (['tbody', 'thead', 'tfoot'].includes(tag)) {
+      return `<${tag}>${inner}</${tag}>`;
+    }
+    if (tag === 'tr') {
+      return `<tr>${inner}</tr>`;
+    }
+    if (tag === 'th') {
+      const colspan = node.getAttribute('colspan') ? ` colspan="${node.getAttribute('colspan')}"` : '';
+      const rowspan = node.getAttribute('rowspan') ? ` rowspan="${node.getAttribute('rowspan')}"` : '';
+      return `<th style="border:1px solid var(--navy-b); padding:8px; background:rgba(255,255,255,0.06); font-weight:bold;"${colspan}${rowspan}>${inner || '<br>'}</th>`;
+    }
+    if (tag === 'td') {
+      const colspan = node.getAttribute('colspan') ? ` colspan="${node.getAttribute('colspan')}"` : '';
+      const rowspan = node.getAttribute('rowspan') ? ` rowspan="${node.getAttribute('rowspan')}"` : '';
+      return `<td style="border:1px solid var(--navy-b); padding:8px;"${colspan}${rowspan}>${inner || '<br>'}</td>`;
+    }
+    
     // Convert block elements to line breaks
     if (['p', 'div', 'br', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
       return inner + '<br>';
-    }
-    
-    // For table cells, add a space instead of a mini-table
-    if (['td', 'th'].includes(tag)) {
-      return inner + ' ';
     }
     
     return inner;
