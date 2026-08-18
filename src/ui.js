@@ -182,18 +182,49 @@ export function initKeyboard(deps) {
   document.addEventListener('keydown', e => {
     const tag      = document.activeElement?.tagName;
     const editable = document.activeElement?.contentEditable === 'true';
-    if (tag === 'INPUT' || editable) return;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || editable) return;
 
-    if      (e.key === 't' || e.key === 'T') deps.setMode('text');
+    if (e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault();
+      const scrollEl = document.getElementById('canvas-scroll');
+      if (scrollEl) {
+        const amount = scrollEl.clientHeight * 0.85;
+        scrollEl.scrollBy({ top: e.key === 'PageDown' ? amount : -amount, behavior: 'smooth' });
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const scrollEl = document.getElementById('canvas-scroll');
+      if (scrollEl && document.activeElement !== scrollEl) {
+        e.preventDefault();
+        scrollEl.scrollBy({ top: e.key === 'ArrowDown' ? 80 : -80, behavior: 'smooth' });
+        return;
+      }
+    }
+
+    if (e.key === 't' || e.key === 'T') deps.setMode('text');
     else if (e.key === 'b' || e.key === 'B') deps.setMode('box');
     else if (e.key === 'd' || e.key === 'D') deps.setMode('draw');
     else if (e.key === '?') openModal('mo-keys');
-    else if (e.key === 'Escape') { deps.closeAnnPanel(); deps.closeSearch(); closeModal('mo-keys'); }
+    else if (e.key === 'Escape') {
+      deps.closeAnnPanel();
+      deps.closeSearch();
+      closeModal('mo-keys');
+      document.getElementById('notepad-panel')?.classList.remove('open');
+      document.getElementById('dict-panel')?.classList.remove('open');
+    }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); deps.openSearch(); }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && S.mode === 'draw') {
       document.getElementById('btn-undo').click();
     }
   });
+
+  // Automatically blur toolbar buttons on click to prevent keyboard accidental activations
+  document.querySelectorAll('.tb-btn').forEach(btn => {
+    btn.addEventListener('mouseup', () => btn.blur());
+  });
+
   document.getElementById('note-editor').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) document.getElementById('btn-add-note').click();
     if (e.key === 'Tab') {

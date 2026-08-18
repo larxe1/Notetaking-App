@@ -364,8 +364,7 @@ export async function dbDelColorCat(id) {
 export async function dbLoadNotepad(pdf_id) {
   const { data, error } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
   if (error) {
-    alert("Database Load Error in PDF Notepad:\n" + error.message);
-    console.error(error);
+    console.error('[PDF Notepad load error]', error);
   }
   return data?.content || '';
 }
@@ -373,7 +372,7 @@ export async function dbLoadNotepad(pdf_id) {
 export async function dbSaveNotepad(pdf_id, content) {
   const { error } = await db.from('pdf_notes').upsert({ pdf_id, content }, { onConflict: 'pdf_id' });
   if (error) {
-    alert("Database Error in PDF Notepad:\n" + error.message);
+    console.error('[PDF Notepad save error]', error);
     throw error;
   }
 }
@@ -400,7 +399,7 @@ export async function dbSearchDictionary(term) {
 export async function dbSaveDictionary(word, definition) {
   const { error } = await db.from('dictionary').upsert({ word, definition }, { onConflict: 'word' });
   if (error) {
-    alert("Database Error in Dictionary:\n" + error.message);
+    console.error('[Dictionary save error]', error);
     throw error;
   }
 }
