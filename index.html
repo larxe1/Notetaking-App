@@ -50,6 +50,7 @@
           <span id="app-title" style="cursor:pointer;transition:color .15s;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">Legal Annotator</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
+          <button id="btn-install-sidebar" title="Install App to Desktop" style="display:none;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;width:28px;height:28px;align-items:center;justify-content:center;cursor:pointer;font-size:13px;">📲</button>
           <button id="btn-settings" title="Settings & Tools" style="background:none;border:1px solid var(--navy-b);color:var(--muted);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--navy-b)';this.style.color='var(--muted)'">⚙️</button>
           <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
         </div>
@@ -724,6 +725,9 @@
       <button class="btn-sec" data-close="mo-settings" style="padding:4px 8px;">✕</button>
     </div>
 
+    <!-- PWA Install Button -->
+    <button class="btn-gold" id="btn-pwa-install" style="display:none; width:100%; padding:9px 12px; font-size:13px; font-weight:600; margin-bottom:12px; border-radius:6px; box-shadow:0 2px 8px rgba(212,175,55,0.25);">📲 Install as Desktop App</button>
+
     <div style="display:flex; flex-direction:column; gap:12px;">
       <!-- Data Backup & Cloud Backup -->
       <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
@@ -885,8 +889,39 @@
   <div class="ctx-item" id="lib-ctx-gdrive">☁ Open in Google Drive</div>
 </div>
 
-<!-- Service Worker Registration for PWA / Offline -->
+<!-- Service Worker Registration & PWA Install Prompter -->
 <script>
+  let _deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredPrompt = e;
+    const pwaBtn = document.getElementById('btn-pwa-install');
+    const sideBtn = document.getElementById('btn-install-sidebar');
+    if (pwaBtn) pwaBtn.style.display = 'block';
+    if (sideBtn) sideBtn.style.display = 'flex';
+  });
+
+  function triggerPWAInstall() {
+    if (_deferredPrompt) {
+      _deferredPrompt.prompt();
+      _deferredPrompt.userChoice.then((choice) => {
+        if (choice.outcome === 'accepted') {
+          console.log('[PWA] User accepted install prompt');
+          const pwaBtn = document.getElementById('btn-pwa-install');
+          const sideBtn = document.getElementById('btn-install-sidebar');
+          if (pwaBtn) pwaBtn.style.display = 'none';
+          if (sideBtn) sideBtn.style.display = 'none';
+        }
+        _deferredPrompt = null;
+      });
+    } else {
+      alert('To install Legal Annotator:\n\n1. In Chrome / Edge, look for the (⊕) or (📥) icon on the right side of your address bar.\n2. Or click the 3-dots menu (⋮ / ...) in your browser -> "Install Legal Annotator" (or "Apps" -> "Install this site as an app").');
+    }
+  }
+
+  document.getElementById('btn-pwa-install')?.addEventListener('click', triggerPWAInstall);
+  document.getElementById('btn-install-sidebar')?.addEventListener('click', triggerPWAInstall);
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').then(reg => {
