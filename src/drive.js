@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { toast, syncSpin, syncOK, syncErr } from './ui.js';
+import { getCachedPDF, setCachedPDF, deleteCachedPDF } from './pdfcache.js';
 
 const CLIENT_ID   = window.APP_CONFIG.GOOGLE_CLIENT_ID;
 const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
@@ -278,10 +279,18 @@ export async function driveUploadPDF(file, targetFolderId) {
   return data; // { id, name }
 }
 
-// ── Fetch PDF bytes from Drive (with cache) ──
+// ── Fetch PDF bytes from Drive (with RAM + IndexedDB disk cache) ──
 export async function driveFetchPDF(drive_file_id) {
-  // Cache by file ID (fix bug #4)
+  // 1. Check in-memory RAM cache (instant 0ms)
   if (S.pdfCache[drive_file_id]) return S.pdfCache[drive_file_id];
+
+  // 2. Check persistent IndexedDB disk cache (instant < 15ms without network)
+  const cachedBuf = await getCachedPDF(drive_file_id);
+  if (cachedBuf) {
+    S.pdfCache[drive_file_id] = cachedBuf;
+    syncOK('Loaded from Local Cache');
+    return cachedBuf;
+  }
 
   if (!S.driveToken) {
     _onSessionExpired();
@@ -303,12 +312,17 @@ export async function driveFetchPDF(drive_file_id) {
   }
   const buf = await resp.arrayBuffer();
   S.pdfCache[drive_file_id] = buf;
+  // Save to persistent IndexedDB disk cache in background
+  setCachedPDF(drive_file_id, buf);
   return buf;
 }
 
-// ── Delete file from Drive ──
+// ── Delete file from Drive + Local Cache ──
 export async function driveDeleteFile(drive_file_id) {
-  if (!S.driveToken || !drive_file_id) return;
+  if (!drive_file_id) return;
+  delete S.pdfCache[drive_file_id];
+  deleteCachedPDF(drive_file_id);
+  if (!S.driveToken) return;
   await fetch(`https://www.googleapis.com/drive/v3/files/${drive_file_id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${S.driveToken}` },

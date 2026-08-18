@@ -123,8 +123,16 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   const scroll = document.getElementById('canvas-scroll');
   scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
 
+  // Start PDF fetch and Supabase database queries in parallel
+  const pdfFetchPromise = driveFetchPDF(pdfFile.drive_file_id);
+  const dbDataPromise = Promise.all([
+    dbLoadBookmarks(trueId),
+    dbLoadAnnotations(trueId),
+    dbLoadDrawings(trueId),
+  ]);
+
   try {
-    const buf = await driveFetchPDF(pdfFile.drive_file_id);
+    const buf = await pdfFetchPromise;
 
     S.pdfDoc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
     S.totalPages = S.pdfDoc.numPages;
@@ -192,11 +200,8 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
     // Render starting page immediately
     await ensurePageRendered(startPage);
 
-    // Load annotations + drawings + bookmarks
-    syncSpin('Loading annotations…');
-    await dbLoadBookmarks(trueId);
-    await dbLoadAnnotations(trueId);
-    await dbLoadDrawings(trueId);
+    // Await parallel DB data queries
+    await dbDataPromise;
 
     // Redraw on any already rendered page
     const { redrawAllAnnotations } = await import('./annotate.js');
