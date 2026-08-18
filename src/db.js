@@ -16,7 +16,7 @@ const SURL = window.APP_CONFIG.SUPABASE_URL;
 const SKEY = window.APP_CONFIG.SUPABASE_KEY;
 export const db = supabase.createClient(SURL, SKEY);
 
-// ── Load all library data ──
+// ── Load all library data (with offline local snapshot restore) ──
 export async function dbLoad(retries = 3) {
   syncSpin(retries < 3 ? `Retrying load... (${3 - retries})` : 'Loading…');
   try {
@@ -51,12 +51,39 @@ export async function dbLoad(retries = 3) {
       }
     }
 
+    // Save snapshot to local disk for offline startup
+    try {
+      localStorage.setItem('local_lib_snapshot', JSON.stringify({
+        subjects: S.subjects,
+        folders: S.folders,
+        pdfs: S.pdfs,
+        colorCats: S.colorCats,
+        saved_at: Date.now()
+      }));
+    } catch {}
+
     syncOK('DB Sync Active');
   } catch (e) {
     if (retries > 0) {
       await new Promise(r => setTimeout(r, 1500));
       return dbLoad(retries - 1);
     }
+
+    // Fallback: Restore from local snapshot if device is offline
+    const snapStr = localStorage.getItem('local_lib_snapshot');
+    if (snapStr) {
+      try {
+        const snap = JSON.parse(snapStr);
+        S.subjects   = snap.subjects  || [];
+        S.folders    = snap.folders   || [];
+        S.pdfs       = snap.pdfs      || [];
+        S.colorCats  = snap.colorCats || [];
+        syncOK('Offline Mode (Local Cache)');
+        console.log('[DB] Restored library from local offline snapshot');
+        return;
+      } catch {}
+    }
+
     syncErr('Connection failed');
     throw e; // re-throw so init() can handle it (Bug #12 fix)
   }
@@ -64,13 +91,21 @@ export async function dbLoad(retries = 3) {
 
 // ── Annotation counts (for badges) ──
 export async function dbLoadAnnCounts() {
-  const { data } = await db
-    .from('annotations')
-    .select('pdf_file_id');
-  if (!data) return;
-  S.annCounts = {};
-  for (const row of data) {
-    S.annCounts[row.pdf_file_id] = (S.annCounts[row.pdf_file_id] || 0) + 1;
+  try {
+    const { data } = await db
+      .from('annotations')
+      .select('pdf_file_id');
+    if (data) {
+      S.annCounts = {};
+      for (const row of data) {
+        S.annCounts[row.pdf_file_id] = (S.annCounts[row.pdf_file_id] || 0) + 1;
+      }
+      try { localStorage.setItem('local_ann_counts', JSON.stringify(S.annCounts)); } catch {}
+    }
+  } catch {
+    try {
+      S.annCounts = JSON.parse(localStorage.getItem('local_ann_counts') || '{}');
+    } catch {}
   }
 }
 
@@ -268,21 +303,31 @@ export async function dbDelPDF(id) {
 
 // ── Annotations ──
 export async function dbLoadAnnotations(pfid) {
-  const { data: anns } = await db
-    .from('annotations').select('*')
-    .eq('pdf_file_id', pfid).order('created_at');
-  const ids = (anns || []).map(a => a.id);
-  let notes = [];
-  if (ids.length) {
-    const { data: nd } = await db
-      .from('annotation_notes').select('*')
-      .in('annotation_id', ids).order('order_index');
-    notes = nd || [];
+  try {
+    const { data: anns } = await db
+      .from('annotations').select('*')
+      .eq('pdf_file_id', pfid).order('created_at');
+    const ids = (anns || []).map(a => a.id);
+    let notes = [];
+    if (ids.length) {
+      const { data: nd } = await db
+        .from('annotation_notes').select('*')
+        .in('annotation_id', ids).order('order_index');
+      notes = nd || [];
+    }
+    S.annotations = (anns || []).map(a => ({
+      ...a,
+      notes: notes.filter(n => n.annotation_id === a.id),
+    }));
+    try { localStorage.setItem('local_anns_' + pfid, JSON.stringify(S.annotations)); } catch {}
+  } catch {
+    try {
+      S.annotations = JSON.parse(localStorage.getItem('local_anns_' + pfid) || '[]');
+      console.log(`[DB] Restored annotations for ${pfid} from local cache`);
+    } catch {
+      S.annotations = [];
+    }
   }
-  S.annotations = (anns || []).map(a => ({
-    ...a,
-    notes: notes.filter(n => n.annotation_id === a.id),
-  }));
 }
 
 export async function dbCreateAnnotation(ann) {
@@ -314,8 +359,17 @@ export async function dbDelAnnotation(id) {
 
 // ── Custom Bookmarks (TOC) ──
 export async function dbLoadBookmarks(pfid) {
-  const { data } = await db.from('pdf_bookmarks').select('*').eq('pdf_file_id', pfid).order('page');
-  S.bookmarks = data || [];
+  try {
+    const { data } = await db.from('pdf_bookmarks').select('*').eq('pdf_file_id', pfid).order('page');
+    S.bookmarks = data || [];
+    try { localStorage.setItem('local_bms_' + pfid, JSON.stringify(S.bookmarks)); } catch {}
+  } catch {
+    try {
+      S.bookmarks = JSON.parse(localStorage.getItem('local_bms_' + pfid) || '[]');
+    } catch {
+      S.bookmarks = [];
+    }
+  }
 }
 
 export async function dbCreateBookmark(pfid, page, title) {
@@ -356,9 +410,18 @@ export async function dbDelNote(id) {
 
 // ── Drawings ──
 export async function dbLoadDrawings(pfid) {
-  const { data } = await db.from('drawings').select('*').eq('pdf_file_id', pfid);
-  S.drawData = {};
-  for (const d of data || []) S.drawData[d.page] = d.strokes || [];
+  try {
+    const { data } = await db.from('drawings').select('*').eq('pdf_file_id', pfid);
+    S.drawData = {};
+    for (const d of data || []) S.drawData[d.page] = d.strokes || [];
+    try { localStorage.setItem('local_draws_' + pfid, JSON.stringify(S.drawData)); } catch {}
+  } catch {
+    try {
+      S.drawData = JSON.parse(localStorage.getItem('local_draws_' + pfid) || '{}');
+    } catch {
+      S.drawData = {};
+    }
+  }
 }
 
 export async function dbSaveDrawings(pfid, page, strokes) {
