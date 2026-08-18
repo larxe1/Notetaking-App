@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { driveDeleteFile } from './drive.js';
+import { broadcastSync } from './sync.js';
 
 // Inline sync helpers (avoids circular dep with ui.js)
 const _el = id => document.getElementById(id);
@@ -79,6 +80,7 @@ export async function dbCreateSubject(name, hex_color) {
   const { error } = await db.from('subjects').insert({ id, name, hex_color });
   if (error) throw error;
   S.subjects.push({ id, name, hex_color });
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
 
@@ -86,6 +88,7 @@ export async function dbRenameSubject(id, name) {
   await db.from('subjects').update({ name }).eq('id', id);
   const subj = S.subjects.find(s => s.id === id);
   if (subj) subj.name = name;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbDelSubject(id) {
@@ -119,6 +122,7 @@ export async function dbDelSubject(id) {
   S.pdfs     = S.pdfs.filter(p => !pids.includes(p.id));
   S.folders  = S.folders.filter(f => f.subject_id !== id);
   S.subjects = S.subjects.filter(x => x.id !== id);
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 // ── Folders ──
@@ -134,6 +138,7 @@ export async function dbCreateFolder(subject_id, name, folder_type, parent_folde
   const { error } = await db.from('folders').insert({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
   if (error) throw error;
   S.folders.push({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
 
@@ -141,18 +146,21 @@ export async function dbRenameFolder(id, name) {
   await db.from('folders').update({ name }).eq('id', id);
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.name = name;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbReorderFolder(id, sort_order) {
   await db.from('folders').update({ sort_order }).eq('id', id);
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.sort_order = sort_order;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbUpdateFolderNotes(id, notes) {
   await db.from('folders').update({ notes }).eq('id', id);
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.notes = notes;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbDelFolder(id) {
@@ -188,6 +196,7 @@ export async function dbDelFolder(id) {
 
   S.pdfs    = S.pdfs.filter(p => !allFoldIds.includes(p.folder_id));
   S.folders = S.folders.filter(f => !allFoldIds.includes(f.id));
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 // ── PDFs (using Google Drive file ID instead of Supabase storage) ──
@@ -207,6 +216,7 @@ export async function dbRegisterPDF(folder_id, name, drive_file_id, linked_pdf_i
   if (error) throw error;
   const rec = { id, folder_id, name, drive_file_id, linked_pdf_id, sort_order };
   S.pdfs.push(rec);
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
   return rec;
 }
 
@@ -214,12 +224,14 @@ export async function dbRenamePDF(id, name) {
   await db.from('pdf_files').update({ name }).eq('id', id);
   const pdf = S.pdfs.find(p => p.id === id);
   if (pdf) pdf.name = name;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMovePDF(id, folder_id) {
   await db.from('pdf_files').update({ folder_id }).eq('id', id);
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.folder_id = folder_id;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMoveFolder(id, parent_folder_id, subject_id) {
@@ -229,12 +241,14 @@ export async function dbMoveFolder(id, parent_folder_id, subject_id) {
     f.parent_folder_id = parent_folder_id;
     f.subject_id = subject_id;
   }
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbReorderPDF(id, sort_order) {
   await db.from('pdf_files').update({ sort_order }).eq('id', id);
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.sort_order = sort_order;
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbDelPDF(id) {
@@ -249,6 +263,7 @@ export async function dbDelPDF(id) {
   await db.from('pdf_files').delete().eq('id', id);
   // Also remove from memory any shortcuts that point to this PDF
   S.pdfs = S.pdfs.filter(p => p.id !== id && p.linked_pdf_id !== id);
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 // ── Annotations ──
@@ -281,10 +296,12 @@ export async function dbCreateAnnotation(ann) {
     highlight_mode: ann.highlight_mode,
   });
   if (error) throw error;
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: ann.pdf_file_id });
 }
 
 export async function dbUpdateAnnColor(id, hex_color) {
   await db.from('annotations').update({ hex_color }).eq('id', id);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 export async function dbDelAnnotation(id) {
@@ -292,6 +309,7 @@ export async function dbDelAnnotation(id) {
   if (notes?.length) await db.from('annotation_notes').delete().eq('annotation_id', id);
   await db.from('annotations').delete().eq('id', id);
   S.annotations = S.annotations.filter(a => a.id !== id);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 // ── Custom Bookmarks (TOC) ──
@@ -307,12 +325,14 @@ export async function dbCreateBookmark(pfid, page, title) {
   const bm = { id, pdf_file_id: pfid, page, title };
   S.bookmarks.push(bm);
   S.bookmarks.sort((a, b) => a.page - b.page);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
   return bm;
 }
 
 export async function dbDelBookmark(id) {
   await db.from('pdf_bookmarks').delete().eq('id', id);
   S.bookmarks = S.bookmarks.filter(b => b.id !== id);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 // ── Notes ──
@@ -320,15 +340,18 @@ export async function dbCreateNote(annotation_id, note_html, order_index) {
   const id = 'note_' + Date.now();
   const { error } = await db.from('annotation_notes').insert({ id, annotation_id, note_html, order_index });
   if (error) throw error;
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
   return { id, annotation_id, note_html, order_index };
 }
 
 export async function dbUpdateNote(id, note_html) {
   await db.from('annotation_notes').update({ note_html }).eq('id', id);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 export async function dbDelNote(id) {
   await db.from('annotation_notes').delete().eq('id', id);
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
 // ── Drawings ──
@@ -344,6 +367,7 @@ export async function dbSaveDrawings(pfid, page, strokes) {
     id, pdf_file_id: pfid, page, strokes,
     updated_at: new Date().toISOString(),
   });
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
 }
 
 // ── Color Categories ──
@@ -352,12 +376,14 @@ export async function dbCreateColorCat(name, hex_color) {
   await db.from('color_categories').insert({ id, name, hex_color });
   const cat = { id, name, hex_color };
   S.colorCats.push(cat);
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
   return cat;
 }
 
 export async function dbDelColorCat(id) {
   await db.from('color_categories').delete().eq('id', id);
   S.colorCats = S.colorCats.filter(c => c.id !== id);
+  broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 // ── PDF Notepad ──
@@ -375,6 +401,7 @@ export async function dbSaveNotepad(pdf_id, content) {
     console.error('[PDF Notepad save error]', error);
     throw error;
   }
+  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content });
 }
 
 // ───────────────────────────────────────────────

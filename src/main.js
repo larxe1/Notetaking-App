@@ -19,6 +19,7 @@ import { initNotepad } from './notepad.js';
 import { initDictionary } from './dictionary.js';
 import { initTableContextMenu } from './tablepicker.js';
 import { initDualView } from './dualview.js';
+import { initRealtimeSync } from './sync.js';
 
 async function init() {
   // Init Google Drive bar
@@ -74,6 +75,7 @@ async function init() {
   initContextMenu();
   initCalendar();
   initLinks();
+  initRealtimeSync();
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
