@@ -91,6 +91,15 @@ export function initContextMenu() {
     window.open(driveUrl, '_blank', 'noopener,noreferrer');
   });
 
+  // "Save for Offline" — pre-cache PDF to IndexedDB
+  document.getElementById('lib-ctx-offline')?.addEventListener('click', async () => {
+    if (!_ctxTargetPdf) return;
+    const pdf = _ctxTargetPdf;
+    hideLibCtxMenu();
+    const { preCachePDF } = await import('./pdfcache.js');
+    await preCachePDF(pdf);
+  });
+
   // Dismiss on outside click
   document.addEventListener('mousedown', e => {
     if (!e.target.closest('#lib-ctx-menu')) hideLibCtxMenu();

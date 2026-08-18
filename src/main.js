@@ -284,8 +284,22 @@ async function init() {
     }
   });
 
-  // Settings & Export buttons
-  document.getElementById('btn-settings')?.addEventListener('click', () => openModal('mo-settings'));
+  // Settings & Storage Manager
+  async function refreshCacheStats() {
+    try {
+      const { getCacheStorageStats } = await import('./pdfcache.js');
+      const stats = await getCacheStorageStats();
+      const lbl = document.getElementById('cache-stats-lbl');
+      if (lbl) {
+        lbl.textContent = `${stats.count} PDF${stats.count === 1 ? '' : 's'} (${stats.formattedSize})`;
+      }
+    } catch {}
+  }
+
+  document.getElementById('btn-settings')?.addEventListener('click', () => {
+    openModal('mo-settings');
+    refreshCacheStats();
+  });
   document.getElementById('btn-export-settings')?.addEventListener('click', () => {
     closeModal('mo-settings');
     exportAnnotations();
@@ -294,7 +308,23 @@ async function init() {
     closeModal('mo-settings');
     openModal('mo-keys');
   });
+  document.getElementById('btn-clear-cache')?.addEventListener('click', async () => {
+    if (!confirm('Clear all offline-cached PDFs from this device? (Your annotations and cloud files in Google Drive will remain safe)')) return;
+    try {
+      const { clearAllCachedPDFs } = await import('./pdfcache.js');
+      await clearAllCachedPDFs();
+      S.pdfCache = {};
+      await refreshCacheStats();
+      toast('Offline PDF cache cleared.');
+    } catch (e) {
+      console.error(e);
+      toast('Failed to clear cache.');
+    }
+  });
   document.getElementById('btn-export')?.addEventListener('click', exportAnnotations);
+
+  // Request persistent storage in background so OS never purges our PDF cache
+  import('./pdfcache.js').then(m => m.requestPersistentStorage?.()).catch(()=>{});
 
   // Keyboard shortcuts (with deps injected)
   initKeyboard({

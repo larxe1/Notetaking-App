@@ -6,6 +6,11 @@
 <title>Legal Annotator</title>
 <meta name="description" content="Cloud-synced PDF annotation tool for law students — highlight, draw, and annotate PDFs with notes. Synced across all devices.">
 <link rel="icon" type="image/gif" href="thinking.gif">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0c1322">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="thinking.gif">
 
 <!-- Google Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -740,6 +745,16 @@
         <button class="btn-sec" id="btn-export-settings" style="width:100%; padding:7px 10px; font-size:12px;">Export to Markdown</button>
       </div>
 
+      <!-- Offline PDF Storage Manager -->
+      <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:13px; font-weight:600; color:#e8e4db;">📱 Offline PDF Storage</div>
+          <span id="cache-stats-lbl" style="font-size:10px; color:var(--gold); font-weight:500;">Calculating…</span>
+        </div>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Opened PDFs are cached locally on your device for instant offline reading and annotation without Wi-Fi.</div>
+        <button class="btn-sec" id="btn-clear-cache" style="width:100%; padding:7px 10px; font-size:12px; color:var(--red);" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor=''">🗑 Clear Offline PDF Cache</button>
+      </div>
+
       <!-- Keyboard Shortcuts -->
       <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
         <div style="font-size:13px; font-weight:600; color:#e8e4db; margin-bottom:4px;">⌨️ Keyboard Shortcuts</div>
@@ -865,9 +880,23 @@
 <div id="lib-ctx-menu">
   <div class="ctx-item" id="lib-ctx-open">📖 Open</div>
   <div class="ctx-item" id="lib-ctx-reference">📑 Open as Reference</div>
+  <div class="ctx-item" id="lib-ctx-offline">💾 Save for Offline</div>
   <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
   <div class="ctx-item" id="lib-ctx-gdrive">☁ Open in Google Drive</div>
 </div>
+
+<!-- Service Worker Registration for PWA / Offline -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+      }).catch(err => {
+        console.warn('[PWA] ServiceWorker registration failed:', err);
+      });
+    });
+  }
+</script>
 
 </body>
 </html>
