@@ -336,7 +336,9 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 ════════════════════════════════════════ */
 #notepad-panel {
   position: absolute; top: 0; right: 0; bottom: 0;
-  width: 320px;
+  width: 340px;
+  min-width: 260px;
+  max-width: 85vw;
   background: var(--navy-l);
   border-left: 1px solid var(--navy-b);
   z-index: 14; /* below annotation panel */
@@ -346,6 +348,33 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   box-shadow: -4px 0 24px rgba(0,0,0,.4);
 }
 #notepad-panel.open { transform: translateX(0); }
+
+/* Left border resize handle */
+.panel-resizer-left {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 10px;
+  bottom: 0;
+  cursor: ew-resize;
+  z-index: 50;
+  user-select: none;
+  touch-action: none;
+}
+.panel-resizer-left::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background .15s;
+}
+.panel-resizer-left:hover::after,
+.panel-resizer-left.resizing::after {
+  background: var(--gold);
+}
 
 /* ───────────────────────────────────────────────
    DICTIONARY PANEL
