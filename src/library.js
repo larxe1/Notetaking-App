@@ -635,26 +635,39 @@ function buildPdfEl(pdf) {
     e.stopPropagation();
     _pdfToLink = pdf;
     
-    // Populate dropdown with all folders EXCEPT the one it's currently in
+    // Populate dropdown with proper hierarchical folder structure EXCEPT the current folder
     const sel = document.getElementById('link-target-folder');
     sel.innerHTML = '';
     
-    // Group by subject for better UX
+    // Group by subject and render proper hierarchical folder tree
     S.subjects.forEach(subj => {
-      const subjFolds = S.folders.filter(f => f.subject_id === subj.id);
-      if (subjFolds.length === 0) return;
-      
       const optGroup = document.createElement('optgroup');
       optGroup.label = subj.name;
-      
-      subjFolds.forEach(f => {
-        if (f.id === pdf.folder_id) return; // skip current folder
-        const opt = document.createElement('option');
-        opt.value = f.id;
-        opt.textContent = f.name;
-        optGroup.appendChild(opt);
-      });
-      
+
+      // 1. Only get top-level folders (parent_id is null/undefined)
+      const rootFolds = S.folders
+        .filter(f => f.subject_id === subj.id && !f.parent_id)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+      function addFolderOptions(folder, depth = 0) {
+        if (folder.id !== pdf.folder_id) {
+          const opt = document.createElement('option');
+          opt.value = folder.id;
+          const indent = depth > 0 ? '\u00A0\u00A0\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
+          opt.textContent = `${indent}${folder.name}`;
+          optGroup.appendChild(opt);
+        }
+
+        // Find child subfolders belonging to this folder
+        const childFolds = S.folders
+          .filter(f => f.parent_id === folder.id)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+        childFolds.forEach(child => addFolderOptions(child, depth + 1));
+      }
+
+      rootFolds.forEach(rf => addFolderOptions(rf, 0));
+
       if (optGroup.children.length > 0) sel.appendChild(optGroup);
     });
     
