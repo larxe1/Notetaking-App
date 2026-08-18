@@ -57,9 +57,23 @@ export function initModals() {
   document.querySelectorAll('[data-close]').forEach(b =>
     b.addEventListener('click', () => closeModal(b.dataset.close))
   );
-  document.querySelectorAll('.modal-ov').forEach(ov =>
-    ov.addEventListener('click', e => { if (e.target === ov) closeModal(ov.id); })
-  );
+
+  document.querySelectorAll('.modal-ov').forEach(ov => {
+    let isMouseDownOnBackdrop = false;
+
+    ov.addEventListener('mousedown', e => {
+      // Only true if the click began directly on the dark overlay (not inside the modal box)
+      isMouseDownOnBackdrop = (e.target === ov);
+    });
+
+    ov.addEventListener('click', e => {
+      // Only close if the mouse press originated and released on the overlay itself
+      if (e.target === ov && isMouseDownOnBackdrop) {
+        closeModal(ov.id);
+      }
+      isMouseDownOnBackdrop = false;
+    });
+  });
 }
 
 // ── Sidebar (mobile) ──
