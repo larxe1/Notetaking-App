@@ -152,6 +152,21 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   const { notepadOnPDFChange } = await import('./notepad.js');
   notepadOnPDFChange(trueId);
 
+  // Instantly clear memory of previous PDF's data so ghost highlights never bleed over
+  S.annotations = [];
+  S.drawData = {};
+  S.bookmarks = [];
+
+  // Prime immediately from local cache if present (instant 0ms restore)
+  try {
+    const cachedAnns = localStorage.getItem('local_anns_' + trueId);
+    if (cachedAnns) S.annotations = JSON.parse(cachedAnns);
+    const cachedDraws = localStorage.getItem('local_draws_' + trueId);
+    if (cachedDraws) S.drawData = JSON.parse(cachedDraws);
+    const cachedBms = localStorage.getItem('local_bms_' + trueId);
+    if (cachedBms) S.bookmarks = JSON.parse(cachedBms);
+  } catch {}
+
   // Switch to PDF mode
   document.getElementById('folder-doc-viewer').style.display = 'none';
   document.getElementById('content-area').style.display = 'flex';

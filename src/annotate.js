@@ -106,6 +106,7 @@ export function drawAnnotation(ann) {
 }
 
 export function redrawAllAnnotations() {
+  document.querySelectorAll('.ann-ov .hi-grp').forEach(el => el.remove());
   for (const a of S.annotations) drawAnnotation(a);
 }
 
