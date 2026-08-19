@@ -311,29 +311,61 @@ export function initNavButtons() {
     _scrollTimer = setTimeout(() => {
       _scrollTimer = null;
       if (_isJumping) return;
+
       const scrollRect = scrollEl.getBoundingClientRect();
-      const probeY = scrollRect.top + 150;
-      const probeX = scrollRect.left + scrollRect.width / 2;
-      const el = document.elementFromPoint(probeX, probeY);
-      const wrap = el?.closest('.pg-wrap');
-      if (wrap?.dataset.page) {
-        const pg = parseInt(wrap.dataset.page);
-        if (pg && pg !== S.curPage && pg >= 1 && pg <= S.totalPages) {
-          S.curPage = pg;
-          document.getElementById('pg-input').value = pg;
-          if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
-          document.querySelectorAll('.thumb-item').forEach(th =>
-            th.classList.toggle('active', parseInt(th.dataset.page) === pg)
-          );
-          updateAppTitle();
+      const targetY = scrollRect.top + 80;
+
+      // Find the page wrap currently visible at targetY
+      let foundPage = null;
+      let minDistance = Infinity;
+
+      // Fast-path: search in local window around S.curPage
+      const searchStart = Math.max(1, (S.curPage || 1) - 15);
+      const searchEnd = Math.min(S.totalPages || 1, (S.curPage || 1) + 15);
+
+      for (let p = searchStart; p <= searchEnd; p++) {
+        const wrap = S.pages?.[p]?.wrap;
+        if (!wrap) continue;
+        const rect = wrap.getBoundingClientRect();
+        if (rect.top <= targetY && rect.bottom >= targetY) {
+          foundPage = p;
+          break;
+        }
+        const dist = Math.abs(rect.top - targetY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          foundPage = p;
         }
       }
-    }, 80);
+
+      // Fallback: full document scan if user jumped/dragged scrollbar across hundreds of pages
+      if (!foundPage || minDistance > 1500) {
+        for (let p = 1; p <= (S.totalPages || 1); p++) {
+          const wrap = S.pages?.[p]?.wrap;
+          if (!wrap) continue;
+          const rect = wrap.getBoundingClientRect();
+          if (rect.top <= targetY && rect.bottom >= targetY) {
+            foundPage = p;
+            break;
+          }
+        }
+      }
+
+      if (foundPage && foundPage !== S.curPage && foundPage >= 1 && foundPage <= S.totalPages) {
+        S.curPage = foundPage;
+        document.getElementById('pg-input').value = foundPage;
+        if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, foundPage);
+        document.querySelectorAll('.thumb-item').forEach(th =>
+          th.classList.toggle('active', parseInt(th.dataset.page) === foundPage)
+        );
+        updateAppTitle();
+      }
+    }, 60);
   });
 }
 
 export async function jumpToPage(pg, smooth = false) {
-  if (pg < 1 || pg > S.totalPages) return;
+  if (!S.totalPages || pg < 1 || pg > S.totalPages) return;
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
   if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
@@ -343,28 +375,24 @@ export async function jumpToPage(pg, smooth = false) {
   );
   updateAppTitle();
   
-  const pageState = S.pages[pg];
+  const pageState = S.pages?.[pg];
   if (pageState?.wrap) {
-    const scrollEl = document.getElementById('canvas-scroll');
     _isJumping = true;
 
-    // Use smooth scroll only if adjacent navigation (<= 3 pages).
-    // For large jumps (or auto-loading bookmark on page 1000), direct scrollTop is 100% reliable
-    // and prevents browser smooth-scroll distance timeouts at page ~700.
-    if (smooth && Math.abs(pg - S.curPage) <= 3) {
-      pageState.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      if (scrollEl) {
-        scrollEl.scrollTop = pageState.wrap.offsetTop;
-      } else {
-        pageState.wrap.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }
-    }
-
-    setTimeout(() => { _isJumping = false; }, 350);
-
+    // 1. Ensure target page is rendered first so dimensions are exact
     const { ensurePageRendered } = await import('./viewer.js');
     await ensurePageRendered(pg);
+
+    // 2. Use native scrollIntoView on the page element
+    pageState.wrap.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+
+    // 3. Re-align after a tick to absorb any layout reflow from adjacent page renders
+    setTimeout(() => {
+      if (pageState?.wrap) {
+        pageState.wrap.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+      setTimeout(() => { _isJumping = false; }, 250);
+    }, 100);
   }
 }
 

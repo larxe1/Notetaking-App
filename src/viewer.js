@@ -252,15 +252,12 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
     const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
     const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
 
-    // Immediately position scroll container to the target page without animation
-    if (startPage > 1 && S.pages[startPage]?.wrap) {
-      scroll.scrollTop = S.pages[startPage].wrap.offsetTop;
-      S.curPage = startPage;
-      document.getElementById('pg-input').value = startPage;
-    }
+    S.curPage = startPage;
+    document.getElementById('pg-input').value = startPage;
 
-    // Render starting page immediately
-    await ensurePageRendered(startPage);
+    // Render starting page and accurately align via native scrollIntoView
+    const { jumpToPage } = await import('./ui.js');
+    await jumpToPage(startPage, false);
 
     // Await parallel DB data queries
     await dbDataPromise;
@@ -274,10 +271,6 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Track recent PDFs
     pushRecent(pdfFile);
-
-    if (startPage > 1) {
-      import('./ui.js').then(m => m.jumpToPage(startPage, false));
-    }
 
     // Start background full-document text indexing across all 1000+ pages
     import('./search.js').then(m => m.indexAllPagesText(S.pdfDoc)).catch(() => {});
