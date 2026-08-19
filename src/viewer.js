@@ -142,10 +142,62 @@ export async function openFolderDoc(fold) {
   }
 }
 
-// ── Virtualized Page Rendering Observer ──
+// ── Virtualized Page Rendering Observer & Progressive Document Renderer ──
 let _pageObserver = null;
 let _renderedPages = new Set();
-const MAX_ACTIVE_CANVASES = 30; // Keeps DOM memory lean (prevents browser canvas crash on large PDFs)
+let _bgRenderActive = false;
+let _bgRenderDocId = null;
+
+export function startBackgroundDocRenderer(docId) {
+  _bgRenderDocId = docId;
+  if (_bgRenderActive) return;
+  _bgRenderActive = true;
+
+  const renderNextUnrendered = async () => {
+    if (!S.pdfDoc || _bgRenderDocId !== docId) {
+      _bgRenderActive = false;
+      return;
+    }
+
+    // Prioritize unrendered pages closest to S.curPage first, then expanding outward
+    let nextP = null;
+    let minDiff = Infinity;
+    const cur = S.curPage || 1;
+
+    for (let p = 1; p <= S.totalPages; p++) {
+      const pg = S.pages?.[p];
+      if (pg && !pg.rendered && !pg.rendering) {
+        const diff = Math.abs(p - cur);
+        if (diff < minDiff) {
+          minDiff = diff;
+          nextP = p;
+        }
+      }
+    }
+
+    if (nextP !== null) {
+      try {
+        await ensurePageRendered(nextP);
+      } catch (e) {
+        console.warn(`[Background Render] Page ${nextP} error:`, e);
+      }
+      // Yield to main thread to guarantee smooth 60fps scrolling and UI responsiveness
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(() => renderNextUnrendered(), { timeout: 120 });
+      } else {
+        setTimeout(renderNextUnrendered, 20);
+      }
+    } else {
+      _bgRenderActive = false;
+    }
+  };
+
+  if (window.requestIdleCallback) {
+    window.requestIdleCallback(() => renderNextUnrendered(), { timeout: 150 });
+  } else {
+    setTimeout(renderNextUnrendered, 30);
+  }
+}
 
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 3) {
@@ -231,7 +283,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
       S.pages[p] = { wrap, rendered: false, rendering: false, viewport: vp1, textItems: [] };
     }
 
-    // IntersectionObserver renders pages as they scroll into view (with 800px pre-render margin)
+    // IntersectionObserver renders pages as they scroll into view (with 1500px pre-render margin)
     _pageObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const pNum = parseInt(entry.target.dataset.page);
@@ -241,7 +293,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
       }
     }, {
       root: scroll,
-      rootMargin: '800px 0px 800px 0px',
+      rootMargin: '1500px 0px 1500px 0px',
     });
 
     for (let p = 1; p <= S.totalPages; p++) {
@@ -271,6 +323,9 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Track recent PDFs
     pushRecent(pdfFile);
+
+    // Start background progressive full-document renderer (ensures all pages are rendered without scrolling)
+    startBackgroundDocRenderer(pdfFile.id);
 
     // Start background full-document text indexing across all 1000+ pages
     import('./search.js').then(m => m.indexAllPagesText(S.pdfDoc)).catch(() => {});
@@ -326,6 +381,9 @@ export async function reRenderAll() {
 
   // Re-render current page and visible pages
   await ensurePageRendered(S.curPage);
+  if (S.curPDF) {
+    startBackgroundDocRenderer(S.curPDF.id);
+  }
 }
 
 // ── Render a single page on-demand ──
@@ -433,37 +491,10 @@ export async function ensurePageRendered(pageNum) {
     }
 
     _renderedPages.add(pageNum);
-
-    // Prune canvases if exceeding limit to prevent out-of-memory
-    if (_renderedPages.size > MAX_ACTIVE_CANVASES) {
-      unrenderFarthestPages(S.curPage);
-    }
   } catch (err) {
     console.error(`Failed to render page ${pageNum}:`, err);
   } finally {
     pgState.rendering = false;
-  }
-}
-
-// ── Unrender pages far from current viewport to save canvas memory ──
-function unrenderFarthestPages(centerPage) {
-  const sorted = Array.from(_renderedPages).sort((a, b) => Math.abs(b - centerPage) - Math.abs(a - centerPage));
-  while (sorted.length > MAX_ACTIVE_CANVASES) {
-    const p = sorted.shift();
-    _renderedPages.delete(p);
-    const pg = S.pages[p];
-    if (pg && pg.rendered) {
-      pg.rendered = false;
-      pg.wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif">Page ${p}</div>`;
-      pg.pdfCanvas = null;
-      pg.drawCanvas = null;
-      pg.txtLayer = null;
-      pg.annOv = null;
-      pg.srchOv = null;
-      _textDone.delete(p);
-      _boxDone.delete(p);
-      _drawDone.delete(p);
-    }
   }
 }
 
