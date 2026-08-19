@@ -360,54 +360,61 @@ export async function insertDiagramIntoNotes() {
   const preview = document.getElementById('diag-preview-inner');
   const svg = preview?.querySelector('svg');
   if (!svg) {
-    toast('No diagram to insert.');
+    toast('No diagram to insert. Please render a diagram first.');
     return;
   }
 
   try {
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const URL = window.URL || window.webkitURL || window;
-    const blobURL = URL.createObjectURL(svgBlob);
+    let svgData = new XMLSerializer().serializeToString(svg);
+    if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
+      svgData = svgData.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    }
 
-    const image = new Image();
-    image.onload = async () => {
-      const canvas = document.createElement('canvas');
-      const scale = 2;
-      const bbox = svg.getBoundingClientRect();
-      canvas.width = (bbox.width || 800) * scale;
-      canvas.height = (bbox.height || 600) * scale;
+    const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    const imgHtml = `<p><br></p><div style="text-align:center; margin:14px 0;"><img src="${base64}" style="max-width:100%; border-radius:6px; border:1px solid #2a3b5c; box-shadow:0 4px 12px rgba(0,0,0,0.3); background:#0c1322; padding:10px;" alt="Legal Diagram"></div><p><br></p>`;
 
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#0c1322';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const folderDocViewer = document.getElementById('folder-doc-viewer');
+    const folderDoc = document.getElementById('folder-doc-editor');
+    const isFolderDocVisible = folderDocViewer && folderDocViewer.style.display !== 'none';
 
-      const pngURL = canvas.toDataURL('image/png');
-      URL.revokeObjectURL(blobURL);
+    const npDigestEd = document.getElementById('np-digest-editor');
+    const npNotesEd = document.getElementById('np-editor');
+    const isDigestActive = npDigestEd && npDigestEd.style.display !== 'none';
+    const targetNotepadEd = isDigestActive ? npDigestEd : npNotesEd;
 
-      const imgHtml = `<p><br></p><div style="text-align:center; margin:14px 0;"><img src="${pngURL}" style="max-width:100%; border-radius:6px; border:1px solid #2a3b5c; box-shadow:0 4px 12px rgba(0,0,0,0.3);" alt="Legal Diagram"></div><p><br></p>`;
+    const annPanel = document.getElementById('ann-panel');
+    const noteEd = document.getElementById('note-editor');
+    const editNoteEd = document.getElementById('edit-note-ed');
+    const moEditNote = document.getElementById('mo-edit-note');
 
-      // Check if Folder Doc or Notepad is active
-      const folderDoc = document.getElementById('folder-doc-editor');
-      const notepad = document.getElementById('np-editor');
-      const isFolderDocVisible = document.getElementById('folder-doc-viewer')?.style.display !== 'none';
-
-      if (isFolderDocVisible && folderDoc) {
-        folderDoc.innerHTML += imgHtml;
-        folderDoc.dispatchEvent(new Event('input'));
-        closeModal('mo-diagram');
-        toast('✅ Diagram inserted into Folder Syllabus Notes!');
-      } else if (notepad) {
-        notepad.innerHTML += imgHtml;
-        notepad.dispatchEvent(new Event('input'));
-        closeModal('mo-diagram');
-        toast('✅ Diagram inserted into PDF Notepad!');
-      } else {
-        toast('Could not find active notes editor.');
-      }
-    };
-    image.src = blobURL;
+    if (isFolderDocVisible && folderDoc) {
+      folderDoc.innerHTML += imgHtml;
+      folderDoc.dispatchEvent(new Event('input'));
+      closeModal('mo-diagram');
+      toast('✅ Diagram inserted into Folder Notes!');
+    } else if (moEditNote && moEditNote.classList.contains('open') && editNoteEd) {
+      editNoteEd.innerHTML += imgHtml;
+      editNoteEd.dispatchEvent(new Event('input'));
+      closeModal('mo-diagram');
+      toast('✅ Diagram inserted into Note!');
+    } else if (annPanel && annPanel.classList.contains('open') && noteEd) {
+      noteEd.innerHTML += imgHtml;
+      noteEd.dispatchEvent(new Event('input'));
+      closeModal('mo-diagram');
+      toast('✅ Diagram inserted into Note!');
+    } else if (targetNotepadEd) {
+      targetNotepadEd.innerHTML += imgHtml;
+      targetNotepadEd.dispatchEvent(new Event('input'));
+      closeModal('mo-diagram');
+      toast('✅ Diagram inserted into PDF Notepad!');
+    } else if (folderDoc) {
+      folderDoc.innerHTML += imgHtml;
+      folderDoc.dispatchEvent(new Event('input'));
+      closeModal('mo-diagram');
+      toast('✅ Diagram inserted into Folder Notes!');
+    } else {
+      toast('Could not find active notes editor.');
+    }
   } catch (e) {
     console.error('[Diagram] Insert error:', e);
     toast('❌ Failed to insert diagram.');
