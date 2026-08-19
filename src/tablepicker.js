@@ -153,16 +153,48 @@ function parseTextToTable(text) {
   return null;
 }
 
+function parseTextToList(text) {
+  if (!text) return null;
+  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length === 0) return null;
+  
+  const bulletPattern = /^[\s]*[•\-\*]\s+(.*)$/;
+  const numberedPattern = /^[\s]*\d+[\.\)]\s+(.*)$/;
+
+  const hasBullets = lines.length >= 2 && lines.every(l => bulletPattern.test(l));
+  const hasNumbered = lines.length >= 2 && lines.every(l => numberedPattern.test(l));
+
+  if (hasBullets) {
+    return `<ul style="margin:6px 0; padding-left:24px;">` + lines.map(l => {
+      const m = l.match(bulletPattern);
+      return `<li>${m ? m[1] : l}</li>`;
+    }).join('') + `</ul>`;
+  }
+  if (hasNumbered) {
+    return `<ol style="margin:6px 0; padding-left:24px;">` + lines.map(l => {
+      const m = l.match(numberedPattern);
+      return `<li>${m ? m[1] : l}</li>`;
+    }).join('') + `</ol>`;
+  }
+  return null;
+}
+
 export function handlePaste(e) {
   const html = e.clipboardData.getData('text/html');
   const text = e.clipboardData.getData('text/plain');
   
-  // If plain text represents a tabular copy (TSV / multi-column from PDF)
+  // If plain text represents a tabular copy or bullet list
   if (!html && text) {
     const tableHtml = parseTextToTable(text);
     if (tableHtml) {
       e.preventDefault();
       document.execCommand('insertHTML', false, tableHtml);
+      return;
+    }
+    const listHtml = parseTextToList(text);
+    if (listHtml) {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, listHtml);
       return;
     }
     return; // Allow native plain text paste
@@ -197,6 +229,24 @@ export function handlePaste(e) {
       return `<${tag}>${inner}</${tag}>`;
     }
     
+    // Preserve lists
+    if (['ul', 'ol'].includes(tag)) {
+      return `<${tag} style="margin:6px 0; padding-left:24px;">${inner}</${tag}>`;
+    }
+    if (tag === 'li') {
+      return `<li>${inner || '<br>'}</li>`;
+    }
+
+    // Preserve headings
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+      return `<${tag} style="margin:8px 0 4px;">${inner}</${tag}>`;
+    }
+
+    // Preserve blockquotes
+    if (tag === 'blockquote') {
+      return `<blockquote style="border-left:3px solid var(--gold); margin:8px 0; padding-left:10px; color:var(--text-d);">${inner}</blockquote>`;
+    }
+
     // Preserve tables
     if (tag === 'table') {
       return `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;">${inner}</table><br>`;
@@ -219,8 +269,8 @@ export function handlePaste(e) {
     }
     
     // Convert block elements to line breaks
-    if (['p', 'div', 'br', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
-      return inner + '<br>';
+    if (['p', 'div', 'br'].includes(tag)) {
+      return inner ? `${inner}<br>` : '<br>';
     }
     
     return inner;
