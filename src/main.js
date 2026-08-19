@@ -21,6 +21,7 @@ import { initTableContextMenu } from './tablepicker.js';
 import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
 import { initOutbox } from './outbox.js';
+import { initDiagramStudio } from './diagram.js';
 
 // Global Error Boundary to prevent tab-freezing crashes
 function setupGlobalErrorBoundary() {
@@ -109,6 +110,7 @@ async function init() {
   safeInit(initRealtimeSync, 'RealtimeSync');
   safeInit(() => initOutbox(db), 'OutboxSync');
   safeInit(updateAppTitle, 'AppTitle');
+  safeInit(initDiagramStudio, 'DiagramStudio');
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>

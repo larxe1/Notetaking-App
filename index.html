@@ -23,6 +23,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- Supabase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Mermaid (Diagrams & Flowcharts) -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <!-- Google Identity Services (for Drive OAuth) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -157,6 +159,10 @@
       <button class="tb-btn" id="btn-links" title="Important Links">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
         Links
+      </button>
+      <button class="tb-btn" id="btn-diagram" title="Legal Diagrammer & Flowcharts">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+        Diagram
       </button>
 
       <div class="tb-sep"></div>
@@ -716,6 +722,67 @@
     </div>
     
     <div id="links-list" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:6px; border-top:1px solid rgba(255,255,255,0.05); padding-top:12px">
+    </div>
+  </div>
+</div>
+
+<!-- Legal Diagrammer & Flowchart Studio Modal -->
+<div class="modal-ov" id="mo-diagram">
+  <div class="modal-box" style="width:960px; max-width:96vw; height:85vh; max-height:85vh; display:flex; flex-direction:column; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <h3 style="margin:0; font-family:'Libre Baskerville',serif; font-size:16px; color:var(--gold);">📊 Legal Diagrammer & Flowchart Studio</h3>
+        <span id="diag-modal-pdf-title" style="font-size:11px; color:var(--muted); background:rgba(0,0,0,0.25); padding:2px 8px; border-radius:12px; border:1px solid var(--navy-b);"></span>
+      </div>
+      <button class="btn-sec" data-close="mo-diagram" style="padding:4px 8px;">✕</button>
+    </div>
+
+    <!-- Template Selector & Controls Bar -->
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+      <span style="font-size:11px; color:var(--muted); font-weight:500;">Templates:</span>
+      <select id="diag-template-select" style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; color:#e8e4db; font-size:12px; padding:5px 8px; outline:none; flex:1; min-width:240px;">
+        <option value="succession">👨‍👩‍👧‍👦 Wills & Succession (Compulsory Heirs & Legitime)</option>
+        <option value="chain_of_custody">⛓️ Criminal Law: Chain of Custody (R.A. 9165)</option>
+        <option value="appeals_hierarchy">🏛️ Remedial Law: Appeals & Jurisdiction Route</option>
+        <option value="oblicon_remedies">📜 Obligations & Contracts: Breach & Remedies</option>
+        <option value="case_parties">⚖️ Case Parties, Facts & Doctrine Flow</option>
+        <option value="blank">🔲 Blank Custom Flowchart</option>
+      </select>
+
+      <div style="display:flex; gap:4px; align-items:center; margin-left:auto;">
+        <button class="btn-sec" id="btn-diag-zout" style="padding:4px 8px; font-size:11px;" title="Zoom Out">🔍−</button>
+        <span id="diag-zoom-lbl" style="font-size:11px; color:var(--muted); min-width:38px; text-align:center;">100%</span>
+        <button class="btn-sec" id="btn-diag-zin" style="padding:4px 8px; font-size:11px;" title="Zoom In">🔍+</button>
+        <button class="btn-sec" id="btn-diag-zreset" style="padding:4px 8px; font-size:11px;" title="Reset Zoom">Reset</button>
+      </div>
+    </div>
+
+    <!-- Split Editor & Live Preview -->
+    <div style="display:flex; gap:12px; flex:1; min-height:0; overflow:hidden;">
+      <!-- Left: Editor & Syntax helper -->
+      <div style="width:340px; display:flex; flex-direction:column; gap:6px;">
+        <div style="font-size:11px; color:var(--muted); display:flex; justify-content:space-between;">
+          <span>Mermaid Code (Live Edit):</span>
+          <span style="color:var(--gold); font-size:10px;">Auto-saved</span>
+        </div>
+        <textarea id="diag-editor" spellcheck="false" style="flex:1; width:100%; background:#070b14; border:1px solid var(--navy-b); border-radius:6px; padding:10px; color:#e8e4db; font-family:'Courier New', monospace; font-size:12px; line-height:1.5; resize:none; outline:none; white-space:pre; tab-size:2;"></textarea>
+        <div id="diag-error-lbl" style="display:none; font-size:11px; color:var(--red); background:rgba(250,82,82,0.1); border:1px solid rgba(250,82,82,0.3); border-radius:4px; padding:4px 8px;"></div>
+      </div>
+
+      <!-- Right: SVG Preview Canvas -->
+      <div id="diag-preview-canvas" style="flex:1; background:#070b14; border:1px solid var(--navy-b); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:auto; position:relative; padding:16px;">
+        <div id="diag-preview-inner" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;"></div>
+      </div>
+    </div>
+
+    <!-- Modal Footer Actions -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+      <div style="display:flex; gap:6px;">
+        <button class="btn-sec" id="btn-diag-export-png" style="padding:6px 12px; font-size:12px;" title="Download as high-res PNG image">💾 Export PNG</button>
+        <button class="btn-sec" id="btn-diag-export-svg" style="padding:6px 12px; font-size:12px;" title="Download as vector SVG">💾 Export SVG</button>
+        <button class="btn-gold" id="btn-diag-insert-notes" style="padding:6px 12px; font-size:12px;" title="Insert this diagram into Folder Syllabus Notes or PDF Notepad">📥 Insert into Notes</button>
+      </div>
+      <button class="btn-sec" data-close="mo-diagram" style="padding:6px 14px; font-size:12px;">Close</button>
     </div>
   </div>
 </div>
