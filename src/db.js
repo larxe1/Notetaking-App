@@ -135,7 +135,7 @@ export async function dbCreateSubject(name, hex_color) {
 }
 
 export async function dbRenameSubject(id, name) {
-  await safeDbWrite(db, 'subjects', 'upsert', { id, name });
+  await safeDbWrite(db, 'subjects', 'update', { name }, { id });
   const subj = S.subjects.find(s => s.id === id);
   if (subj) subj.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -215,21 +215,21 @@ export async function dbCreateFolder(subject_id, name, folder_type = 'custom', p
 }
 
 export async function dbRenameFolder(id, name) {
-  await safeDbWrite(db, 'folders', 'upsert', { id, name });
+  await safeDbWrite(db, 'folders', 'update', { name }, { id });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbReorderFolder(id, sort_order) {
-  await safeDbWrite(db, 'folders', 'upsert', { id, sort_order });
+  await safeDbWrite(db, 'folders', 'update', { sort_order }, { id });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.sort_order = sort_order;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbUpdateFolderNotes(id, notes) {
-  await safeDbWrite(db, 'folders', 'upsert', { id, notes });
+  await safeDbWrite(db, 'folders', 'update', { notes }, { id });
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.notes = notes;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -291,21 +291,21 @@ export async function dbRegisterPDF(folder_id, name, drive_file_id, linked_pdf_i
 }
 
 export async function dbRenamePDF(id, name) {
-  await safeDbWrite(db, 'pdf_files', 'upsert', { id, name });
+  await safeDbWrite(db, 'pdf_files', 'update', { name }, { id });
   const pdf = S.pdfs.find(p => p.id === id);
   if (pdf) pdf.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMovePDF(id, folder_id) {
-  await safeDbWrite(db, 'pdf_files', 'upsert', { id, folder_id });
+  await safeDbWrite(db, 'pdf_files', 'update', { folder_id }, { id });
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.folder_id = folder_id;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMoveFolder(id, parent_folder_id, subject_id) {
-  await safeDbWrite(db, 'folders', 'upsert', { id, parent_folder_id, subject_id });
+  await safeDbWrite(db, 'folders', 'update', { parent_folder_id, subject_id }, { id });
   const f = S.folders.find(x => x.id === id);
   if (f) {
     f.parent_folder_id = parent_folder_id;
@@ -315,7 +315,7 @@ export async function dbMoveFolder(id, parent_folder_id, subject_id) {
 }
 
 export async function dbReorderPDF(id, sort_order) {
-  await safeDbWrite(db, 'pdf_files', 'upsert', { id, sort_order });
+  await safeDbWrite(db, 'pdf_files', 'update', { sort_order }, { id });
   const p = S.pdfs.find(x => x.id === id);
   if (p) p.sort_order = sort_order;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
@@ -381,7 +381,7 @@ export async function dbCreateAnnotation(ann) {
 }
 
 export async function dbUpdateAnnColor(id, hex_color) {
-  await safeDbWrite(db, 'annotations', 'upsert', { id, hex_color });
+  await safeDbWrite(db, 'annotations', 'update', { hex_color }, { id });
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 
@@ -440,7 +440,7 @@ export async function dbCreateNote(annotation_id, note_html, order_index) {
 }
 
 export async function dbUpdateNote(id, note_html) {
-  await safeDbWrite(db, 'annotation_notes', 'upsert', { id, note_html });
+  await safeDbWrite(db, 'annotation_notes', 'update', { note_html }, { id });
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
 

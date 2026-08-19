@@ -85,6 +85,15 @@ export async function replayOutbox(dbClient) {
       if (item.action === 'upsert') {
         const { error } = await dbClient.from(item.table).upsert(item.data);
         if (error) throw error;
+      } else if (item.action === 'update') {
+        let q = dbClient.from(item.table).update(item.data);
+        if (item.matchQuery) {
+          q = q.match(item.matchQuery);
+        } else if (item.data?.id) {
+          q = q.eq('id', item.data.id);
+        }
+        const { error } = await q;
+        if (error) throw error;
       } else if (item.action === 'delete') {
         if (item.matchQuery) {
           const { error } = await dbClient.from(item.table).delete().match(item.matchQuery);
@@ -100,8 +109,9 @@ export async function replayOutbox(dbClient) {
       const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || 
                       errMsg.includes('violates') || errMsg.includes('column') || 
                       errMsg.includes('relation') || errMsg.includes('42703') ||
-                      errMsg.includes('22p02') || errMsg.includes('23505') || 
-                      item.retries >= 2 || (Date.now() - (item.created_at || 0) > 120000);
+                      errMsg.includes('23502') || errMsg.includes('22p02') || 
+                      errMsg.includes('23505') || item.retries >= 2 || 
+                      (Date.now() - (item.created_at || 0) > 120000);
       
       if (isFatal) {
         console.warn(`[Outbox] Dropping unrecoverable outbox action:`, item, err);
@@ -133,6 +143,15 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
   try {
     if (action === 'upsert') {
       const { error } = await dbClient.from(table).upsert(data);
+      if (error) throw error;
+    } else if (action === 'update') {
+      let q = dbClient.from(table).update(data);
+      if (matchQuery) {
+        q = q.match(matchQuery);
+      } else if (data?.id) {
+        q = q.eq('id', data.id);
+      }
+      const { error } = await q;
       if (error) throw error;
     } else if (action === 'delete') {
       if (matchQuery) {
