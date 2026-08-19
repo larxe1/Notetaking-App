@@ -79,10 +79,15 @@ async function init() {
     const scroll = document.getElementById('canvas-scroll');
     if (scroll && welcomeHTML) scroll.innerHTML = welcomeHTML;
     
-    // Reset view to Welcome (content-area visible, notepad/folder-doc hidden)
+    // Reset view to Welcome (content-area visible, folder-doc hidden)
+    try {
+      const { flushFolderDoc } = await import('./viewer.js');
+      await flushFolderDoc();
+    } catch {}
     document.getElementById('folder-doc-viewer').style.display = 'none';
-    document.getElementById('notepad-panel').style.display = 'none';
     document.getElementById('content-area').style.display = 'flex';
+    const { closeOtherPanels } = await import('./ui.js');
+    closeOtherPanels();
 
     try {
       const { updateActivePDF } = await import('./viewer.js');

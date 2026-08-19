@@ -55,8 +55,9 @@ export async function openFolderDoc(fold) {
 
   // Switch to Folder Document Mode
   document.getElementById('content-area').style.display = 'none';
-  document.getElementById('notepad-panel').style.display = 'none';
   document.getElementById('folder-doc-viewer').style.display = 'flex';
+  const { closeOtherPanels } = await import('./ui.js');
+  closeOtherPanels();
 
   document.getElementById('folder-doc-title').textContent = liveFold.name;
   const ed = document.getElementById('folder-doc-editor');
@@ -154,7 +155,6 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   // Switch to PDF mode
   document.getElementById('folder-doc-viewer').style.display = 'none';
   document.getElementById('content-area').style.display = 'flex';
-  document.getElementById('notepad-panel').style.display = 'flex';
 
   const scroll = document.getElementById('canvas-scroll');
   scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
