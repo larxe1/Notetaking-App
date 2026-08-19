@@ -7,6 +7,7 @@ import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { showTablePicker, handlePaste } from './tablepicker.js';
+import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
 const _boxDone  = new Set();
@@ -108,6 +109,16 @@ export async function openFolderDoc(fold) {
       if (!btn) return;
       
       e.stopPropagation();
+
+      if (btn.id === 'folder-doc-link-pdf') {
+        openPdfLinkModal(ed, () => ed.dispatchEvent(new Event('input')));
+        return;
+      }
+      if (btn.id === 'folder-doc-link-url') {
+        insertWebLink(ed, () => ed.dispatchEvent(new Event('input')));
+        return;
+      }
+
       const cmd = btn.dataset.cmd;
       let val = btn.dataset.val || null;
       
@@ -119,7 +130,7 @@ export async function openFolderDoc(fold) {
       try {
         if (cmd === 'insertTable') {
           showTablePicker(btn, ed);
-        } else {
+        } else if (cmd) {
           document.execCommand(cmd, false, val);
         }
       } catch (err) {

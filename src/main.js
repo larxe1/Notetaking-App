@@ -22,6 +22,7 @@ import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
 import { initOutbox } from './outbox.js';
 import { initDiagramStudio } from './diagram.js';
+import { initGlobalPdfLinks } from './pdflink.js';
 
 // Global Error Boundary to prevent tab-freezing crashes
 function setupGlobalErrorBoundary() {
@@ -116,6 +117,7 @@ async function init() {
   safeInit(() => initOutbox(db), 'OutboxSync');
   safeInit(updateAppTitle, 'AppTitle');
   safeInit(initDiagramStudio, 'DiagramStudio');
+  safeInit(initGlobalPdfLinks, 'GlobalPdfLinks');
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>

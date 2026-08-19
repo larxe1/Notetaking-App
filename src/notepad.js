@@ -4,6 +4,7 @@
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
 import { showTablePicker, handlePaste } from './tablepicker.js';
+import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels } from './ui.js';
 
 let _saveTimer = null;
@@ -164,6 +165,23 @@ export function initNotepad() {
       if (!btn) return;
       
       e.stopPropagation();
+      const activeEd = $currentEditor();
+
+      if (btn.id === 'np-link-pdf') {
+        openPdfLinkModal(activeEd, () => {
+          activeEd?.dispatchEvent(new Event('input'));
+          if (_currentPdfId) scheduleSave();
+        });
+        return;
+      }
+      if (btn.id === 'np-link-url') {
+        insertWebLink(activeEd, () => {
+          activeEd?.dispatchEvent(new Event('input'));
+          if (_currentPdfId) scheduleSave();
+        });
+        return;
+      }
+
       const cmd = btn.dataset.cmd;
       let val = btn.dataset.val || null;
       
@@ -172,11 +190,10 @@ export function initNotepad() {
         val = `<${val}>`;
       }
       
-      const activeEd = $currentEditor();
       try {
         if (cmd === 'insertTable') {
           showTablePicker(btn, activeEd);
-        } else {
+        } else if (cmd) {
           document.execCommand(cmd, false, val);
         }
       } catch (err) {

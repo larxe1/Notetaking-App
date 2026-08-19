@@ -8,6 +8,7 @@ import {
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
 import { handlePaste } from './tablepicker.js';
+import { openPdfLinkModal } from './pdflink.js';
 
 // ── Create annotation (text or box) ──
 export async function createAnnotation(pageNum, rects, text, mode_) {
@@ -367,73 +368,19 @@ export function initAnnPanel() {
   });
 
   // PDF Linking
-  let savedRange = null;
-  let activeEditorId = null;
+  document.getElementById('btn-add-pdflink')?.addEventListener('mousedown', e => e.preventDefault());
+  document.getElementById('btn-add-pdflink')?.addEventListener('click', () => {
+    openPdfLinkModal(document.getElementById('note-editor'));
+  });
 
-  const openPdfLink = (editorId) => {
-    const sel = window.getSelection();
-    if (sel.rangeCount > 0) savedRange = sel.getRangeAt(0);
-    else savedRange = null;
-    
-    activeEditorId = editorId;
-    import('./ui.js').then(m => m.openModal('mo-pdf-link'));
-    renderPdfLinkList();
-  };
-
-  document.getElementById('btn-add-pdflink').addEventListener('mousedown', e => e.preventDefault());
-  document.getElementById('btn-add-pdflink').addEventListener('click', () => openPdfLink('note-editor'));
-
-  document.getElementById('btn-edit-pdflink').addEventListener('mousedown', e => e.preventDefault());
-  document.getElementById('btn-edit-pdflink').addEventListener('click', () => openPdfLink('edit-note-ed'));
+  document.getElementById('btn-edit-pdflink')?.addEventListener('mousedown', e => e.preventDefault());
+  document.getElementById('btn-edit-pdflink')?.addEventListener('click', () => {
+    openPdfLinkModal(document.getElementById('edit-note-ed'));
+  });
 
   // Attach sanitized paste handling to note editors
   document.getElementById('note-editor')?.addEventListener('paste', handlePaste);
   document.getElementById('edit-note-ed')?.addEventListener('paste', handlePaste);
-
-  function renderPdfLinkList() {
-    const list = document.getElementById('pdf-link-list');
-    const search = document.getElementById('pdf-link-search').value.toLowerCase();
-    
-    list.innerHTML = '';
-    const filtered = S.pdfs.filter(p => p.name.toLowerCase().includes(search));
-    
-    if (filtered.length === 0) {
-      list.innerHTML = '<div style="color:#888;padding:10px">No PDFs found.</div>';
-      return;
-    }
-    
-    filtered.forEach(pdf => {
-      const div = document.createElement('div');
-      div.style.padding = '8px 10px';
-      div.style.cursor = 'pointer';
-      div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-      div.textContent = '📄 ' + pdf.name;
-      
-      div.addEventListener('mouseover', () => div.style.color = 'var(--gold)');
-      div.addEventListener('mouseout', () => div.style.color = '');
-      div.addEventListener('click', () => {
-        import('./ui.js').then(m => m.closeModal('mo-pdf-link'));
-        const ed = document.getElementById(activeEditorId);
-        ed.focus();
-        const sel = window.getSelection();
-        let linkText = '📄 ' + pdf.name;
-        
-        if (savedRange) {
-          sel.removeAllRanges();
-          sel.addRange(savedRange);
-          const selectedText = savedRange.toString().trim();
-          if (selectedText.length > 0) {
-            linkText = selectedText;
-          }
-        }
-        
-        const html = `<a href="#" data-pdf-link="${pdf.id}" contenteditable="false" style="color:var(--gold);text-decoration:underline;cursor:pointer">${linkText}</a>&nbsp;`;
-        document.execCommand('insertHTML', false, html);
-      });
-      list.appendChild(div);
-    });
-  }
-  document.getElementById('pdf-link-search').addEventListener('input', renderPdfLinkList);
 
   // Selection confirm/cancel (fixes bug #1 — was cut off in original)
   document.getElementById('sel-confirm').addEventListener('mousedown', e => e.preventDefault());
