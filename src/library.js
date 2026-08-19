@@ -415,7 +415,6 @@ function buildFolderEl(fold) {
       <div class="li-acts">
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
-        <button class="li-act-btn" title="Folder Notes" data-act="notes">📝</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
         <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
       </div>
@@ -437,14 +436,20 @@ function buildFolderEl(fold) {
     }
   });
 
-  // Handle expand/collapse on folder click
+  // Handle expand/collapse on chevron OR open general notes on folder click
   hd.addEventListener('click', e => {
     if (e.target.closest('.li-acts')) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
     
-    S.expandedFold[fold.id] = !S.expandedFold[fold.id];
-    chev.classList.toggle('closed');
-    ch.style.display = S.expandedFold[fold.id] ? 'flex' : 'none';
+    if (e.target.closest('.li-chev')) {
+      S.expandedFold[fold.id] = !S.expandedFold[fold.id];
+      chev.classList.toggle('closed');
+      ch.style.display = S.expandedFold[fold.id] ? 'flex' : 'none';
+    } else {
+      // Clicking the folder immediately opens the folder's general notes
+      openFolderDoc(fold);
+      closeSidebar();
+    }
   });
 
   w.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
@@ -456,12 +461,6 @@ function buildFolderEl(fold) {
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
     e.stopPropagation();
     triggerPDFUpload(fold.id);
-  });
-
-  w.querySelector('[data-act="notes"]')?.addEventListener('click', e => {
-    e.stopPropagation();
-    openFolderDoc(fold);
-    closeSidebar();
   });
 
   w.querySelector('[data-act="rename"]').addEventListener('click', e => {
