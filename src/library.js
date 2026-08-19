@@ -394,23 +394,7 @@ function buildSubjectEl(subj) {
   const folds = S.folders
     .filter(f => f.subject_id === subj.id && !f.parent_folder_id) // root folders only
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  
-  if (folds.length === 0) {
-    const emptyEl = document.createElement('div');
-    emptyEl.className = 'li-subj-empty';
-    emptyEl.style.cssText = 'padding: 4px 8px 4px 20px; display: flex; gap: 6px; align-items: center;';
-    emptyEl.innerHTML = `
-      <span style="font-size:11px; color:var(--muted); font-style:italic;">No folders yet</span>
-      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="add-fold">📁+ New Folder</button>
-    `;
-    emptyEl.querySelector('[data-act="add-fold"]').addEventListener('click', e => {
-      e.stopPropagation();
-      openNewFolderModal(subj.id);
-    });
-    ch.appendChild(emptyEl);
-  } else {
-    for (const f of folds) ch.appendChild(buildFolderEl(f));
-  }
+  for (const f of folds) ch.appendChild(buildFolderEl(f));
   return w;
 }
 
@@ -431,7 +415,7 @@ function buildFolderEl(fold) {
       <div class="li-acts">
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
-        <button class="li-act-btn" title="Folder Syllabus Notes" data-act="notes">📝</button>
+        <button class="li-act-btn" title="Folder Notes" data-act="notes">📝</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
         <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
       </div>
@@ -505,35 +489,14 @@ function buildFolderEl(fold) {
     return sA - sB;
   });
 
-  if (children.length === 0) {
-    const emptyEl = document.createElement('div');
-    emptyEl.className = 'li-fold-empty';
-    emptyEl.style.cssText = 'padding: 4px 8px 4px 20px; display: flex; gap: 6px; align-items: center;';
-    emptyEl.innerHTML = `
-      <span style="font-size:11px; color:var(--muted); font-style:italic;">Empty</span>
-      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="subfolder">📁+ Subfolder</button>
-      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="upload">📄+ PDF</button>
-    `;
-    emptyEl.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
-      e.stopPropagation();
-      const subjId = fold.subject_id || S.folders.find(f => f.id === fold.parent_folder_id)?.subject_id;
-      openNewSubfolderModal(fold.id, subjId);
-    });
-    emptyEl.querySelector('[data-act="upload"]').addEventListener('click', e => {
-      e.stopPropagation();
-      triggerPDFUpload(fold.id);
-    });
-    ch.appendChild(emptyEl);
-  } else {
-    for (const child of children) {
-      if (child._type === 'folder') {
-        const childEl = buildFolderEl(child);
-        childEl.style.marginLeft = '12px';
-        childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
-        ch.appendChild(childEl);
-      } else {
-        ch.appendChild(buildPdfEl(child));
-      }
+  for (const child of children) {
+    if (child._type === 'folder') {
+      const childEl = buildFolderEl(child);
+      childEl.style.marginLeft = '12px';
+      childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
+      ch.appendChild(childEl);
+    } else {
+      ch.appendChild(buildPdfEl(child));
     }
   }
 
