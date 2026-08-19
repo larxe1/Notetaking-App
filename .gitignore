@@ -1,0 +1,15 @@
+# Local Configuration & Environment Secrets
+config.js
+.env
+.env.*
+*.env
+*.local
+
+# Node & Package Managers
+node_modules/
+
+# OS / Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

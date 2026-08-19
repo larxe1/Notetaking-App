@@ -5,7 +5,7 @@ import { S } from './state.js';
 import { toast, syncSpin, syncOK, syncErr } from './ui.js';
 import { getCachedPDF, setCachedPDF, deleteCachedPDF } from './pdfcache.js';
 
-const CLIENT_ID   = window.APP_CONFIG.GOOGLE_CLIENT_ID;
+const CLIENT_ID   = window.APP_CONFIG?.GOOGLE_CLIENT_ID || '';
 const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
 const FOLDER_NAME = 'Legal Annotator';
 

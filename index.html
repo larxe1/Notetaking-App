@@ -28,13 +28,19 @@
 <!-- Google Identity Services (for Drive OAuth) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<!-- App config — edit these values! -->
+<!-- App config — loaded from local config.js (ignored by Git) with fallback to localStorage -->
+<script src="config.js"></script>
 <script>
-  window.APP_CONFIG = {
-    SUPABASE_URL:      'https://umxyyfneyhmjlfujlgkk.supabase.co',
-    SUPABASE_KEY:      'sb_publishable_l7gBFU9vkSjORhrYlPCy1A_ga4Vq53C',
-    GOOGLE_CLIENT_ID:  '572567924584-qj0m9fkkkjsrgva6dj32or7esbgkqvql.apps.googleusercontent.com',  // ← replace after setup (see SETUP.md)
-  };
+  window.APP_CONFIG = window.APP_CONFIG || {};
+  if (!window.APP_CONFIG.SUPABASE_URL) {
+    window.APP_CONFIG.SUPABASE_URL = localStorage.getItem('app_supabase_url') || '';
+  }
+  if (!window.APP_CONFIG.SUPABASE_KEY) {
+    window.APP_CONFIG.SUPABASE_KEY = localStorage.getItem('app_supabase_key') || '';
+  }
+  if (!window.APP_CONFIG.GOOGLE_CLIENT_ID) {
+    window.APP_CONFIG.GOOGLE_CLIENT_ID = localStorage.getItem('app_google_client_id') || '';
+  }
 </script>
 
 <!-- Stylesheet -->
