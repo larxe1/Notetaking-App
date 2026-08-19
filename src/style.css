@@ -285,6 +285,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   width: var(--ann-w, 320px);
   min-width: 260px;
   max-width: 85vw;
+  height: 100%;
+  max-height: 100%;
   background: var(--navy-l);
   border-left: 1px solid var(--navy-b);
   z-index: 15;
@@ -292,6 +294,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   transform: translateX(100%);
   transition: transform .25s ease;
   box-shadow: -4px 0 24px rgba(0,0,0,.4);
+  overflow: hidden;
 }
 #ann-panel.open { transform: translateX(0); }
 .ap-hd { padding: 14px 14px 10px; border-bottom: 1px solid var(--navy-b); flex-shrink: 0; display: flex; align-items: flex-start; gap: 8px; }
@@ -313,7 +316,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .aptab-badge { font-size: 10px; background: rgba(255,255,255,0.08); color: var(--muted); border-radius: 10px; padding: 1px 6px; min-width: 14px; text-align: center; }
 .ap-tab.active .aptab-badge { background: rgba(201,168,76,0.25); color: var(--gold); font-weight: bold; }
 
-#ann-notes { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
+#ann-notes { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
 .note-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 16px 0; font-style: italic; }
 .note-card { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 10px 10px 8px; position: relative; overflow: hidden; }
 .note-card.case-card { border-left: 3px solid var(--gold); background: linear-gradient(180deg, rgba(201,168,76,0.06) 0%, var(--navy) 100%); }
