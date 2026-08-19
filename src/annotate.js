@@ -7,8 +7,8 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste } from './tablepicker.js';
-import { openPdfLinkModal } from './pdflink.js';
+import { handlePaste, showTablePicker } from './tablepicker.js';
+import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 
 // ── Create annotation (text or box) ──
 export async function createAnnotation(pageNum, rects, text, mode_) {
@@ -350,37 +350,71 @@ export function initAnnPanel() {
   });
 
   // Format buttons (add-note editor)
-  document.querySelectorAll('.fmt-btn[data-cmd]').forEach(b => {
+  document.querySelectorAll('#add-note-area .fmt-btn').forEach(b => {
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', () => {
-      document.getElementById('note-editor').focus();
-      document.execCommand(b.dataset.cmd, false, null);
+      const ed = document.getElementById('note-editor');
+      if (!ed) return;
+
+      const cmd = b.dataset.cmd;
+      let val = b.dataset.val || null;
+      if (cmd === 'formatBlock' && val && !val.startsWith('<')) {
+        val = `<${val}>`;
+      }
+
+      if (cmd === 'insertTable') {
+        showTablePicker(b, ed);
+      } else if (b.id === 'btn-add-pdflink') {
+        openPdfLinkModal(ed);
+      } else if (b.id === 'btn-add-weblink') {
+        insertWebLink(ed);
+      } else if (cmd) {
+        ed.focus();
+        document.execCommand(cmd, false, val);
+      }
     });
   });
 
   // Format buttons (edit-note editor)
-  document.querySelectorAll('.fmt-btn[data-cmd2]').forEach(b => {
+  document.querySelectorAll('#mo-edit-note .fmt-btn').forEach(b => {
     b.addEventListener('mousedown', e => e.preventDefault());
     b.addEventListener('click', () => {
-      document.getElementById('edit-note-ed').focus();
-      document.execCommand(b.dataset.cmd2, false, null);
+      const ed = document.getElementById('edit-note-ed');
+      if (!ed) return;
+
+      const cmd = b.dataset.cmd2;
+      let val = b.dataset.val2 || null;
+      if (cmd === 'formatBlock' && val && !val.startsWith('<')) {
+        val = `<${val}>`;
+      }
+
+      if (cmd === 'insertTable') {
+        showTablePicker(b, ed);
+      } else if (b.id === 'btn-edit-pdflink') {
+        openPdfLinkModal(ed);
+      } else if (b.id === 'btn-edit-weblink') {
+        insertWebLink(ed);
+      } else if (cmd) {
+        ed.focus();
+        document.execCommand(cmd, false, val);
+      }
     });
-  });
-
-  // PDF Linking
-  document.getElementById('btn-add-pdflink')?.addEventListener('mousedown', e => e.preventDefault());
-  document.getElementById('btn-add-pdflink')?.addEventListener('click', () => {
-    openPdfLinkModal(document.getElementById('note-editor'));
-  });
-
-  document.getElementById('btn-edit-pdflink')?.addEventListener('mousedown', e => e.preventDefault());
-  document.getElementById('btn-edit-pdflink')?.addEventListener('click', () => {
-    openPdfLinkModal(document.getElementById('edit-note-ed'));
   });
 
   // Attach sanitized paste handling to note editors
   document.getElementById('note-editor')?.addEventListener('paste', handlePaste);
   document.getElementById('edit-note-ed')?.addEventListener('paste', handlePaste);
+
+  document.getElementById('edit-note-ed')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      document.getElementById('save-edit-note')?.click();
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+    }
+  });
 
   // Selection confirm/cancel (fixes bug #1 — was cut off in original)
   document.getElementById('sel-confirm').addEventListener('mousedown', e => e.preventDefault());

@@ -536,19 +536,28 @@
     </div>
     <div id="ann-notes"></div>
     <div id="add-note-area">
-      <div class="fmt-bar">
-        <button class="fmt-btn" data-cmd="bold"><b>B</b></button>
-        <button class="fmt-btn" data-cmd="italic"><i>I</i></button>
-        <button class="fmt-btn" data-cmd="underline"><u>U</u></button>
-        <button class="fmt-btn" data-cmd="strikeThrough"><s>S</s></button>
-        <button class="fmt-btn" id="btn-add-pdflink" title="Link to another PDF">🔗 Link PDF</button>
+      <div class="fmt-bar" style="flex-wrap:wrap; gap:3px;">
+        <button class="fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+        <button class="fmt-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+        <button class="fmt-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button class="fmt-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+        <button class="fmt-btn" data-cmd="formatBlock" data-val="H1" title="Heading 1" style="font-weight:bold;font-size:11px">H1</button>
+        <button class="fmt-btn" data-cmd="formatBlock" data-val="H2" title="Heading 2" style="font-weight:bold;font-size:11px">H2</button>
+        <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+        <button class="fmt-btn" data-cmd="insertUnorderedList" title="Bullet List">• List</button>
+        <button class="fmt-btn" data-cmd="insertOrderedList" title="Number List">1. List</button>
+        <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+        <button class="fmt-btn" id="btn-add-table" data-cmd="insertTable" title="Insert Table">Table</button>
+        <button class="fmt-btn" id="btn-add-pdflink" title="Link to another PDF">📄 Link PDF</button>
+        <button class="fmt-btn" id="btn-add-weblink" title="Insert Web Link">🌐 Web Link</button>
       </div>
-      <div id="note-editor" contenteditable="true" data-ph="Add a note, doctrine, citation…"></div>
+      <div id="note-editor" contenteditable="true" data-ph="Add a note, doctrine, citation, table…"></div>
       <div class="ann-btns">
         <button class="btn-del-hi" id="btn-del-hi">Delete Highlight</button>
         <button class="btn-gold" id="btn-add-note">Add Note</button>
       </div>
-  </div>
+    </div>
   <!-- END viewer-wrap -->
 </div>
 <!-- END app -->
@@ -673,14 +682,23 @@
 
 <!-- Edit Note -->
 <div class="modal-ov" id="mo-edit-note">
-  <div class="modal-box">
+  <div class="modal-box" style="width:560px; max-width:92vw;">
     <h3 id="mo-edit-note-title">Edit Note</h3>
-    <div class="fmt-bar">
-      <button class="fmt-btn" data-cmd2="bold"><b>B</b></button>
-      <button class="fmt-btn" data-cmd2="italic"><i>I</i></button>
-      <button class="fmt-btn" data-cmd2="underline"><u>U</u></button>
-      <button class="fmt-btn" data-cmd2="strikeThrough"><s>S</s></button>
-      <button class="fmt-btn" id="btn-edit-pdflink" title="Link to another PDF">🔗 Link PDF</button>
+    <div class="fmt-bar" style="flex-wrap:wrap; gap:3px;">
+      <button class="fmt-btn" data-cmd2="bold" title="Bold"><b>B</b></button>
+      <button class="fmt-btn" data-cmd2="italic" title="Italic"><i>I</i></button>
+      <button class="fmt-btn" data-cmd2="underline" title="Underline"><u>U</u></button>
+      <button class="fmt-btn" data-cmd2="strikeThrough" title="Strikethrough"><s>S</s></button>
+      <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" data-cmd2="formatBlock" data-val2="H1" title="Heading 1" style="font-weight:bold;font-size:11px">H1</button>
+      <button class="fmt-btn" data-cmd2="formatBlock" data-val2="H2" title="Heading 2" style="font-weight:bold;font-size:11px">H2</button>
+      <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" data-cmd2="insertUnorderedList" title="Bullet List">• List</button>
+      <button class="fmt-btn" data-cmd2="insertOrderedList" title="Number List">1. List</button>
+      <div style="width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="fmt-btn" id="btn-edit-table" data-cmd2="insertTable" title="Insert Table">Table</button>
+      <button class="fmt-btn" id="btn-edit-pdflink" title="Link to another PDF">📄 Link PDF</button>
+      <button class="fmt-btn" id="btn-edit-weblink" title="Insert Web Link">🌐 Web Link</button>
     </div>
     <div id="edit-note-ed" contenteditable="true" style="background:var(--navy);border:1px solid var(--navy-b);border-radius:6px;padding:9px 10px;font-size:13px;line-height:1.6;color:#e8e4db;outline:none;margin-top:8px;transition:border-color .15s"></div>
     <div class="modal-acts">

@@ -319,13 +319,20 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .note-card.case-card { border-left: 3px solid var(--gold); background: linear-gradient(180deg, rgba(201,168,76,0.06) 0%, var(--navy) 100%); }
 .note-card.case-card .note-num { color: var(--gold); font-weight: 600; }
 .note-num { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 4px; }
-.note-body { font-size: 13px; line-height: 1.6; color: #e0dbd2; word-break: break-word; overflow-x: hidden; }
+.note-body { font-size: 13px; line-height: 1.6; color: #e0dbd2; word-break: break-word; overflow-x: auto; }
 .note-body * { position: static !important; max-width: 100% !important; box-sizing: border-box; }
 .note-body .hi-grp, .note-body .hr, .note-body .ann-ov, .note-body .txt-layer, .note-body .draw-canvas { display: none !important; }
 .note-body b, .note-body strong { font-weight: 700; }
 .note-body i, .note-body em { font-style: italic; }
 .note-body u { text-decoration: underline; }
 .note-body s { text-decoration: line-through; }
+.note-body table, #note-editor table, #edit-note-ed table { width: 100%; border-collapse: collapse; margin: 8px 0; border: 1px solid var(--navy-b); }
+.note-body th, .note-body td, #note-editor th, #note-editor td, #edit-note-ed th, #edit-note-ed td { border: 1px solid var(--navy-b); padding: 6px 8px; min-width: 24px; vertical-align: top; }
+.note-body th, #note-editor th, #edit-note-ed th { background: rgba(255,255,255,0.06); font-weight: bold; }
+.note-body ul, .note-body ol, #note-editor ul, #note-editor ol, #edit-note-ed ul, #edit-note-ed ol { padding-left: 20px; margin: 6px 0; }
+.note-body h1, #note-editor h1, #edit-note-ed h1 { font-size: 15px; font-weight: 700; color: var(--gold); margin: 8px 0 4px; }
+.note-body h2, #note-editor h2, #edit-note-ed h2 { font-size: 13px; font-weight: 600; color: #e8e4db; margin: 6px 0 3px; }
+.note-body blockquote, #note-editor blockquote, #edit-note-ed blockquote { border-left: 3px solid var(--gold); margin: 6px 0; padding: 4px 10px; background: rgba(201,168,76,0.06); font-style: italic; }
 .note-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
 .note-act-btn { font-size: 11px; background: none; border: 1px solid var(--navy-b); color: var(--muted); border-radius: 4px; padding: 3px 8px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .15s; }
 .note-act-btn:hover { color: #e8e4db; border-color: rgba(255,255,255,.2); }
@@ -334,7 +341,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .fmt-bar { display: flex; gap: 3px; margin-bottom: 6px; }
 .fmt-btn, .folder-fmt-btn, .np-fmt-btn { background: rgba(255,255,255,.06); border: 1px solid var(--navy-b); color: #b0aaa0; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; transition: all .15s; font-family: 'Inter', sans-serif; min-width: 28px; text-align: center; }
 .fmt-btn:hover, .folder-fmt-btn:hover, .np-fmt-btn:hover { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); }
-#note-editor { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 9px 10px; font-size: 13px; line-height: 1.6; color: #e8e4db; min-height: 70px; max-height: 150px; overflow-y: auto; outline: none; transition: border-color .15s; }
+#note-editor { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 9px 10px; font-size: 13px; line-height: 1.6; color: #e8e4db; min-height: 75px; max-height: 240px; overflow-y: auto; overflow-x: auto; resize: vertical; outline: none; transition: border-color .15s; }
 #note-editor:focus { border-color: var(--gold); }
 #note-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
 #note-editor.shake { animation: shake .3s ease; }
