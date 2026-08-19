@@ -205,6 +205,10 @@ export function handlePaste(e) {
   e.preventDefault();
   
   const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  // Strip all PDF viewer overlay elements (highlights, text layer absolute positioning, canvas, etc.)
+  doc.querySelectorAll('.ann-ov, .hi-grp, .hr, .draw-canvas, canvas, .srch-ov, #sel-menu, #drag-ghost, .pg-placeholder').forEach(el => el.remove());
+
   const hasHtmlTable = doc.querySelector('table');
 
   if (!hasHtmlTable && text) {
@@ -219,14 +223,27 @@ export function handlePaste(e) {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent;
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
     
+    // Skip any overlay or ghost element
+    if (node.matches && node.matches('.ann-ov, .hi-grp, .hr, .draw-canvas, canvas, .srch-ov, #sel-menu, #drag-ghost')) {
+      return '';
+    }
+
     let inner = '';
     node.childNodes.forEach(c => inner += cleanNode(c));
     
     const tag = node.tagName.toLowerCase();
     
-    if (['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'a', 'span', 'sup', 'sub'].includes(tag)) {
-      if (tag === 'a') return `<a href="${node.href}">${inner}</a>`;
+    if (['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'sup', 'sub'].includes(tag)) {
       return `<${tag}>${inner}</${tag}>`;
+    }
+
+    if (tag === 'a') {
+      const href = node.getAttribute('href') || '#';
+      return `<a href="${href}" target="_blank" rel="noopener">${inner}</a>`;
+    }
+
+    if (tag === 'span') {
+      return inner; // Unwrap span to prevent inline backgrounds / positions / styles from bleeding into the editor
     }
     
     // Preserve lists

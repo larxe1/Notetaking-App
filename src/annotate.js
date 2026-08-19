@@ -7,6 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
+import { handlePaste } from './tablepicker.js';
 
 // ── Create annotation (text or box) ──
 export async function createAnnotation(pageNum, rects, text, mode_) {
@@ -50,9 +51,19 @@ export function getNoteType(note) {
 
 export function getNoteBody(note) {
   if (!note || !note.note_html) return '';
-  const html = note.note_html;
+  let html = note.note_html;
   const match = html.match(/^<div\s+data-note-type=["'](?:case|general)["'][^>]*>([\s\S]*)<\/div>$/i);
-  if (match) return match[1];
+  if (match) html = match[1];
+
+  // Auto-clean any legacy corrupted markup (e.g. copied PDF highlight rects / canvas / hi-grp / absolute elements)
+  if (html.includes('class="hr"') || html.includes('class="hi-grp"') || html.includes('class="ann-ov"') || html.includes('class="txt-layer"') || html.includes('position: absolute') || html.includes('position:absolute')) {
+    const d = new DOMParser().parseFromString(html, 'text/html');
+    d.querySelectorAll('.hi-grp, .hr, .ann-ov, .txt-layer, .draw-canvas, canvas, .srch-ov, #sel-menu, #drag-ghost').forEach(el => el.remove());
+    d.querySelectorAll('*').forEach(el => {
+      if (el.style.position === 'absolute' || el.style.position === 'fixed') el.remove();
+    });
+    html = d.body.innerHTML;
+  }
   return html;
 }
 
@@ -374,6 +385,10 @@ export function initAnnPanel() {
 
   document.getElementById('btn-edit-pdflink').addEventListener('mousedown', e => e.preventDefault());
   document.getElementById('btn-edit-pdflink').addEventListener('click', () => openPdfLink('edit-note-ed'));
+
+  // Attach sanitized paste handling to note editors
+  document.getElementById('note-editor')?.addEventListener('paste', handlePaste);
+  document.getElementById('edit-note-ed')?.addEventListener('paste', handlePaste);
 
   function renderPdfLinkList() {
     const list = document.getElementById('pdf-link-list');
