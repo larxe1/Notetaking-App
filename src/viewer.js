@@ -16,7 +16,32 @@ const _textDone = new Set();
 let _currentFolderDocId = null;
 let _folderDocDebounce = null;
 
+export async function flushFolderDoc() {
+  if (_currentFolderDocId) {
+    const ed = document.getElementById('folder-doc-editor');
+    if (ed) {
+      const text = ed.innerHTML;
+      const prevId = _currentFolderDocId;
+      const f = S.folders.find(x => x.id === prevId);
+      if (f) f.notes = text;
+      
+      if (_folderDocDebounce) {
+        clearTimeout(_folderDocDebounce);
+        _folderDocDebounce = null;
+      }
+      
+      try {
+        const { dbUpdateFolderNotes } = await import('./db.js');
+        await dbUpdateFolderNotes(prevId, text);
+      } catch {}
+    }
+  }
+}
+
 export async function openFolderDoc(fold) {
+  // 1. Flush any pending notes from previously open folder first!
+  await flushFolderDoc();
+
   S.curPDF = null;
   updateActivePDF();
   
@@ -25,15 +50,18 @@ export async function openFolderDoc(fold) {
   const { clearSearchHighlights } = await import('./search.js');
   clearSearchHighlights();
 
+  // 2. Look up fresh live folder from state
+  const liveFold = S.folders.find(f => f.id === fold.id) || fold;
+
   // Switch to Folder Document Mode
   document.getElementById('content-area').style.display = 'none';
   document.getElementById('notepad-panel').style.display = 'none';
   document.getElementById('folder-doc-viewer').style.display = 'flex';
 
-  document.getElementById('folder-doc-title').textContent = fold.name;
+  document.getElementById('folder-doc-title').textContent = liveFold.name;
   const ed = document.getElementById('folder-doc-editor');
-  ed.innerHTML = fold.notes || '';
-  _currentFolderDocId = fold.id;
+  ed.innerHTML = liveFold.notes || '';
+  _currentFolderDocId = liveFold.id;
 
   // Add listener only once
   if (!ed.dataset.listener) {
@@ -49,18 +77,25 @@ export async function openFolderDoc(fold) {
     ed.addEventListener('input', async () => {
       const { autosave } = await import('./ui.js');
       autosave('saving');
+
+      // Update in-memory state immediately so folder switching never loses keystrokes
+      const currentId = _currentFolderDocId;
+      const currentText = ed.innerHTML;
+      const f = S.folders.find(x => x.id === currentId);
+      if (f) f.notes = currentText;
+
       clearTimeout(_folderDocDebounce);
       _folderDocDebounce = setTimeout(async () => {
-        if (!_currentFolderDocId) return;
-        const text = ed.innerHTML;
+        if (!_currentFolderDocId || _currentFolderDocId !== currentId) return;
         const { dbUpdateFolderNotes } = await import('./db.js');
         try {
-          await dbUpdateFolderNotes(_currentFolderDocId, text);
+          await dbUpdateFolderNotes(currentId, currentText);
           autosave('saved');
         } catch {
           autosave('err');
         }
-      }, 1000);
+        _folderDocDebounce = null;
+      }, 800);
     });
 
     ed.addEventListener('paste', handlePaste);
@@ -102,6 +137,7 @@ const MAX_ACTIVE_CANVASES = 30; // Keeps DOM memory lean (prevents browser canva
 
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 3) {
+  await flushFolderDoc();
   S.curPDF = pdfFile;
   updateActivePDF();
 

@@ -15,6 +15,13 @@ function $saveLbl() { return document.getElementById('np-save-lbl'); }
 
 // ── Open notepad for a specific PDF ──
 export async function openNotepad(pdfId) {
+  // Flush previous notes save immediately if switching
+  if (_saveTimer && _currentPdfId && _currentPdfId !== pdfId) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+    await dbSaveNotepad(_currentPdfId, $editor().innerHTML).catch(() => {});
+  }
+
   _currentPdfId = pdfId;
   const panel = $panel();
   const editor = $editor();
