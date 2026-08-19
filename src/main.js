@@ -438,39 +438,31 @@ function initCalendar() {
   });
 }
 
-async function initLinks() {
+function initLinks() {
   const btnLinks = document.getElementById('btn-links');
   if (!btnLinks) return;
   
-  // Migration + Load
-  let links = await dbLoadLinks();
-  const localLinks = JSON.parse(localStorage.getItem('law_school_links') || '[]');
-  
-  if (localLinks.length > 0) {
-    // Merge local links if they aren't already in the db
-    const existingUrls = new Set(links.map(l => l.url));
-    let added = false;
-    for (const l of localLinks) {
-      if (!existingUrls.has(l.url)) {
-        links.push(l);
-        added = true;
-      }
-    }
-    if (added) await dbSaveLinks(links);
-    // Clear local cache to prevent re-merging
-    localStorage.removeItem('law_school_links');
+  // 1. Prime cache immediately from localStorage (instant 0ms response)
+  try {
+    S.links = JSON.parse(localStorage.getItem('local_sys_links') || localStorage.getItem('law_school_links') || '[]');
+  } catch {
+    S.links = [];
   }
-  
-  S.links = links;
 
+  // 2. Synchronous click handler — opens modal instantly!
   btnLinks.addEventListener('click', () => {
     renderLinks();
     openModal('mo-links');
+    setTimeout(() => document.getElementById('new-link-title')?.focus(), 50);
   });
 
-  document.getElementById('btn-add-link')?.addEventListener('click', async () => {
-    const titleInp = document.getElementById('new-link-title');
-    const urlInp = document.getElementById('new-link-url');
+  // 3. Add link handlers
+  const addBtn = document.getElementById('btn-add-link');
+  const titleInp = document.getElementById('new-link-title');
+  const urlInp = document.getElementById('new-link-url');
+
+  const doAddLink = async () => {
+    if (!titleInp || !urlInp) return;
     const title = titleInp.value.trim();
     let url = urlInp.value.trim();
     if (!title || !url) return;
@@ -478,13 +470,52 @@ async function initLinks() {
       url = 'https://' + url;
     }
     
+    if (!Array.isArray(S.links)) S.links = [];
     S.links.push({ id: Date.now().toString(), title, url });
-    await dbSaveLinks(S.links);
-    
     titleInp.value = '';
     urlInp.value = '';
     renderLinks();
-  });
+    
+    try {
+      await dbSaveLinks(S.links);
+    } catch (err) {
+      console.warn('[dbSaveLinks error]', err);
+    }
+  };
+
+  addBtn?.addEventListener('click', doAddLink);
+  titleInp?.addEventListener('keydown', e => { if (e.key === 'Enter') urlInp?.focus(); });
+  urlInp?.addEventListener('keydown', e => { if (e.key === 'Enter') doAddLink(); });
+
+  // 4. Background non-blocking sync with database
+  (async () => {
+    try {
+      let links = await dbLoadLinks();
+      const localLinks = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+      
+      if (localLinks.length > 0) {
+        const existingUrls = new Set(links.map(l => l.url));
+        let added = false;
+        for (const l of localLinks) {
+          if (!existingUrls.has(l.url)) {
+            links.push(l);
+            added = true;
+          }
+        }
+        if (added) await dbSaveLinks(links);
+        localStorage.removeItem('law_school_links');
+      }
+      
+      if (links && links.length > 0) {
+        S.links = links;
+        if (document.getElementById('mo-links')?.classList.contains('open')) {
+          renderLinks();
+        }
+      }
+    } catch (err) {
+      console.warn('[initLinks background sync]', err);
+    }
+  })();
 }
 
 function renderLinks() {
