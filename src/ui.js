@@ -195,6 +195,39 @@ export function initSyncDiagnostics() {
   });
 }
 
+// ── Google Law Search Companion Window ──
+export function openGoogleCompanion(query = '') {
+  const selectedText = window.getSelection()?.toString()?.trim();
+  const finalQuery = query || selectedText || '';
+  let url = 'https://www.google.com';
+  if (finalQuery) {
+    url = `https://www.google.com/search?q=${encodeURIComponent(finalQuery)}`;
+  }
+
+  const width = 540;
+  const height = Math.min(860, (window.screen?.availHeight || 900) - 60);
+  const left = Math.max(0, (window.screen?.availWidth || 1400) - width - 20);
+  const top = 30;
+
+  try {
+    const win = window.open(
+      url,
+      'GoogleLawCompanion',
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=no,location=yes,toolbar=no,menubar=no`
+    );
+    if (win) {
+      win.focus();
+      toast('🌐 Opened Google Companion');
+    } else {
+      toast('⚠️ Pop-up blocked! Please allow pop-ups for this site.');
+    }
+  } catch (e) {
+    console.error('Failed to open companion window:', e);
+    window.open(url, '_blank');
+  }
+}
+window.openGoogleCompanion = openGoogleCompanion;
+
 // Wire all [data-close] buttons and backdrop clicks
 export function initModals() {
   initSyncDiagnostics();
@@ -376,6 +409,10 @@ export function initKeyboard(deps) {
       document.getElementById('dict-panel')?.classList.remove('open');
     }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); deps.openSearch(); }
+    else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
+      e.preventDefault();
+      openGoogleCompanion();
+    }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && S.mode === 'draw') {
       document.getElementById('btn-undo').click();
     }
