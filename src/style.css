@@ -96,11 +96,11 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .li-chev.closed { transform: rotate(-90deg); }
 .li-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .li-subj-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.li-acts { display: flex; align-items: center; gap: 3px; flex-shrink: 0; margin-left: auto; opacity: 0.7; transition: opacity .15s; }
-.li-subj-hd:hover .li-acts, .li-fold-hd:hover .li-acts, .li-pdf:hover .li-acts { opacity: 1; }
-.li-act-btn { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: var(--muted); cursor: pointer; font-size: 11px; padding: 2px 5px; border-radius: 4px; transition: color .15s, background .15s, border-color .15s; }
-.li-act-btn:hover { color: #e8e4db; background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.2); }
-.li-act-btn.del:hover { color: var(--red); border-color: rgba(250,82,82,.4); }
+.li-acts { display: none; align-items: center; gap: 2px; flex-shrink: 0; margin-left: auto; }
+.li-subj-hd:hover .li-acts, .li-fold-hd:hover .li-acts, .li-pdf:hover .li-acts { display: flex; }
+.li-act-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 3px; transition: color .15s, background .15s; }
+.li-act-btn:hover { color: #e8e4db; background: rgba(255,255,255,.08); }
+.li-act-btn.del:hover { color: var(--red); }
 .li-subj-ch { padding-left: 12px; display: flex; flex-direction: column; gap: 1px; }
 
 /* Folder */
