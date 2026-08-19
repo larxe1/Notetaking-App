@@ -228,12 +228,20 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
       return openPDFFromLibrary(pdfFile, retries - 1);
     }
     console.error(e);
-    const msg = e.message?.includes('Drive') || e.message?.includes('signed')
-      ? 'Sign in to Google Drive first (click the Drive bar at the top of the sidebar).'
-      : 'Could not load PDF. Check your connection.';
-    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:340px;line-height:1.6">${msg}<br><br><button onclick="window.location.reload()" style="padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer">Reload App</button></div>`;
+    const { recordError } = await import('./ui.js');
+    recordError(e, 'PDF Load');
+    let errCode = e?.status || (e?.message?.includes('401') ? '401' : (e?.message?.includes('403') ? '403' : 'ERR'));
+    let msg = 'Could not load PDF.';
+    if (e.message?.includes('Drive') || e.message?.includes('signed') || errCode === '401') {
+      msg = 'Google Drive session expired [401]. Please click "Sign in" on the Drive bar in the sidebar.';
+    } else if (errCode === '403') {
+      msg = 'Google Drive permission denied or quota exceeded [403].';
+    } else if (e.message) {
+      msg = `Could not load PDF [${errCode}]: ${e.message}`;
+    }
+    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:380px;line-height:1.6"><strong>⚠️ Error loading PDF</strong><br>${msg}<br><br><button onclick="window.location.reload()" style="padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer">Reload App</button></div>`;
     const { syncErr } = await import('./ui.js');
-    syncErr('Load failed');
+    syncErr(`Load failed [${errCode}]`);
   }
 }
 

@@ -856,6 +856,57 @@
   </div>
 </div>
 
+<!-- Sync & Connection Diagnostics Modal -->
+<div class="modal-ov" id="mo-sync-diag">
+  <div class="modal-box" style="width:440px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-family:'Libre Baskerville',serif; font-size:15px; color:var(--gold);">🛠 System & Sync Diagnostics</h3>
+      <button class="btn-sec" data-close="mo-sync-diag" style="padding:2px 8px;">✕</button>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px; font-size:12px;">
+      <!-- Connection Status row -->
+      <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:var(--muted);">Network Status:</span>
+        <span id="diag-net-status" style="font-weight:600; color:var(--green);">Online</span>
+      </div>
+
+      <!-- Pending Outbox Queue -->
+      <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="color:var(--muted);">Pending Offline Edits:</span>
+        <span id="diag-queue-count" style="font-weight:600; color:#e8e4db;">0 edits</span>
+      </div>
+
+      <!-- Last Error Card -->
+      <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; color:#e8e4db;">Last Detected Error</span>
+          <span id="diag-err-time" style="font-size:10px; color:var(--muted);"></span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span style="color:var(--muted); font-size:11px;">Error Code:</span>
+          <code id="diag-err-code" style="background:rgba(250,82,82,0.15); color:var(--red); padding:1px 6px; border-radius:4px; font-size:11px; font-weight:bold;">None</code>
+        </div>
+        <div style="color:#e8e4db; font-size:11px; word-break:break-word; background:rgba(0,0,0,0.25); padding:6px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.05);" id="diag-err-msg">
+          No errors recorded. Everything is operating normally.
+        </div>
+        <div id="diag-err-details-wrap" style="display:none; color:var(--muted); font-size:10px; word-break:break-word;">
+          <span>Details: </span><span id="diag-err-details"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Actions -->
+    <div style="display:flex; gap:8px; justify-content:space-between; margin-top:16px;">
+      <button class="btn-sec" id="diag-btn-clear-queue" style="font-size:11px; padding:6px 10px; color:var(--red);" title="Purge stuck offline queue">🗑 Reset Queue</button>
+      <div style="display:flex; gap:6px;">
+        <button class="btn-sec" id="diag-btn-copy" style="font-size:11px; padding:6px 12px;">📋 Copy Error</button>
+        <button class="btn-gold" data-close="mo-sync-diag" style="font-size:11px; padding:6px 14px;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Keyboard Shortcuts Help -->
 <div class="modal-ov" id="mo-keys">
   <div class="modal-box">

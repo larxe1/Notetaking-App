@@ -951,18 +951,24 @@ export function initLibraryModals() {
       }
     } catch (e) {
       console.error('[Upload Error]', e);
+      const { toastError, recordError } = await import('./ui.js');
       const msg = e.message || '';
-      let tip = 'Upload failed. Check connection.';
+      let tip = '';
       if (msg.includes('signed') || msg.includes('Drive') || msg.includes('token')) {
         tip = 'Sign in to Google Drive first (button is in the sidebar)!';
       } else if (msg.includes('401') || msg.includes('403')) {
-        tip = 'Google auth expired — sign out and sign in again.';
+        tip = 'Google auth expired [401] — sign out and sign in again.';
       } else if (msg.includes('quota')) {
-        tip = 'Google Drive is full!';
+        tip = 'Google Drive is full [403 quota exceeded]!';
       } else if (msg.includes('drive_file_id') || msg.includes('column')) {
-        tip = 'DB error: run the SQL migration in Supabase (see SETUP.md)';
+        tip = 'DB error [Column Missing]: run the SQL migration in Supabase';
       }
-      toast(tip);
+      if (tip) {
+        recordError(e, 'Upload');
+        toast(`⚠️ ${tip}`);
+      } else {
+        toastError(e, 'Upload failed');
+      }
     }
     this.value = '';
   });

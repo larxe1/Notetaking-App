@@ -31,6 +31,52 @@ export function autosave(state) {
   }
 }
 
+// ── Error Formatting & Recording (Option 1 & 2) ──
+S.lastError = null;
+
+export function formatError(err, context = '') {
+  if (!err) return null;
+  let code = err.code || err.status || '';
+  let message = err.message || err.error_description || (typeof err === 'string' ? err : 'Unknown error');
+  let details = err.details || err.hint || '';
+  
+  // Extract Postgres error code from string if present
+  if (!code && message.includes('22P02')) code = '22P02';
+  if (!code && message.includes('23505')) code = '23505';
+  if (!code && message.includes('42501')) code = '42501';
+  if (!code && message.includes('401')) code = '401';
+  if (!code && message.includes('403')) code = '403';
+  if (!code && message.includes('404')) code = '404';
+
+  const codePrefix = code ? `[${code}] ` : '';
+  const ctxPrefix = context ? `${context}: ` : '';
+  
+  return {
+    code: code || 'ERR',
+    message: message,
+    details: details,
+    display: `${ctxPrefix}${codePrefix}${message}`,
+    time: new Date().toLocaleTimeString(),
+    context
+  };
+}
+
+export function recordError(err, context = '') {
+  const formatted = formatError(err, context);
+  if (formatted) {
+    S.lastError = formatted;
+    console.error(`[LegalAnnotator Error ${formatted.code}]`, context, err);
+  }
+  return formatted;
+}
+
+export function toastError(err, context = 'Error') {
+  const rec = recordError(err, context);
+  if (rec) toast(`⚠️ ${rec.display}`);
+  else toast(`⚠️ ${context}`);
+  return rec;
+}
+
 // ── Toast ──
 let toastTimer = null;
 export function toast(msg) {
@@ -38,7 +84,7 @@ export function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
 // ── Modal open/close ──
@@ -66,8 +112,89 @@ export function closeOtherPanels(exceptId) {
   }
 }
 
+// ── Sync & Error Diagnostics Modal Wiring ──
+export function initSyncDiagnostics() {
+  const syncBar = document.getElementById('sync-bar');
+  if (syncBar) {
+    syncBar.addEventListener('click', () => {
+      import('./outbox.js').then(outbox => {
+        const queue = outbox.getOutboxQueue();
+        const netStatus = document.getElementById('diag-net-status');
+        const queueCount = document.getElementById('diag-queue-count');
+        const errTime = document.getElementById('diag-err-time');
+        const errCode = document.getElementById('diag-err-code');
+        const errMsg = document.getElementById('diag-err-msg');
+        const errDetailsWrap = document.getElementById('diag-err-details-wrap');
+        const errDetails = document.getElementById('diag-err-details');
+
+        if (netStatus) {
+          netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
+          netStatus.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)';
+        }
+
+        if (queueCount) {
+          queueCount.textContent = `${queue.length} edit${queue.length === 1 ? '' : 's'}`;
+          queueCount.style.color = queue.length > 0 ? 'var(--gold)' : 'var(--green)';
+        }
+
+        if (S.lastError) {
+          if (errTime) errTime.textContent = S.lastError.time || '';
+          if (errCode) errCode.textContent = S.lastError.code || 'ERR';
+          if (errMsg) errMsg.textContent = S.lastError.display || S.lastError.message || 'Error occurred';
+          if (errDetails && S.lastError.details) {
+            errDetails.textContent = S.lastError.details;
+            errDetailsWrap.style.display = 'block';
+          } else if (errDetailsWrap) {
+            errDetailsWrap.style.display = 'none';
+          }
+        } else {
+          if (errTime) errTime.textContent = '';
+          if (errCode) errCode.textContent = 'None';
+          if (errMsg) errMsg.textContent = 'No errors recorded. Everything is operating normally.';
+          if (errDetailsWrap) errDetailsWrap.style.display = 'none';
+        }
+
+        openModal('mo-sync-diag');
+      });
+    });
+  }
+
+  // Copy Error button
+  document.getElementById('diag-btn-copy')?.addEventListener('click', () => {
+    import('./outbox.js').then(outbox => {
+      const payload = {
+        time: S.lastError?.time || new Date().toLocaleTimeString(),
+        code: S.lastError?.code || 'None',
+        context: S.lastError?.context || '',
+        message: S.lastError?.message || 'No error recorded',
+        details: S.lastError?.details || '',
+        online: navigator.onLine,
+        pendingQueueCount: outbox.getOutboxQueue().length,
+        pendingQueue: outbox.getOutboxQueue()
+      };
+      navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).then(() => {
+        toast('📋 Copied error diagnostics to clipboard!');
+      }).catch(() => {
+        toast('Failed to copy to clipboard.');
+      });
+    });
+  });
+
+  // Clear Queue button
+  document.getElementById('diag-btn-clear-queue')?.addEventListener('click', () => {
+    localStorage.removeItem('offline_outbox_queue');
+    import('./outbox.js').then(outbox => {
+      outbox.updateOutboxUI();
+      closeModal('mo-sync-diag');
+      toast('🗑 Offline queue reset.');
+    });
+  });
+}
+
 // Wire all [data-close] buttons and backdrop clicks
 export function initModals() {
+  initSyncDiagnostics();
+
   document.querySelectorAll('[data-close]').forEach(b =>
     b.addEventListener('click', () => closeModal(b.dataset.close))
   );

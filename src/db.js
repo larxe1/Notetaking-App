@@ -27,7 +27,14 @@ export async function dbLoad(retries = 3) {
       db.from('pdf_files').select('*').order('created_at'),
       db.from('color_categories').select('*').order('created_at'),
     ]);
-    if (s.error || f.error || p.error || c.error) throw new Error('DB error');
+    const firstErr = s.error || f.error || p.error || c.error;
+    if (firstErr) {
+      const errTable = s.error ? 'subjects' : (f.error ? 'folders' : (p.error ? 'pdf_files' : 'color_categories'));
+      const dbErr = new Error(`Supabase query on "${errTable}" failed: ${firstErr.message}`);
+      dbErr.code = firstErr.code || 'PGRST';
+      dbErr.details = firstErr.details || firstErr.hint || '';
+      throw dbErr;
+    }
     S.subjects   = s.data || [];
     S.folders    = f.data || [];
     S.pdfs       = p.data || [];
@@ -70,6 +77,8 @@ export async function dbLoad(retries = 3) {
       return dbLoad(retries - 1);
     }
 
+    import('./ui.js').then(m => m.recordError(e, 'Database Load'));
+
     // Fallback: Restore from local snapshot if device is offline
     const snapStr = localStorage.getItem('local_lib_snapshot');
     if (snapStr) {
@@ -79,13 +88,14 @@ export async function dbLoad(retries = 3) {
         S.folders    = snap.folders   || [];
         S.pdfs       = snap.pdfs      || [];
         S.colorCats  = snap.colorCats || [];
-        syncOK('Offline Mode (Local Cache)');
+        syncOK(navigator.onLine ? 'Local Cache (DB Sync Error)' : 'Offline Mode (Local Cache)');
         console.log('[DB] Restored library from local offline snapshot');
         return;
       } catch {}
     }
 
-    syncErr('Connection failed');
+    const errCode = e?.code ? ` [${e.code}]` : '';
+    syncErr(`Connection failed${errCode}`);
     throw e; // re-throw so init() can handle it (Bug #12 fix)
   }
 }

@@ -40,7 +40,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .brand { font-family: 'Libre Baskerville', serif; font-size: 16px; color: var(--gold); display: flex; justify-content: space-between; align-items: center; }
 
 /* Sync bar */
-#sync-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 6px 14px; border-bottom: 1px solid var(--navy-b); flex-shrink: 0; }
+#sync-bar { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 6px 14px; border-bottom: 1px solid var(--navy-b); flex-shrink: 0; cursor: pointer; user-select: none; transition: background .15s; }
+#sync-bar:hover { background: rgba(255,255,255,0.04); }
 .sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .3s; }
 .sdot.ok  { background: var(--green); }
 .sdot.err { background: var(--red); }

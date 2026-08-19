@@ -97,6 +97,8 @@ export async function replayOutbox(dbClient) {
       const errMsg = err?.message || err?.details || String(err);
       const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || errMsg.includes('violates') || errMsg.includes('column') || item.retries >= 3;
       
+      import('./ui.js').then(m => m.recordError(err, `Sync ${item.action} on ${item.table}`));
+
       if (isFatal) {
         console.warn(`[Outbox] Discarding invalid/unrecoverable outbox action after ${item.retries} attempts:`, item, err);
       } else {
@@ -138,6 +140,7 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
     }
   } catch (err) {
     console.warn(`[Outbox] Direct Supabase write failed — saving to offline outbox queue:`, err);
+    import('./ui.js').then(m => m.recordError(err, `Write to ${table}`));
     enqueueAction(table, action, data, matchQuery);
   }
 }
