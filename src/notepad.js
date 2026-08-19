@@ -116,33 +116,16 @@ export function switchNotepadTab(tab) {
 
   const notesEd = $notesEditor();
   const digestEd = $digestEditor();
-  const tplBtn = document.getElementById('btn-np-template');
 
   if (tab === 'digest') {
     if (notesEd) notesEd.style.display = 'none';
     if (digestEd) digestEd.style.display = 'block';
-    if (tplBtn) tplBtn.style.display = 'inline-flex';
     digestEd?.focus();
   } else {
     if (digestEd) digestEd.style.display = 'none';
     if (notesEd) notesEd.style.display = 'block';
-    if (tplBtn) tplBtn.style.display = 'none';
     notesEd?.focus();
   }
-}
-
-// ── Insert Case Digest Template ──
-function insertDigestTemplate() {
-  const ed = $digestEditor();
-  if (!ed) return;
-  const tpl = `<b><u>FACTS:</u></b><br>• <br><br><b><u>ISSUE:</u></b><br>• <br><br><b><u>RULING:</u></b><br>• <br><br><b><u>DOCTRINE:</u></b><br>• <br>`;
-  if (ed.innerHTML.trim() === '' || ed.innerHTML === '<br>') {
-    ed.innerHTML = tpl;
-  } else {
-    ed.innerHTML += `<br><br>${tpl}`;
-  }
-  scheduleSave();
-  ed.focus();
 }
 
 // ── Wire up button + panel events ──
@@ -172,16 +155,13 @@ export function initNotepad() {
     });
   });
 
-  // Template button
-  document.getElementById('btn-np-template')?.addEventListener('click', insertDigestTemplate);
-
   // Bind formatting toolbar commands for PDF Notepad
   const npToolbar = document.getElementById('np-toolbar');
   if (npToolbar) {
     npToolbar.addEventListener('mousedown', e => e.preventDefault()); // Keep focus on editor
     npToolbar.addEventListener('click', (e) => {
       const btn = e.target.closest('.np-fmt-btn');
-      if (!btn || btn.id === 'btn-np-template') return;
+      if (!btn) return;
       
       e.stopPropagation();
       const cmd = btn.dataset.cmd;

@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS pdf_notes (
 -- In case pdf_notes table already exists, add digest column:
 ALTER TABLE pdf_notes ADD COLUMN IF NOT EXISTS digest TEXT DEFAULT '';
 
+-- Disable RLS on pdf_notes so your anon key can read/write without permission issues
+ALTER TABLE pdf_notes DISABLE ROW LEVEL SECURITY;
+
 -- (Optional but recommended) Add cascade delete for cleaner data
 -- This auto-deletes annotation_notes when annotations are deleted
 ALTER TABLE annotation_notes DROP CONSTRAINT IF EXISTS annotation_notes_annotation_id_fkey;
