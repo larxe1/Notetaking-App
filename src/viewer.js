@@ -596,6 +596,7 @@ export function updateActivePDF() {
   document.querySelectorAll('.li-pdf').forEach(el =>
     el.classList.toggle('active', el.dataset.id === S.curPDF?.id)
   );
+  import('./ui.js').then(m => m.updateAppTitle?.()).catch(()=>{});
 }
 
 // ── Recent PDFs tracking ──

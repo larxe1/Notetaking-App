@@ -13,7 +13,7 @@ import { initDrawControls, initPinchZoom } from './draw.js';
 import {
   initModals, initSidebar, initZoom, initNavButtons,
   initKeyboard, exportAnnotations, toast, syncErr,
-  openModal, closeModal, autosave
+  openModal, closeModal, autosave, updateAppTitle
 } from './ui.js';
 import { initNotepad } from './notepad.js';
 import { initDictionary } from './dictionary.js';
@@ -108,6 +108,7 @@ async function init() {
   safeInit(initLinks, 'Links');
   safeInit(initRealtimeSync, 'RealtimeSync');
   safeInit(() => initOutbox(db), 'OutboxSync');
+  safeInit(updateAppTitle, 'AppTitle');
 
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>

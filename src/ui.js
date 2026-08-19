@@ -163,6 +163,7 @@ export function initNavButtons() {
           document.querySelectorAll('.thumb-item').forEach(th =>
             th.classList.toggle('active', parseInt(th.dataset.page) === pg)
           );
+          updateAppTitle();
         }
       }
     }, 80);
@@ -178,6 +179,7 @@ export async function jumpToPage(pg, smooth = false) {
   document.querySelectorAll('.thumb-item').forEach(el =>
     el.classList.toggle('active', parseInt(el.dataset.page) === pg)
   );
+  updateAppTitle();
   
   const pageState = S.pages[pg];
   if (pageState?.wrap) {
@@ -290,4 +292,44 @@ export function exportAnnotations() {
   a.click();
   URL.revokeObjectURL(url);
   toast('Exported!');
+}
+
+// ── Dynamic Window Title & Multi-Monitor Indicator ──
+export function getScreenIndicator() {
+  const x = window.screenLeft ?? window.screenX ?? 0;
+  const y = window.screenTop ?? window.screenY ?? 0;
+  const w = window.screen?.width || 1920;
+  const h = window.screen?.height || 1080;
+
+  const isExtended = Boolean(window.screen && window.screen.isExtended);
+  const isOffPrimary = (x < -100 || x >= w - 100 || y < -100 || y >= h - 100);
+
+  // Single-screen laptop mode: keep title clean
+  if (!isExtended && !isOffPrimary) {
+    return '';
+  }
+
+  // Dual/Multi-screen setup:
+  if (isOffPrimary) {
+    return '[Screen 2] ';
+  } else {
+    return '[Screen 1] ';
+  }
+}
+
+export function updateAppTitle() {
+  const prefix = getScreenIndicator();
+  if (S.curPDF) {
+    const pageStr = S.curPage ? `(p. ${S.curPage})` : '';
+    document.title = `${prefix}📄 ${S.curPDF.name} ${pageStr} — Legal Annotator`;
+  } else {
+    document.title = `${prefix}Legal Annotator`;
+  }
+}
+
+// Keep title updated on window resize, focus, and movement
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', updateAppTitle);
+  window.addEventListener('focus', updateAppTitle);
+  setInterval(updateAppTitle, 2000);
 }
