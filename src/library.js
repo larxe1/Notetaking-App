@@ -394,7 +394,23 @@ function buildSubjectEl(subj) {
   const folds = S.folders
     .filter(f => f.subject_id === subj.id && !f.parent_folder_id) // root folders only
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  for (const f of folds) ch.appendChild(buildFolderEl(f));
+  
+  if (folds.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'li-subj-empty';
+    emptyEl.style.cssText = 'padding: 4px 8px 4px 20px; display: flex; gap: 6px; align-items: center;';
+    emptyEl.innerHTML = `
+      <span style="font-size:11px; color:var(--muted); font-style:italic;">No folders yet</span>
+      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="add-fold">📁+ New Folder</button>
+    `;
+    emptyEl.querySelector('[data-act="add-fold"]').addEventListener('click', e => {
+      e.stopPropagation();
+      openNewFolderModal(subj.id);
+    });
+    ch.appendChild(emptyEl);
+  } else {
+    for (const f of folds) ch.appendChild(buildFolderEl(f));
+  }
   return w;
 }
 
@@ -450,10 +466,7 @@ function buildFolderEl(fold) {
   w.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
     e.stopPropagation();
     const subjId = fold.subject_id || S.folders.find(f => f.id === fold.parent_folder_id)?.subject_id;
-    S.newSubfolderParentId = fold.id;
-    S.newFolderSubjId = subjId;
-    document.getElementById('subfold-name').value = '';
-    openModal('mo-subfold');
+    openNewSubfolderModal(fold.id, subjId);
   });
 
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
@@ -495,8 +508,21 @@ function buildFolderEl(fold) {
   if (children.length === 0) {
     const emptyEl = document.createElement('div');
     emptyEl.className = 'li-fold-empty';
-    emptyEl.style.cssText = 'font-size:11px; color:var(--muted); padding:3px 8px 3px 20px; font-style:italic;';
-    emptyEl.textContent = 'Empty folder (click 📁+ for subfolder or 📄+ for PDF)';
+    emptyEl.style.cssText = 'padding: 4px 8px 4px 20px; display: flex; gap: 6px; align-items: center;';
+    emptyEl.innerHTML = `
+      <span style="font-size:11px; color:var(--muted); font-style:italic;">Empty</span>
+      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="subfolder">📁+ Subfolder</button>
+      <button class="btn-sec" style="padding:2px 8px; font-size:10px;" data-act="upload">📄+ PDF</button>
+    `;
+    emptyEl.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
+      e.stopPropagation();
+      const subjId = fold.subject_id || S.folders.find(f => f.id === fold.parent_folder_id)?.subject_id;
+      openNewSubfolderModal(fold.id, subjId);
+    });
+    emptyEl.querySelector('[data-act="upload"]').addEventListener('click', e => {
+      e.stopPropagation();
+      triggerPDFUpload(fold.id);
+    });
     ch.appendChild(emptyEl);
   } else {
     for (const child of children) {
@@ -771,7 +797,11 @@ function startInlineRename(nameEl, onSave) {
 // ── Modal wiring (subjects, folders, upload) ──
 export function initLibraryModals() {
   document.getElementById('new-subj-btn').addEventListener('click', () => {
-    document.getElementById('subj-name').value = '';
+    const inp = document.getElementById('subj-name');
+    if (inp) {
+      inp.value = '';
+      setTimeout(() => inp.focus(), 50);
+    }
     openModal('mo-subj');
   });
 
@@ -782,6 +812,13 @@ export function initLibraryModals() {
     renderLibrary();
     closeModal('mo-subj');
     toast('Subject created');
+  });
+
+  document.getElementById('subj-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('save-subj')?.click();
+    }
   });
 
   // Preset color clicks
@@ -848,6 +885,13 @@ export function initLibraryModals() {
     toast('Folder created');
   });
 
+  document.getElementById('fold-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('save-fold')?.click();
+    }
+  });
+
   // Save subfolder (nested inside an existing folder)
   document.getElementById('save-subfold').addEventListener('click', async () => {
     const name = document.getElementById('subfold-name').value.trim();
@@ -859,6 +903,13 @@ export function initLibraryModals() {
     renderLibrary();
     closeModal('mo-subfold');
     toast('Subfolder created');
+  });
+
+  document.getElementById('subfold-name')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('save-subfold')?.click();
+    }
   });
 
   // PDF upload via Drive
@@ -957,8 +1008,23 @@ export function initLibraryModals() {
 
 export function openNewFolderModal(id) {
   S.newFolderSubjId = id;
-  document.getElementById('fold-name').value = '';
+  const inp = document.getElementById('fold-name');
+  if (inp) {
+    inp.value = '';
+    setTimeout(() => inp.focus(), 50);
+  }
   openModal('mo-fold');
+}
+
+export function openNewSubfolderModal(folderId, subjId) {
+  S.newSubfolderParentId = folderId;
+  S.newFolderSubjId = subjId || S.folders.find(f => f.id === folderId)?.subject_id;
+  const inp = document.getElementById('subfold-name');
+  if (inp) {
+    inp.value = '';
+    setTimeout(() => inp.focus(), 50);
+  }
+  openModal('mo-subfold');
 }
 
 export function triggerPDFUpload(fid) {
