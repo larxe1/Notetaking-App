@@ -4,6 +4,62 @@ import { closeOtherPanels } from './ui.js';
 let searchTimer = null;
 let currentTerm = '';
 
+export function openDictionary() {
+  const panel = document.getElementById('dict-panel');
+  if (!panel) return;
+  closeOtherPanels('dict-panel');
+  panel.classList.add('open');
+  const searchInput = document.getElementById('dict-search-input');
+  setTimeout(() => searchInput?.focus(), 50);
+}
+
+export function closeDictionary() {
+  const panel = document.getElementById('dict-panel');
+  if (!panel) return;
+  panel.classList.remove('open');
+}
+
+function initDictResize() {
+  const panel = document.getElementById('dict-panel');
+  const handle = document.getElementById('dict-resize-handle');
+  if (!panel || !handle) return;
+
+  let isResizing = false;
+  let startX = 0;
+  let startW = 0;
+
+  const onPointerDown = (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const onPointerMove = (e) => {
+    if (!isResizing) return;
+    const delta = startX - e.clientX;
+    const maxW = Math.min(window.innerWidth * 0.85, 700);
+    const newW = Math.max(260, Math.min(maxW, startW + delta));
+    panel.style.width = newW + 'px';
+  };
+
+  const onPointerUp = () => {
+    if (!isResizing) return;
+    isResizing = false;
+    handle.classList.remove('resizing');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+  };
+
+  handle.addEventListener('pointerdown', onPointerDown);
+}
+
 export function initDictionary() {
   const btnDict = document.getElementById('btn-dict');
   const panel = document.getElementById('dict-panel');
@@ -17,20 +73,20 @@ export function initDictionary() {
   const saveBtn = document.getElementById('dict-save-btn');
   const saveLbl = document.getElementById('dict-save-lbl');
 
-  if (!btnDict || !panel) return;
+  if (!panel) return;
 
-  btnDict.addEventListener('click', () => {
-    if (!panel.classList.contains('open')) {
-      closeOtherPanels('dict-panel');
-    }
-    panel.classList.toggle('open');
+  initDictResize();
+
+  btnDict?.addEventListener('click', () => {
     if (panel.classList.contains('open')) {
-      searchInput.focus();
+      closeDictionary();
+    } else {
+      openDictionary();
     }
   });
 
-  btnClose.addEventListener('click', () => {
-    panel.classList.remove('open');
+  btnClose?.addEventListener('click', () => {
+    closeDictionary();
   });
 
   searchInput.addEventListener('input', (e) => {

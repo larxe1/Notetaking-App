@@ -108,6 +108,9 @@ export function closeOtherPanels(exceptId = null) {
   if (exceptId !== 'search-panel') {
     import('./search.js').then(m => m.closeSearch?.()).catch(() => {});
   }
+  if (exceptId !== 'dict-panel') {
+    import('./dictionary.js').then(m => m.closeDictionary?.()).catch(() => {});
+  }
 }
 
 // ── Sync & Error Diagnostics Modal Wiring ──
