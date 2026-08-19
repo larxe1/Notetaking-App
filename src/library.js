@@ -836,15 +836,23 @@ export function initLibraryModals() {
   // Removed mo-fold-notes listener
 
   document.getElementById('save-fold').addEventListener('click', async () => {
-    const name = document.getElementById('fold-name').value.trim();
+    const inp = document.getElementById('fold-name');
+    const name = inp.value.trim();
     if (!name || !S.newFolderSubjId) return;
+    const subjId = S.newFolderSubjId;
     const type = document.querySelector('.ftype-btn.sel')?.dataset.type || 'custom';
-    const newId = await dbCreateFolder(S.newFolderSubjId, name, type);
-    S.collapsedSubj[S.newFolderSubjId] = false;
-    if (newId) S.expandedFold[newId] = true;
-    renderLibrary();
+    inp.value = '';
     closeModal('mo-fold');
-    toast('Folder created');
+    try {
+      const newId = await dbCreateFolder(subjId, name, type);
+      S.collapsedSubj[subjId] = false;
+      if (newId) S.expandedFold[newId] = true;
+      renderLibrary();
+      toast('Folder created');
+    } catch (e) {
+      const { toastError } = await import('./ui.js');
+      toastError(e, 'Folder creation failed');
+    }
   });
 
   document.getElementById('fold-name')?.addEventListener('keydown', e => {
@@ -856,15 +864,23 @@ export function initLibraryModals() {
 
   // Save subfolder (nested inside an existing folder)
   document.getElementById('save-subfold').addEventListener('click', async () => {
-    const name = document.getElementById('subfold-name').value.trim();
+    const inp = document.getElementById('subfold-name');
+    const name = inp.value.trim();
     if (!name || !S.newSubfolderParentId) return;
-    const subjId = S.newFolderSubjId || S.folders.find(f => f.id === S.newSubfolderParentId)?.subject_id;
-    const newId = await dbCreateFolder(subjId, name, 'custom', S.newSubfolderParentId);
-    S.expandedFold[S.newSubfolderParentId] = true;
-    if (newId) S.expandedFold[newId] = true;
-    renderLibrary();
+    const parentId = S.newSubfolderParentId;
+    const subjId = S.newFolderSubjId || S.folders.find(f => f.id === parentId)?.subject_id;
+    inp.value = '';
     closeModal('mo-subfold');
-    toast('Subfolder created');
+    try {
+      const newId = await dbCreateFolder(subjId, name, 'custom', parentId);
+      S.expandedFold[parentId] = true;
+      if (newId) S.expandedFold[newId] = true;
+      renderLibrary();
+      toast('Subfolder created');
+    } catch (e) {
+      const { toastError } = await import('./ui.js');
+      toastError(e, 'Subfolder creation failed');
+    }
   });
 
   document.getElementById('subfold-name')?.addEventListener('keydown', e => {

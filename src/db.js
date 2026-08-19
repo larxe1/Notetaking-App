@@ -35,8 +35,13 @@ export async function dbLoad(retries = 3) {
       dbErr.details = firstErr.details || firstErr.hint || '';
       throw dbErr;
     }
+    const remoteFolders = f.data || [];
+    const localPendingFolds = S.folders.filter(lf =>
+      !remoteFolders.some(rf => rf.id === lf.id) &&
+      (Date.now() - (lf._created_locally_at || 0) < 60000)
+    );
     S.subjects   = s.data || [];
-    S.folders    = f.data || [];
+    S.folders    = [...remoteFolders, ...localPendingFolds];
     S.pdfs       = p.data || [];
     S.colorCats  = c.data || [];
     
@@ -186,9 +191,25 @@ export async function dbCreateFolder(subject_id, name, folder_type = 'custom', p
   const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
   const sort_order = Math.max(m1, m2) + 1;
 
-  const rec = { id, subject_id, name, folder_type, sort_order, parent_folder_id };
-  await safeDbWrite(db, 'folders', 'upsert', rec);
+  const rec = { id, subject_id, name, folder_type, sort_order, parent_folder_id, _created_locally_at: Date.now() };
   S.folders.push(rec);
+
+  // Save snapshot immediately so reload / dbLoad doesn't lose it
+  try {
+    const snap = JSON.parse(localStorage.getItem('local_lib_snapshot') || '{}');
+    snap.folders = S.folders;
+    localStorage.setItem('local_lib_snapshot', JSON.stringify(snap));
+  } catch {}
+
+  const dbPayload = { id, subject_id, name, folder_type, sort_order };
+  if (parent_folder_id) dbPayload.parent_folder_id = parent_folder_id;
+
+  try {
+    await safeDbWrite(db, 'folders', 'upsert', dbPayload);
+  } catch (err) {
+    console.warn('[dbCreateFolder] safeDbWrite error:', err);
+  }
+
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
