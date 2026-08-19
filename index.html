@@ -441,6 +441,11 @@
       <span id="np-save-lbl"></span>
       <button class="ap-close" id="np-close">✕</button>
     </div>
+    <!-- Tabs: Notes vs Case Digest -->
+    <div class="ap-tabs" id="np-tabs" style="display:flex; border-bottom:1px solid var(--navy-b); background:rgba(0,0,0,0.18); flex-shrink:0;">
+      <button class="ap-tab active" data-nptab="notes" id="nptab-notes">📝 Notes</button>
+      <button class="ap-tab" data-nptab="digest" id="nptab-digest">⚖ Case Digest</button>
+    </div>
     <!-- Notepad Toolbar -->
     <div id="np-toolbar" class="toolbar-strip" style="position:sticky; top:0; z-index:100; padding:6px 14px; border-bottom:1px solid var(--navy-b); background:var(--navy-l); gap:6px; align-items:center; display:flex; flex-wrap:wrap;">
       <button class="np-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
@@ -455,6 +460,7 @@
       <button class="np-fmt-btn" data-cmd="insertOrderedList" title="Number List">1. List</button>
       <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
       <button class="np-fmt-btn" data-cmd="insertTable" title="Insert Table">Table</button>
+      <button class="np-fmt-btn" id="btn-np-template" title="Insert Case Digest Structure (Facts, Issue, Ruling, Doctrine)" style="display:none; color:var(--gold)">⚡ Template</button>
       <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
       <button class="np-fmt-btn" data-cmd="fontSize" data-val="2" title="Small Text">S</button>
       <button class="np-fmt-btn" data-cmd="fontSize" data-val="3" title="Normal Text">M</button>
@@ -463,9 +469,18 @@
     <div id="np-body">
       <div
         id="np-editor"
+        class="np-editor-pane"
         contenteditable="true"
         data-ph="Write general notes about this PDF here…"
         spellcheck="true"
+      ></div>
+      <div
+        id="np-digest-editor"
+        class="np-editor-pane"
+        contenteditable="true"
+        data-ph="Write case summary & digest (Facts, Issue, Ruling, Doctrine)…"
+        spellcheck="true"
+        style="display:none;"
       ></div>
     </div>
   </div>

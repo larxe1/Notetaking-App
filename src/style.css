@@ -427,7 +427,9 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #np-save-lbl.saving { color: var(--gold); }
 #np-save-lbl.saved  { color: var(--green); }
 #np-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 12px 14px; }
-#np-editor {
+#np-editor,
+#np-digest-editor,
+.np-editor-pane {
   flex: 1;
   background: var(--navy);
   border: 1px solid var(--navy-b);
@@ -444,8 +446,10 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
   white-space: pre-wrap;
   word-break: break-word;
 }
-#np-editor:focus { border-color: var(--gold); }
-#np-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
+#np-editor:focus,
+#np-digest-editor:focus { border-color: var(--gold); }
+#np-editor:empty::before,
+#np-digest-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
 
 @media (max-width: 1024px) {
   #notepad-panel, #dict-panel {

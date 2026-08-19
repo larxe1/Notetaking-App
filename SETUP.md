@@ -21,12 +21,16 @@ ALTER TABLE pdf_files ADD COLUMN IF NOT EXISTS linked_pdf_id TEXT REFERENCES pdf
 -- Add notes to folders
 ALTER TABLE folders ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
 
--- PDF Notepad table (general notes per PDF)
+-- PDF Notepad & Case Digest table (notes and case digest per PDF)
 CREATE TABLE IF NOT EXISTS pdf_notes (
   pdf_id  TEXT PRIMARY KEY REFERENCES pdf_files(id) ON DELETE CASCADE,
   content TEXT NOT NULL DEFAULT '',
+  digest  TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- In case pdf_notes table already exists, add digest column:
+ALTER TABLE pdf_notes ADD COLUMN IF NOT EXISTS digest TEXT DEFAULT '';
 
 -- (Optional but recommended) Add cascade delete for cleaner data
 -- This auto-deletes annotation_notes when annotations are deleted

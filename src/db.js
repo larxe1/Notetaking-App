@@ -492,23 +492,60 @@ export async function dbDelColorCat(id) {
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
-// ── PDF Notepad ──
+// ── PDF Notepad & Case Digest ──
 export async function dbLoadNotepad(pdf_id) {
+  let content = '';
+  let digest = '';
   try {
-    const { data, error } = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
-    if (error) throw error;
-    const content = data?.content || '';
-    try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
-    return content;
-  } catch {
-    return localStorage.getItem('local_notepad_' + pdf_id) || '';
+    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', pdf_id).maybeSingle();
+    if (error) {
+      // Fallback in case 'digest' column is not created in Supabase yet
+      const fallback = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+      if (!fallback.error && fallback.data) {
+        content = fallback.data.content || '';
+      }
+    } else if (data) {
+      content = data.content || '';
+      digest = data.digest || '';
+    }
+  } catch (err) {
+    console.warn('[dbLoadNotepad]', err);
   }
+
+  // Fallback to local storage if offline or not returned
+  if (!content) content = localStorage.getItem('local_notepad_' + pdf_id) || '';
+  if (!digest) digest = localStorage.getItem('local_digest_' + pdf_id) || '';
+
+  try {
+    localStorage.setItem('local_notepad_' + pdf_id, content);
+    localStorage.setItem('local_digest_' + pdf_id, digest);
+  } catch {}
+
+  return { content, digest };
 }
 
-export async function dbSaveNotepad(pdf_id, content) {
-  await safeDbWrite(db, 'pdf_notes', 'upsert', { pdf_id, content });
-  try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
-  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content });
+export async function dbSaveNotepad(pdf_id, content, digest) {
+  const payload = { pdf_id };
+  if (content !== undefined) {
+    payload.content = content;
+    try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
+  }
+  if (digest !== undefined) {
+    payload.digest = digest;
+    try { localStorage.setItem('local_digest_' + pdf_id, digest); } catch {}
+  }
+
+  try {
+    await safeDbWrite(db, 'pdf_notes', 'upsert', payload);
+  } catch (err) {
+    // If Supabase throws an error because 'digest' column does not exist yet, fallback to saving content only
+    if (payload.digest !== undefined && (err?.message?.includes('digest') || err?.code === 'PGRST204')) {
+      const fallbackPayload = { pdf_id };
+      if (content !== undefined) fallbackPayload.content = content;
+      await safeDbWrite(db, 'pdf_notes', 'upsert', fallbackPayload).catch(() => {});
+    }
+  }
+  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content, digest });
 }
 
 // ───────────────────────────────────────────────
