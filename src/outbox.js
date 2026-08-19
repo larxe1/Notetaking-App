@@ -94,15 +94,18 @@ export async function replayOutbox(dbClient) {
       console.log(`[Outbox] Successfully synced: ${item.action} on ${item.table}`);
     } catch (err) {
       item.retries = (item.retries || 0) + 1;
-      const errMsg = err?.message || err?.details || String(err);
-      const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || errMsg.includes('violates') || errMsg.includes('column') || item.retries >= 3;
-      
       import('./ui.js').then(m => m.recordError(err, `Sync ${item.action} on ${item.table}`));
-
+      
+      const errMsg = (err?.message || err?.details || String(err)).toLowerCase();
+      const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || 
+                      errMsg.includes('violates') || errMsg.includes('column') || 
+                      errMsg.includes('relation') || errMsg.includes('42703') ||
+                      errMsg.includes('22p02') || errMsg.includes('23505') || 
+                      item.retries >= 2 || (Date.now() - (item.created_at || 0) > 120000);
+      
       if (isFatal) {
-        console.warn(`[Outbox] Discarding invalid/unrecoverable outbox action after ${item.retries} attempts:`, item, err);
+        console.warn(`[Outbox] Dropping unrecoverable outbox action:`, item, err);
       } else {
-        console.warn(`[Outbox] Action failed to sync (will retry):`, item, err);
         remaining.push(item);
       }
     }
@@ -114,7 +117,6 @@ export async function replayOutbox(dbClient) {
   if (remaining.length === 0) {
     if (stxt) stxt.textContent = 'DB Sync Active';
     if (sdot) { sdot.className = 'sdot ok'; sdot.style.background = ''; }
-    import('./ui.js').then(m => m.toast('✅ Offline changes successfully synced!'));
   } else {
     updateOutboxUI();
   }

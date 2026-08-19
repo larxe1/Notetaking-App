@@ -113,50 +113,54 @@ export function closeOtherPanels(exceptId) {
 }
 
 // ── Sync & Error Diagnostics Modal Wiring ──
+export function openSyncDiagnosticsModal() {
+  import('./outbox.js').then(outbox => {
+    const queue = outbox.getOutboxQueue();
+    const netStatus = document.getElementById('diag-net-status');
+    const queueCount = document.getElementById('diag-queue-count');
+    const errTime = document.getElementById('diag-err-time');
+    const errCode = document.getElementById('diag-err-code');
+    const errMsg = document.getElementById('diag-err-msg');
+    const errDetailsWrap = document.getElementById('diag-err-details-wrap');
+    const errDetails = document.getElementById('diag-err-details');
+
+    if (netStatus) {
+      netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
+      netStatus.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (queueCount) {
+      queueCount.textContent = `${queue.length} edit${queue.length === 1 ? '' : 's'}`;
+      queueCount.style.color = queue.length > 0 ? 'var(--gold)' : 'var(--green)';
+    }
+
+    if (S.lastError) {
+      if (errTime) errTime.textContent = S.lastError.time || '';
+      if (errCode) errCode.textContent = S.lastError.code || 'ERR';
+      if (errMsg) errMsg.textContent = S.lastError.display || S.lastError.message || 'Error occurred';
+      if (errDetails && S.lastError.details) {
+        errDetails.textContent = S.lastError.details;
+        errDetailsWrap.style.display = 'block';
+      } else if (errDetailsWrap) {
+        errDetailsWrap.style.display = 'none';
+      }
+    } else {
+      if (errTime) errTime.textContent = '';
+      if (errCode) errCode.textContent = 'None';
+      if (errMsg) errMsg.textContent = 'No errors recorded. Everything is operating normally.';
+      if (errDetailsWrap) errDetailsWrap.style.display = 'none';
+    }
+
+    openModal('mo-sync-diag');
+  });
+}
+window.openSyncDiagnosticsModal = openSyncDiagnosticsModal;
+window.openSyncDiagnostics = openSyncDiagnosticsModal;
+
 export function initSyncDiagnostics() {
   const syncBar = document.getElementById('sync-bar');
   if (syncBar) {
-    syncBar.addEventListener('click', () => {
-      import('./outbox.js').then(outbox => {
-        const queue = outbox.getOutboxQueue();
-        const netStatus = document.getElementById('diag-net-status');
-        const queueCount = document.getElementById('diag-queue-count');
-        const errTime = document.getElementById('diag-err-time');
-        const errCode = document.getElementById('diag-err-code');
-        const errMsg = document.getElementById('diag-err-msg');
-        const errDetailsWrap = document.getElementById('diag-err-details-wrap');
-        const errDetails = document.getElementById('diag-err-details');
-
-        if (netStatus) {
-          netStatus.textContent = navigator.onLine ? 'Online' : 'Offline';
-          netStatus.style.color = navigator.onLine ? 'var(--green)' : 'var(--red)';
-        }
-
-        if (queueCount) {
-          queueCount.textContent = `${queue.length} edit${queue.length === 1 ? '' : 's'}`;
-          queueCount.style.color = queue.length > 0 ? 'var(--gold)' : 'var(--green)';
-        }
-
-        if (S.lastError) {
-          if (errTime) errTime.textContent = S.lastError.time || '';
-          if (errCode) errCode.textContent = S.lastError.code || 'ERR';
-          if (errMsg) errMsg.textContent = S.lastError.display || S.lastError.message || 'Error occurred';
-          if (errDetails && S.lastError.details) {
-            errDetails.textContent = S.lastError.details;
-            errDetailsWrap.style.display = 'block';
-          } else if (errDetailsWrap) {
-            errDetailsWrap.style.display = 'none';
-          }
-        } else {
-          if (errTime) errTime.textContent = '';
-          if (errCode) errCode.textContent = 'None';
-          if (errMsg) errMsg.textContent = 'No errors recorded. Everything is operating normally.';
-          if (errDetailsWrap) errDetailsWrap.style.display = 'none';
-        }
-
-        openModal('mo-sync-diag');
-      });
-    });
+    syncBar.addEventListener('click', openSyncDiagnosticsModal);
   }
 
   // Copy Error button
