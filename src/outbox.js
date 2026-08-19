@@ -93,8 +93,16 @@ export async function replayOutbox(dbClient) {
       }
       console.log(`[Outbox] Successfully synced: ${item.action} on ${item.table}`);
     } catch (err) {
-      console.warn(`[Outbox] Action failed to sync (will retry later):`, item, err);
-      remaining.push(item);
+      item.retries = (item.retries || 0) + 1;
+      const errMsg = err?.message || err?.details || String(err);
+      const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || errMsg.includes('violates') || errMsg.includes('column') || item.retries >= 3;
+      
+      if (isFatal) {
+        console.warn(`[Outbox] Discarding invalid/unrecoverable outbox action after ${item.retries} attempts:`, item, err);
+      } else {
+        console.warn(`[Outbox] Action failed to sync (will retry):`, item, err);
+        remaining.push(item);
+      }
     }
   }
 
@@ -102,9 +110,9 @@ export async function replayOutbox(dbClient) {
   _isReplaying = false;
 
   if (remaining.length === 0) {
-    if (stxt) stxt.textContent = 'DB Sync Active (All Synced)';
+    if (stxt) stxt.textContent = 'DB Sync Active';
     if (sdot) { sdot.className = 'sdot ok'; sdot.style.background = ''; }
-    import('./ui.js').then(m => m.toast('✅ Offline changes successfully synced to cloud!'));
+    import('./ui.js').then(m => m.toast('✅ Offline changes successfully synced!'));
   } else {
     updateOutboxUI();
   }
@@ -156,7 +164,7 @@ export function initOutbox(dbClient) {
 
   // 3. Initial check on startup
   if (navigator.onLine && getOutboxQueue().length > 0) {
-    setTimeout(() => replayOutbox(dbClient), 2000);
+    replayOutbox(dbClient);
   } else {
     updateOutboxUI();
   }
