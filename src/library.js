@@ -415,6 +415,7 @@ function buildFolderEl(fold) {
       <div class="li-acts">
         <button class="li-act-btn" title="Add subfolder" data-act="subfolder">📁+</button>
         <button class="li-act-btn" title="Add PDF" data-act="upload">📄+</button>
+        <button class="li-act-btn" title="Folder Syllabus Notes" data-act="notes">📝</button>
         <button class="li-act-btn" title="Rename" data-act="rename">✏</button>
         <button class="li-act-btn del" title="Delete" data-act="del">✕</button>
       </div>
@@ -436,26 +437,21 @@ function buildFolderEl(fold) {
     }
   });
 
-  // Handle expand/collapse OR open document on click
+  // Handle expand/collapse on folder click
   hd.addEventListener('click', e => {
     if (e.target.closest('.li-acts')) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
     
-    if (e.target.closest('.li-chev')) {
-      S.expandedFold[fold.id] = !S.expandedFold[fold.id];
-      chev.classList.toggle('closed');
-      ch.style.display = S.expandedFold[fold.id] ? 'flex' : 'none';
-    } else {
-      // User clicked the folder name/icon: open full document view
-      openFolderDoc(fold);
-      closeSidebar();
-    }
+    S.expandedFold[fold.id] = !S.expandedFold[fold.id];
+    chev.classList.toggle('closed');
+    ch.style.display = S.expandedFold[fold.id] ? 'flex' : 'none';
   });
 
   w.querySelector('[data-act="subfolder"]').addEventListener('click', e => {
     e.stopPropagation();
+    const subjId = fold.subject_id || S.folders.find(f => f.id === fold.parent_folder_id)?.subject_id;
     S.newSubfolderParentId = fold.id;
-    S.newFolderSubjId = fold.subject_id;
+    S.newFolderSubjId = subjId;
     document.getElementById('subfold-name').value = '';
     openModal('mo-subfold');
   });
@@ -463,6 +459,12 @@ function buildFolderEl(fold) {
   w.querySelector('[data-act="upload"]').addEventListener('click', e => {
     e.stopPropagation();
     triggerPDFUpload(fold.id);
+  });
+
+  w.querySelector('[data-act="notes"]')?.addEventListener('click', e => {
+    e.stopPropagation();
+    openFolderDoc(fold);
+    closeSidebar();
   });
 
   w.querySelector('[data-act="rename"]').addEventListener('click', e => {
@@ -490,14 +492,22 @@ function buildFolderEl(fold) {
     return sA - sB;
   });
 
-  for (const child of children) {
-    if (child._type === 'folder') {
-      const childEl = buildFolderEl(child);
-      childEl.style.marginLeft = '12px';
-      childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
-      ch.appendChild(childEl);
-    } else {
-      ch.appendChild(buildPdfEl(child));
+  if (children.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'li-fold-empty';
+    emptyEl.style.cssText = 'font-size:11px; color:var(--muted); padding:3px 8px 3px 20px; font-style:italic;';
+    emptyEl.textContent = 'Empty folder (click 📁+ for subfolder or 📄+ for PDF)';
+    ch.appendChild(emptyEl);
+  } else {
+    for (const child of children) {
+      if (child._type === 'folder') {
+        const childEl = buildFolderEl(child);
+        childEl.style.marginLeft = '12px';
+        childEl.style.borderLeft = '2px solid rgba(201,168,76,0.2)';
+        ch.appendChild(childEl);
+      } else {
+        ch.appendChild(buildPdfEl(child));
+      }
     }
   }
 
@@ -830,7 +840,9 @@ export function initLibraryModals() {
     const name = document.getElementById('fold-name').value.trim();
     if (!name || !S.newFolderSubjId) return;
     const type = document.querySelector('.ftype-btn.sel')?.dataset.type || 'custom';
-    await dbCreateFolder(S.newFolderSubjId, name, type);
+    const newId = await dbCreateFolder(S.newFolderSubjId, name, type);
+    S.collapsedSubj[S.newFolderSubjId] = false;
+    if (newId) S.expandedFold[newId] = true;
     renderLibrary();
     closeModal('mo-fold');
     toast('Folder created');
@@ -840,7 +852,10 @@ export function initLibraryModals() {
   document.getElementById('save-subfold').addEventListener('click', async () => {
     const name = document.getElementById('subfold-name').value.trim();
     if (!name || !S.newSubfolderParentId) return;
-    await dbCreateFolder(S.newFolderSubjId, name, 'custom', S.newSubfolderParentId);
+    const subjId = S.newFolderSubjId || S.folders.find(f => f.id === S.newSubfolderParentId)?.subject_id;
+    const newId = await dbCreateFolder(subjId, name, 'custom', S.newSubfolderParentId);
+    S.expandedFold[S.newSubfolderParentId] = true;
+    if (newId) S.expandedFold[newId] = true;
     renderLibrary();
     closeModal('mo-subfold');
     toast('Subfolder created');

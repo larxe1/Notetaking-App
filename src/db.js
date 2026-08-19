@@ -163,7 +163,11 @@ export async function dbDelSubject(id) {
 }
 
 // ── Folders ──
-export async function dbCreateFolder(subject_id, name, folder_type, parent_folder_id = null) {
+export async function dbCreateFolder(subject_id, name, folder_type = 'custom', parent_folder_id = null) {
+  if (!subject_id && parent_folder_id) {
+    const par = S.folders.find(f => f.id === parent_folder_id);
+    if (par) subject_id = par.subject_id;
+  }
   const id = 'fold_' + Date.now();
   
   const sibFolds = S.folders.filter(f => f.parent_folder_id === parent_folder_id && f.subject_id === subject_id);
@@ -172,8 +176,9 @@ export async function dbCreateFolder(subject_id, name, folder_type, parent_folde
   const m2 = sibPdfs.reduce((max, p) => Math.max(max, p.sort_order || 0), -1);
   const sort_order = Math.max(m1, m2) + 1;
 
-  await safeDbWrite(db, 'folders', 'upsert', { id, subject_id, name, folder_type, sort_order, parent_folder_id });
-  S.folders.push({ id, subject_id, name, folder_type, sort_order, parent_folder_id });
+  const rec = { id, subject_id, name, folder_type, sort_order, parent_folder_id };
+  await safeDbWrite(db, 'folders', 'upsert', rec);
+  S.folders.push(rec);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
   return id;
 }
