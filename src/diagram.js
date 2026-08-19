@@ -146,6 +146,8 @@ export async function initDiagramStudio() {
   document.getElementById('btn-diag-zin')?.addEventListener('click', () => adjustZoom(0.2));
   document.getElementById('btn-diag-zout')?.addEventListener('click', () => adjustZoom(-0.2));
   document.getElementById('btn-diag-zreset')?.addEventListener('click', () => resetZoom());
+
+  initDiagramLightbox();
 }
 
 async function ensureMermaid() {
@@ -371,7 +373,7 @@ export async function insertDiagramIntoNotes() {
     }
 
     const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-    const imgHtml = `<p><br></p><div style="text-align:center; margin:14px 0;"><img src="${base64}" style="max-width:100%; border-radius:6px; border:1px solid #2a3b5c; box-shadow:0 4px 12px rgba(0,0,0,0.3); background:#0c1322; padding:10px;" alt="Legal Diagram"></div><p><br></p>`;
+    const imgHtml = `<p><br></p><div style="text-align:center; margin:14px 0;"><img src="${base64}" class="diagram-clickable" style="max-width:100%; border-radius:6px; border:1px solid #2a3b5c; box-shadow:0 4px 12px rgba(0,0,0,0.3); background:#0c1322; padding:10px; cursor:zoom-in; transition:transform 0.15s, box-shadow 0.15s;" title="🔍 Click to expand full-screen" alt="Legal Diagram"></div><p><br></p>`;
 
     const folderDocViewer = document.getElementById('folder-doc-viewer');
     const folderDoc = document.getElementById('folder-doc-editor');
@@ -419,4 +421,103 @@ export async function insertDiagramIntoNotes() {
     console.error('[Diagram] Insert error:', e);
     toast('❌ Failed to insert diagram.');
   }
+}
+
+// ═══════════════════════════════════════════════
+// FULL-SCREEN DIAGRAM LIGHTBOX WITH PAN & ZOOM
+// ═══════════════════════════════════════════════
+let _lbZoom = 1.0;
+let _lbPanX = 0;
+let _lbPanY = 0;
+let _lbIsDragging = false;
+let _lbStartX = 0;
+let _lbStartY = 0;
+
+export function openDiagramLightbox(imgSrc) {
+  const modal = document.getElementById('mo-diagram-lightbox');
+  const img = document.getElementById('lb-img');
+  if (!modal || !img) return;
+
+  img.src = imgSrc;
+  _lbZoom = 1.0;
+  _lbPanX = 0;
+  _lbPanY = 0;
+  updateLbTransform();
+  openModal('mo-diagram-lightbox');
+}
+
+function updateLbTransform() {
+  const img = document.getElementById('lb-img');
+  const lbl = document.getElementById('lb-zoom-lbl');
+  if (!img) return;
+  img.style.transform = `translate(${_lbPanX}px, ${_lbPanY}px) scale(${_lbZoom})`;
+  if (lbl) lbl.textContent = Math.round(_lbZoom * 100) + '%';
+}
+
+export function initDiagramLightbox() {
+  const modal = document.getElementById('mo-diagram-lightbox');
+  const canvas = document.getElementById('lb-canvas');
+  if (!modal || !canvas) return;
+
+  // Delegated click listener on note editors to expand any diagram/image on click
+  document.addEventListener('click', (e) => {
+    const imgEl = e.target.closest('#folder-doc-editor img, #np-editor img, #np-digest-editor img, .note-body img, #note-editor img, #edit-note-ed img, .diagram-clickable');
+    if (imgEl && imgEl.src && imgEl.id !== 'lb-img') {
+      e.stopPropagation();
+      openDiagramLightbox(imgEl.src);
+    }
+  });
+
+  // Zoom controls
+  document.getElementById('btn-lb-zin')?.addEventListener('click', () => {
+    _lbZoom = Math.min(6.0, _lbZoom + 0.25);
+    updateLbTransform();
+  });
+  document.getElementById('btn-lb-zout')?.addEventListener('click', () => {
+    _lbZoom = Math.max(0.2, _lbZoom - 0.25);
+    updateLbTransform();
+  });
+  document.getElementById('btn-lb-zreset')?.addEventListener('click', () => {
+    _lbZoom = 1.0;
+    _lbPanX = 0;
+    _lbPanY = 0;
+    updateLbTransform();
+  });
+  document.getElementById('btn-lb-fit')?.addEventListener('click', () => {
+    _lbZoom = 0.85;
+    _lbPanX = 0;
+    _lbPanY = 0;
+    updateLbTransform();
+  });
+
+  // Smooth mouse wheel zoom
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    _lbZoom = Math.max(0.2, Math.min(6.0, _lbZoom + delta));
+    updateLbTransform();
+  }, { passive: false });
+
+  // Pan / Drag handlers
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    _lbIsDragging = true;
+    _lbStartX = e.clientX - _lbPanX;
+    _lbStartY = e.clientY - _lbPanY;
+    canvas.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!_lbIsDragging) return;
+    _lbPanX = e.clientX - _lbStartX;
+    _lbPanY = e.clientY - _lbStartY;
+    updateLbTransform();
+  });
+
+  window.addEventListener('pointerup', () => {
+    if (_lbIsDragging) {
+      _lbIsDragging = false;
+      if (canvas) canvas.style.cursor = 'grab';
+    }
+  });
 }

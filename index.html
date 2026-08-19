@@ -831,6 +831,32 @@
   </div>
 </div>
 
+<!-- Fullscreen Diagram Lightbox Modal -->
+<div class="modal-ov" id="mo-diagram-lightbox" style="z-index:4000; padding:10px; background:rgba(4,7,15,0.92); backdrop-filter:blur(6px);">
+  <div style="position:relative; width:96vw; height:94vh; max-width:96vw; max-height:94vh; display:flex; flex-direction:column; background:#0c1322; border:1px solid #2a3b5c; border-radius:12px; box-shadow:0 24px 72px rgba(0,0,0,0.8); overflow:hidden;">
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-bottom:1px solid var(--navy-b); background:var(--navy-l); flex-shrink:0;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:14px; font-weight:600; color:var(--gold); font-family:'Libre Baskerville',serif;">🔍 Expanded Diagram Viewer</span>
+        <span style="font-size:11px; color:var(--muted);">(Scroll to zoom • Drag to pan)</span>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button class="btn-sec" id="btn-lb-zout" style="padding:4px 10px; font-size:12px;" title="Zoom Out">🔍−</button>
+        <span id="lb-zoom-lbl" style="font-size:11px; color:#e8e4db; min-width:44px; text-align:center;">100%</span>
+        <button class="btn-sec" id="btn-lb-zin" style="padding:4px 10px; font-size:12px;" title="Zoom In">🔍+</button>
+        <button class="btn-sec" id="btn-lb-zreset" style="padding:4px 10px; font-size:12px;" title="Reset Zoom">100%</button>
+        <button class="btn-sec" id="btn-lb-fit" style="padding:4px 10px; font-size:12px;" title="Fit to Screen">Fit</button>
+        <div style="width:1px; height:16px; background:var(--navy-b); margin:0 4px;"></div>
+        <button class="btn-sec" data-close="mo-diagram-lightbox" style="padding:4px 12px; font-size:14px; color:var(--gold);">✕</button>
+      </div>
+    </div>
+    <!-- Viewport Area with Pan & Zoom -->
+    <div id="lb-canvas" style="flex:1; width:100%; height:100%; overflow:hidden; position:relative; cursor:grab; display:flex; align-items:center; justify-content:center; background:#070b14; user-select:none;">
+      <img id="lb-img" style="transform-origin:center center; transition:transform 0.05s linear; max-width:90%; max-height:90%; object-fit:contain;" alt="Expanded Diagram">
+    </div>
+  </div>
+</div>
+
 <!-- Settings & Utilities Modal -->
 <div class="modal-ov" id="mo-settings">
   <div class="modal-box" style="width:400px; max-width:92vw;">

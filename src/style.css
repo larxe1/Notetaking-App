@@ -584,6 +584,19 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
 ════════════════════════════════════════ */
 #lib-ctx-menu { position: fixed; background: var(--navy-l); border: 1px solid var(--navy-b); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 9000; display: none; min-width: 186px; overflow: hidden; padding: 4px; }
 #lib-ctx-menu.open { display: block; animation: ctx-in .12s ease; }
+
+/* ════════════════════════════════════════
+   EXPANDABLE DIAGRAM & NOTE IMAGES
+════════════════════════════════════════ */
+#folder-doc-editor img, #np-editor img, #np-digest-editor img, .note-body img, #note-editor img, #edit-note-ed img, .diagram-clickable {
+  cursor: zoom-in !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+#folder-doc-editor img:hover, #np-editor img:hover, #np-digest-editor img:hover, .note-body img:hover, #note-editor img:hover, #edit-note-ed img:hover, .diagram-clickable:hover {
+  box-shadow: 0 6px 24px rgba(201, 168, 76, 0.4) !important;
+  border-color: var(--gold) !important;
+  transform: scale(1.01);
+}
 @keyframes ctx-in { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 #lib-ctx-menu .ctx-item { padding: 9px 14px; font-size: 13px; color: #e8e4db; cursor: pointer; border-radius: 5px; transition: background .12s; font-family: 'Inter', sans-serif; display: flex; align-items: center; gap: 8px; }
 #lib-ctx-menu .ctx-item:hover { background: var(--gold-bg); color: var(--gold); }
