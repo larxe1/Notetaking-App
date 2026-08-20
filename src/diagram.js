@@ -140,6 +140,7 @@ export async function initDiagramStudio() {
   }
 
   // Action buttons
+  document.getElementById('btn-diag-export-jpg')?.addEventListener('click', exportDiagramJPG);
   document.getElementById('btn-diag-export-png')?.addEventListener('click', exportDiagramPNG);
   document.getElementById('btn-diag-export-svg')?.addEventListener('click', exportDiagramSVG);
   document.getElementById('btn-diag-insert-notes')?.addEventListener('click', insertDiagramIntoNotes);
@@ -296,6 +297,67 @@ function scheduleSave() {
   }, 1000);
 }
 
+// ── Generic JPG Image Downloader ──
+export function downloadImageAsJPG(imgSrc, defaultName = 'legal_diagram.jpg') {
+  if (!imgSrc) {
+    toast('No diagram to download.');
+    return;
+  }
+
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      const scale = 2.5; // High resolution for crisp legal text
+      const width = image.naturalWidth || image.width || 1200;
+      const height = image.naturalHeight || image.height || 800;
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+
+      const ctx = canvas.getContext('2d');
+      // Solid dark navy background
+      ctx.fillStyle = '#0c1322';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      const jpgURL = canvas.toDataURL('image/jpeg', 0.95);
+      const a = document.createElement('a');
+      const filename = defaultName.endsWith('.jpg') || defaultName.endsWith('.jpeg') ? defaultName : defaultName + '.jpg';
+      a.download = filename;
+      a.href = jpgURL;
+      a.click();
+      toast('✅ Diagram downloaded as JPG!');
+    } catch (e) {
+      console.error('[Diagram] JPG export error:', e);
+      toast('❌ Failed to convert diagram to JPG.');
+    }
+  };
+  image.onerror = (err) => {
+    console.error('[Diagram] Image load error for JPG:', err);
+    toast('❌ Failed to load image for JPG download.');
+  };
+  image.src = imgSrc;
+}
+
+// ── Export as JPG image from Diagram Studio ──
+export function exportDiagramJPG() {
+  const preview = document.getElementById('diag-preview-inner');
+  const svg = preview?.querySelector('svg');
+  if (!svg) {
+    toast('No valid diagram to export.');
+    return;
+  }
+
+  let svgData = new XMLSerializer().serializeToString(svg);
+  if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
+    svgData = svgData.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+  }
+  const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_diagram.jpg';
+  downloadImageAsJPG(base64, name);
+}
+
 // ── Export as PNG image ──
 export function exportDiagramPNG() {
   const preview = document.getElementById('diag-preview-inner');
@@ -306,18 +368,20 @@ export function exportDiagramPNG() {
   }
 
   try {
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const URL = window.URL || window.webkitURL || window;
-    const blobURL = URL.createObjectURL(svgBlob);
+    let svgData = new XMLSerializer().serializeToString(svg);
+    if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
+      svgData = svgData.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    }
+    const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
 
     const image = new Image();
     image.onload = () => {
       const canvas = document.createElement('canvas');
-      const scale = 2; // High-DPI crisp export
-      const bbox = svg.getBoundingClientRect();
-      canvas.width = (bbox.width || 800) * scale;
-      canvas.height = (bbox.height || 600) * scale;
+      const scale = 2.5; // High-DPI crisp export
+      const width = image.naturalWidth || image.width || 1200;
+      const height = image.naturalHeight || image.height || 800;
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
 
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#0c1322';
@@ -330,10 +394,9 @@ export function exportDiagramPNG() {
       a.download = name;
       a.href = pngURL;
       a.click();
-      URL.revokeObjectURL(blobURL);
       toast('✅ PNG Diagram exported!');
     };
-    image.src = blobURL;
+    image.src = base64;
   } catch (e) {
     console.error('[Diagram] PNG export error:', e);
     toast('❌ Failed to export PNG.');
@@ -465,6 +528,17 @@ export function initDiagramLightbox() {
     if (imgEl && imgEl.src && imgEl.id !== 'lb-img') {
       e.stopPropagation();
       openDiagramLightbox(imgEl.src);
+    }
+  });
+
+  // Download expanded diagram as JPG
+  document.getElementById('btn-lb-download-jpg')?.addEventListener('click', () => {
+    const img = document.getElementById('lb-img');
+    if (img && img.src) {
+      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_expanded.jpg';
+      downloadImageAsJPG(img.src, name);
+    } else {
+      toast('No diagram available to download.');
     }
   });
 
