@@ -24,6 +24,13 @@ function initDictResize() {
   const handle = document.getElementById('dict-resize-handle');
   if (!panel || !handle) return;
 
+  const savedWidth = localStorage.getItem('dict_panel_width');
+  if (savedWidth) {
+    const maxW = Math.min(window.innerWidth * 0.85, 700);
+    const w = Math.max(260, Math.min(maxW, parseInt(savedWidth, 10)));
+    panel.style.width = w + 'px';
+  }
+
   let isResizing = false;
   let startX = 0;
   let startW = 0;
@@ -33,6 +40,7 @@ function initDictResize() {
     startX = e.clientX;
     startW = panel.offsetWidth;
     handle.classList.add('resizing');
+    panel.style.transition = 'none';
     document.body.style.cursor = 'ew-resize';
     document.body.style.userSelect = 'none';
     window.addEventListener('pointermove', onPointerMove);
@@ -51,10 +59,12 @@ function initDictResize() {
     if (!isResizing) return;
     isResizing = false;
     handle.classList.remove('resizing');
+    panel.style.transition = '';
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
+    localStorage.setItem('dict_panel_width', panel.offsetWidth);
   };
 
   handle.addEventListener('pointerdown', onPointerDown);
@@ -77,13 +87,16 @@ export function initDictionary() {
 
   initDictResize();
 
-  btnDict?.addEventListener('click', () => {
+  const toggleDict = () => {
     if (panel.classList.contains('open')) {
       closeDictionary();
     } else {
       openDictionary();
     }
-  });
+  };
+
+  btnDict?.addEventListener('click', toggleDict);
+  document.getElementById('folder-doc-btn-dict')?.addEventListener('click', toggleDict);
 
   btnClose?.addEventListener('click', () => {
     closeDictionary();

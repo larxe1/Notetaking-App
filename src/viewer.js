@@ -118,6 +118,14 @@ export async function openFolderDoc(fold) {
         insertWebLink(ed, () => ed.dispatchEvent(new Event('input')));
         return;
       }
+      if (btn.id === 'folder-doc-btn-dict') {
+        import('./dictionary.js').then(m => {
+          const panel = document.getElementById('dict-panel');
+          if (panel?.classList.contains('open')) m.closeDictionary();
+          else m.openDictionary();
+        });
+        return;
+      }
 
       const cmd = btn.dataset.cmd;
       let val = btn.dataset.val || null;
@@ -205,8 +213,8 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   S.curPDF = pdfFile;
   updateActivePDF();
 
-  const { closeAnnPanel } = await import('./annotate.js');
-  closeAnnPanel();
+  const { closeOtherPanels } = await import('./ui.js');
+  closeOtherPanels();
 
   const { clearSearchHighlights } = await import('./search.js');
   clearSearchHighlights();
