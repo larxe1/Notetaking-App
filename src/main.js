@@ -17,7 +17,7 @@ import {
 } from './ui.js';
 import { initNotepad } from './notepad.js';
 import { initDictionary } from './dictionary.js';
-import { initTableContextMenu } from './tablepicker.js';
+import { initTableContextMenu, initTableLightbox } from './tablepicker.js';
 import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
 import { initOutbox } from './outbox.js';
@@ -108,6 +108,7 @@ async function init() {
   safeInit(initNavButtons, 'NavButtons');
   safeInit(initNotepad, 'Notepad');
   safeInit(initTableContextMenu, 'TableContextMenu');
+  safeInit(initTableLightbox, 'TableLightbox');
   safeInit(initDictionary, 'Dictionary');
   safeInit(initDualView, 'DualView');
   safeInit(initContextMenu, 'ContextMenu');

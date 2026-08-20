@@ -1,9 +1,12 @@
+import { openModal, toast } from './ui.js';
+import { S } from './state.js';
+
 export function showTablePicker(btn, editorElement) {
   let picker = document.getElementById('table-picker');
   if (!picker) {
     picker = document.createElement('div');
     picker.id = 'table-picker';
-    picker.style.cssText = 'position:absolute; z-index:1000; background:var(--navy-d); border:1px solid var(--navy-b); padding:12px; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.6); display:flex; flex-direction:column; gap:8px;';
+    picker.style.cssText = 'position:absolute; z-index:1000; background:var(--navy-l); border:1px solid var(--navy-b); padding:12px; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.6); display:flex; flex-direction:column; gap:8px;';
     
     const grid = document.createElement('div');
     grid.style.cssText = 'display:grid; grid-template-columns:repeat(10, 16px); gap:3px;';
@@ -13,7 +16,7 @@ export function showTablePicker(btn, editorElement) {
     
     const lbl = document.createElement('div');
     lbl.id = 'tp-label';
-    lbl.style.cssText = 'text-align:center; font-size:13px; color:var(--text); font-family:monospace; margin-top:4px; font-weight:bold;';
+    lbl.style.cssText = 'text-align:center; font-size:13px; color:#e8e4db; font-family:monospace; margin-top:4px; font-weight:bold;';
     lbl.textContent = '0 x 0';
 
     // create 10x10 cells
@@ -33,8 +36,8 @@ export function showTablePicker(btn, editorElement) {
             const cr = parseInt(child.dataset.r);
             const cc = parseInt(child.dataset.c);
             if (cr <= r && cc <= c) {
-              child.style.background = 'rgba(59, 130, 246, 0.3)';
-              child.style.borderColor = '#3b82f6';
+              child.style.background = 'rgba(201, 168, 76, 0.3)';
+              child.style.borderColor = 'var(--gold)';
             } else {
               child.style.background = 'transparent';
               child.style.borderColor = 'var(--navy-b)';
@@ -84,12 +87,12 @@ export function showTablePicker(btn, editorElement) {
 }
 
 function insertTable(rows, cols, editorElement) {
-  // Construct the HTML for the table
-  let html = `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;"><tbody>`;
+  // Construct the HTML for the table with strict bounds containment
+  let html = `<br><table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;"><tbody>`;
   for (let r = 0; r < rows; r++) {
     html += `<tr>`;
     for (let c = 0; c < cols; c++) {
-      html += `<td style="border:1px solid var(--navy-b); padding:8px;"><br></td>`;
+      html += `<td style="border:1px solid var(--navy-b); padding:6px 10px; word-break:break-word; overflow-wrap:anywhere;"><br></td>`;
     }
     html += `</tr>`;
   }
@@ -134,15 +137,15 @@ function parseTextToTable(text) {
 
   // Must have at least 2 rows and 2 columns
   if (rows.length >= 2 && rows[0].length >= 2) {
-    let html = `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;"><tbody>`;
+    let html = `<br><table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;"><tbody>`;
     for (let r = 0; r < rows.length; r++) {
       html += `<tr>`;
       for (let c = 0; c < rows[r].length; c++) {
         const cellText = rows[r][c] || '';
         const tag = r === 0 ? 'th' : 'td';
         const style = r === 0
-          ? 'border:1px solid var(--navy-b); padding:8px; background:rgba(255,255,255,0.06); font-weight:bold;'
-          : 'border:1px solid var(--navy-b); padding:8px;';
+          ? 'border:1px solid var(--navy-b); padding:6px 10px; background:rgba(255,255,255,0.06); font-weight:bold; word-break:break-word; overflow-wrap:anywhere;'
+          : 'border:1px solid var(--navy-b); padding:6px 10px; word-break:break-word; overflow-wrap:anywhere;';
         html += `<${tag} style="${style}">${cellText ? cellText.replace(/\n/g, '<br>') : '<br>'}</${tag}>`;
       }
       html += `</tr>`;
@@ -264,9 +267,9 @@ export function handlePaste(e) {
       return `<blockquote style="border-left:3px solid var(--gold); margin:8px 0; padding-left:10px; color:var(--text-d);">${inner}</blockquote>`;
     }
 
-    // Preserve tables
+    // Preserve tables with strict containment
     if (tag === 'table') {
-      return `<br><table style="width:100%; border-collapse:collapse; margin:10px 0;">${inner}</table><br>`;
+      return `<br><table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;">${inner}</table><br>`;
     }
     if (['tbody', 'thead', 'tfoot'].includes(tag)) {
       return `<${tag}>${inner}</${tag}>`;
@@ -277,12 +280,12 @@ export function handlePaste(e) {
     if (tag === 'th') {
       const colspan = node.getAttribute('colspan') ? ` colspan="${node.getAttribute('colspan')}"` : '';
       const rowspan = node.getAttribute('rowspan') ? ` rowspan="${node.getAttribute('rowspan')}"` : '';
-      return `<th style="border:1px solid var(--navy-b); padding:8px; background:rgba(255,255,255,0.06); font-weight:bold;"${colspan}${rowspan}>${inner || '<br>'}</th>`;
+      return `<th style="border:1px solid var(--navy-b); padding:6px 10px; background:rgba(255,255,255,0.06); font-weight:bold; word-break:break-word; overflow-wrap:anywhere;"${colspan}${rowspan}>${inner || '<br>'}</th>`;
     }
     if (tag === 'td') {
       const colspan = node.getAttribute('colspan') ? ` colspan="${node.getAttribute('colspan')}"` : '';
       const rowspan = node.getAttribute('rowspan') ? ` rowspan="${node.getAttribute('rowspan')}"` : '';
-      return `<td style="border:1px solid var(--navy-b); padding:8px;"${colspan}${rowspan}>${inner || '<br>'}</td>`;
+      return `<td style="border:1px solid var(--navy-b); padding:6px 10px; word-break:break-word; overflow-wrap:anywhere;"${colspan}${rowspan}>${inner || '<br>'}</td>`;
     }
     
     // Convert block elements to line breaks
@@ -343,6 +346,18 @@ export function initTableContextMenu() {
   });
 
   // Bind actions
+  document.getElementById('ctx-expand-table')?.addEventListener('click', () => {
+    if (activeTableCell) {
+      const table = activeTableCell.closest('table');
+      if (table) openTableLightbox(table);
+    }
+  });
+  document.getElementById('ctx-export-csv')?.addEventListener('click', () => {
+    if (activeTableCell) {
+      const table = activeTableCell.closest('table');
+      if (table) exportTableCSV(table);
+    }
+  });
   document.getElementById('ctx-row-above')?.addEventListener('click', () => modifyTable('row-above'));
   document.getElementById('ctx-row-below')?.addEventListener('click', () => modifyTable('row-below'));
   document.getElementById('ctx-col-left')?.addEventListener('click', () => modifyTable('col-left'));
@@ -374,7 +389,9 @@ function modifyTable(action) {
     for (let i = 0; i < cols; i++) {
       const td = newRow.insertCell(i);
       td.style.border = '1px solid var(--navy-b)';
-      td.style.padding = '8px';
+      td.style.padding = '6px 10px';
+      td.style.wordBreak = 'break-word';
+      td.style.overflowWrap = 'anywhere';
       td.innerHTML = '<br>';
     }
     triggerSave();
@@ -384,7 +401,9 @@ function modifyTable(action) {
     Array.from(tbody.children).forEach(row => {
       const td = row.insertCell(targetIdx);
       td.style.border = '1px solid var(--navy-b)';
-      td.style.padding = '8px';
+      td.style.padding = '6px 10px';
+      td.style.wordBreak = 'break-word';
+      td.style.overflowWrap = 'anywhere';
       td.innerHTML = '<br>';
     });
     triggerSave();
@@ -406,4 +425,183 @@ function modifyTable(action) {
     table.remove();
     triggerSave();
   }
+}
+
+// ───────────────────────────────────────────────
+// FULL-SCREEN EXPANDED TABLE VIEWER (LIGHTBOX)
+// ───────────────────────────────────────────────
+let _currentLightboxTable = null;
+
+export function openTableLightbox(tableEl) {
+  if (!tableEl) return;
+  const container = document.getElementById('table-lb-container');
+  const info = document.getElementById('table-lb-info');
+  const searchInput = document.getElementById('table-lb-search');
+  if (!container) return;
+
+  // Clone table
+  const clone = tableEl.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.classList.remove('table-expandable');
+  
+  // Strip any contenteditable attributes from cells
+  clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  
+  // Clean up table styles for wide, readable viewing
+  clone.style.width = '100%';
+  clone.style.maxWidth = '100%';
+  clone.style.borderCollapse = 'collapse';
+
+  container.innerHTML = '';
+  container.appendChild(clone);
+  _currentLightboxTable = clone;
+
+  // Count rows and cols
+  const rows = clone.querySelectorAll('tr').length;
+  const maxCols = Array.from(clone.querySelectorAll('tr')).reduce((max, tr) => Math.max(max, tr.children.length), 0);
+  if (info) {
+    info.textContent = `(${rows} rows × ${maxCols} columns)`;
+  }
+
+  if (searchInput) searchInput.value = '';
+
+  openModal('mo-table-lightbox');
+}
+
+export function exportTableCSV(tableEl) {
+  const target = tableEl || _currentLightboxTable;
+  if (!target) {
+    toast('No table selected');
+    return;
+  }
+  const rows = Array.from(target.querySelectorAll('tr'));
+  if (!rows.length) return;
+
+  const csvRows = [];
+  rows.forEach(tr => {
+    const cells = Array.from(tr.querySelectorAll('th, td'));
+    const rowValues = cells.map(td => {
+      let text = td.innerText.trim().replace(/\r?\n/g, ' ');
+      // Escape double quotes
+      if (text.includes('"') || text.includes(',') || text.includes(';')) {
+        text = `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    });
+    csvRows.push(rowValues.join(','));
+  });
+
+  const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvRows.join('\r\n'));
+  const link = document.createElement('a');
+  link.setAttribute('href', csvContent);
+  const prefix = S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_table';
+  link.setAttribute('download', `${prefix}_table.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  toast('✅ Table exported as CSV!');
+}
+
+export function copyTableMarkdown(tableEl) {
+  const target = tableEl || _currentLightboxTable;
+  if (!target) {
+    toast('No table selected');
+    return;
+  }
+  const rows = Array.from(target.querySelectorAll('tr'));
+  if (!rows.length) return;
+
+  let md = '';
+  rows.forEach((tr, rowIdx) => {
+    const cells = Array.from(tr.querySelectorAll('th, td'));
+    const rowValues = cells.map(td => td.innerText.trim().replace(/\r?\n/g, ' ').replace(/\|/g, '\\|'));
+    md += '| ' + rowValues.join(' | ') + ' |\n';
+
+    // Insert separator after header or row 0
+    if (rowIdx === 0) {
+      const sep = cells.map(() => '---');
+      md += '| ' + sep.join(' | ') + ' |\n';
+    }
+  });
+
+  navigator.clipboard.writeText(md).then(() => {
+    toast('📋 Table copied as Markdown!');
+  }).catch(() => {
+    toast('❌ Failed to copy to clipboard');
+  });
+}
+
+export function copyTableHTML(tableEl) {
+  const target = tableEl || _currentLightboxTable;
+  if (!target) {
+    toast('No table selected');
+    return;
+  }
+  const cleanTable = target.cloneNode(true);
+  cleanTable.querySelectorAll('.table-highlight').forEach(h => {
+    const parent = h.parentNode;
+    parent.replaceChild(document.createTextNode(h.textContent), h);
+  });
+  cleanTable.querySelectorAll('.table-row-hidden').forEach(r => r.classList.remove('table-row-hidden'));
+  
+  navigator.clipboard.writeText(cleanTable.outerHTML).then(() => {
+    toast('📋 Table HTML copied!');
+  }).catch(() => {
+    toast('❌ Failed to copy to clipboard');
+  });
+}
+
+function filterTableLightbox(query) {
+  if (!_currentLightboxTable) return;
+  const q = (query || '').toLowerCase().trim();
+  const rows = Array.from(_currentLightboxTable.querySelectorAll('tbody tr, tr'));
+
+  rows.forEach((tr, idx) => {
+    // If it's a thead row or has <th>, always keep visible
+    if (tr.querySelector('th') && idx === 0) {
+      tr.classList.remove('table-row-hidden');
+      return;
+    }
+    const text = tr.innerText.toLowerCase();
+    if (!q || text.includes(q)) {
+      tr.classList.remove('table-row-hidden');
+    } else {
+      tr.classList.add('table-row-hidden');
+    }
+  });
+}
+
+export function initTableLightbox() {
+  const searchInput = document.getElementById('table-lb-search');
+  const btnCopyMd = document.getElementById('btn-table-copy-md');
+  const btnCopyHtml = document.getElementById('btn-table-copy-html');
+  const btnExportCsv = document.getElementById('btn-table-export-csv');
+
+  // Search input live filtering
+  searchInput?.addEventListener('input', (e) => {
+    filterTableLightbox(e.target.value);
+  });
+
+  btnCopyMd?.addEventListener('click', () => copyTableMarkdown());
+  btnCopyHtml?.addEventListener('click', () => copyTableHTML());
+  btnExportCsv?.addEventListener('click', () => exportTableCSV());
+
+  // Click on any table inside note cards (.note-body table)
+  document.addEventListener('click', (e) => {
+    const noteCardTable = e.target.closest('.note-body table, .table-expandable');
+    if (noteCardTable && !noteCardTable.closest('#table-lb-viewport')) {
+      e.stopPropagation();
+      openTableLightbox(noteCardTable);
+      return;
+    }
+  });
+
+  // Double-click on any table in editable areas to expand
+  document.addEventListener('dblclick', (e) => {
+    const editorTable = e.target.closest('#folder-doc-editor table, #np-editor table, #np-digest-editor table, #note-editor table, #edit-note-ed table');
+    if (editorTable && !editorTable.closest('#table-lb-viewport')) {
+      e.stopPropagation();
+      openTableLightbox(editorTable);
+    }
+  });
 }

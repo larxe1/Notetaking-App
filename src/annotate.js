@@ -65,6 +65,12 @@ export function getNoteBody(note) {
     });
     html = d.body.innerHTML;
   }
+
+  // Ensure tables have containment styling
+  if (html.includes('<table') && !html.includes('note-table')) {
+    html = html.replace(/<table(?:\s+[^>]*)?>/gi, '<table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;">');
+  }
+
   return html;
 }
 
