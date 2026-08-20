@@ -297,26 +297,116 @@ function scheduleSave() {
   }, 1000);
 }
 
-// ── Generic JPG Image Downloader ──
+// ── Helper to extract SVG dimensions from viewBox or attributes ──
+function extractSvgDimensions(svgString) {
+  let width = 1920;
+  let height = 1080;
+  
+  const vbMatch = svgString.match(/viewBox=["']\s*([-\d.]+)\s+([-\d.]+)\s+([\d.]+)\s+([\d.]+)\s*["']/i);
+  if (vbMatch) {
+    const vbW = parseFloat(vbMatch[3]);
+    const vbH = parseFloat(vbMatch[4]);
+    if (vbW > 0 && vbH > 0) {
+      width = vbW;
+      height = vbH;
+    }
+  } else {
+    const wMatch = svgString.match(/width=["']\s*([\d.]+)(?:px)?\s*["']/i);
+    const hMatch = svgString.match(/height=["']\s*([\d.]+)(?:px)?\s*["']/i);
+    if (wMatch) width = parseFloat(wMatch[1]);
+    if (hMatch) height = parseFloat(hMatch[1]);
+  }
+  return { width, height };
+}
+
+// ── Generic Ultra-HD JPG Image Downloader ──
 export function downloadImageAsJPG(imgSrc, defaultName = 'legal_diagram.jpg') {
   if (!imgSrc) {
     toast('No diagram to download.');
     return;
   }
 
+  // If it's an SVG, ensure ultra-high resolution (up to 4K-8K)
+  if (imgSrc.startsWith('data:image/svg+xml') || imgSrc.startsWith('<svg')) {
+    let svgData = '';
+    if (imgSrc.startsWith('data:image/svg+xml;base64,')) {
+      svgData = decodeURIComponent(escape(atob(imgSrc.replace('data:image/svg+xml;base64,', ''))));
+    } else if (imgSrc.startsWith('data:image/svg+xml;utf8,')) {
+      svgData = decodeURIComponent(imgSrc.replace('data:image/svg+xml;utf8,', ''));
+    } else {
+      svgData = imgSrc;
+    }
+
+    const { width: origW, height: origH } = extractSvgDimensions(svgData);
+
+    // Target ultra-crisp resolution (up to 4000-8000px wide for massive readability)
+    let targetW = Math.max(origW * 3.5, 3840);
+    let targetH = Math.round(targetW * (origH / origW));
+
+    // Cap max dimension to 14,000px so canvas doesn't exceed browser limits
+    const maxDim = 14000;
+    if (targetW > maxDim || targetH > maxDim) {
+      const ratio = Math.min(maxDim / targetW, maxDim / targetH);
+      targetW = Math.round(targetW * ratio);
+      targetH = Math.round(targetH * ratio);
+    }
+
+    // Inject explicit width/height into root SVG tag so browser rasterizes at ultra-res
+    let scaledSvg = svgData;
+    if (!scaledSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
+      scaledSvg = scaledSvg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    }
+    scaledSvg = scaledSvg.replace(/<svg\b([^>]*)>/i, (m, attrs) => {
+      const cleanAttrs = attrs.replace(/\b(width|height)=["'][^"']*["']/gi, '');
+      return `<svg ${cleanAttrs} width="${targetW}" height="${targetH}">`;
+    });
+
+    const scaledBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(scaledSvg)));
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0c1322';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const jpgURL = canvas.toDataURL('image/jpeg', 0.98);
+        const a = document.createElement('a');
+        const filename = defaultName.endsWith('.jpg') || defaultName.endsWith('.jpeg') ? defaultName : defaultName + '.jpg';
+        a.download = filename;
+        a.href = jpgURL;
+        a.click();
+        toast('✅ Ultra-HD JPG Diagram downloaded!');
+      } catch (err) {
+        console.error('[Diagram] High-res JPG export failed:', err);
+        toast('❌ Failed to export JPG.');
+      }
+    };
+    img.onerror = () => {
+      toast('❌ Failed to load SVG for JPG export.');
+    };
+    img.src = scaledBase64;
+    return;
+  }
+
+  // Fallback for regular bitmap images
   const image = new Image();
   image.crossOrigin = 'anonymous';
   image.onload = () => {
     try {
       const canvas = document.createElement('canvas');
-      const scale = 2.5; // High resolution for crisp legal text
+      const scale = 2.0;
       const width = image.naturalWidth || image.width || 1200;
       const height = image.naturalHeight || image.height || 800;
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
 
       const ctx = canvas.getContext('2d');
-      // Solid dark navy background
       ctx.fillStyle = '#0c1322';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -329,13 +419,105 @@ export function downloadImageAsJPG(imgSrc, defaultName = 'legal_diagram.jpg') {
       a.click();
       toast('✅ Diagram downloaded as JPG!');
     } catch (e) {
-      console.error('[Diagram] JPG export error:', e);
-      toast('❌ Failed to convert diagram to JPG.');
+      toast('❌ Failed to convert image to JPG.');
     }
   };
-  image.onerror = (err) => {
-    console.error('[Diagram] Image load error for JPG:', err);
-    toast('❌ Failed to load image for JPG download.');
+  image.src = imgSrc;
+}
+
+// ── Generic Ultra-HD PNG Image Downloader ──
+export function downloadImageAsPNG(imgSrc, defaultName = 'legal_diagram.png') {
+  if (!imgSrc) {
+    toast('No diagram to download.');
+    return;
+  }
+
+  if (imgSrc.startsWith('data:image/svg+xml') || imgSrc.startsWith('<svg')) {
+    let svgData = '';
+    if (imgSrc.startsWith('data:image/svg+xml;base64,')) {
+      svgData = decodeURIComponent(escape(atob(imgSrc.replace('data:image/svg+xml;base64,', ''))));
+    } else if (imgSrc.startsWith('data:image/svg+xml;utf8,')) {
+      svgData = decodeURIComponent(imgSrc.replace('data:image/svg+xml;utf8,', ''));
+    } else {
+      svgData = imgSrc;
+    }
+
+    const { width: origW, height: origH } = extractSvgDimensions(svgData);
+    let targetW = Math.max(origW * 3.5, 3840);
+    let targetH = Math.round(targetW * (origH / origW));
+
+    const maxDim = 14000;
+    if (targetW > maxDim || targetH > maxDim) {
+      const ratio = Math.min(maxDim / targetW, maxDim / targetH);
+      targetW = Math.round(targetW * ratio);
+      targetH = Math.round(targetH * ratio);
+    }
+
+    let scaledSvg = svgData;
+    if (!scaledSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
+      scaledSvg = scaledSvg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    }
+    scaledSvg = scaledSvg.replace(/<svg\b([^>]*)>/i, (m, attrs) => {
+      const cleanAttrs = attrs.replace(/\b(width|height)=["'][^"']*["']/gi, '');
+      return `<svg ${cleanAttrs} width="${targetW}" height="${targetH}">`;
+    });
+
+    const scaledBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(scaledSvg)));
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0c1322';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const pngURL = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        const filename = defaultName.endsWith('.png') ? defaultName : defaultName + '.png';
+        a.download = filename;
+        a.href = pngURL;
+        a.click();
+        toast('✅ Ultra-HD PNG Diagram downloaded!');
+      } catch (err) {
+        console.error('[Diagram] High-res PNG export failed:', err);
+        toast('❌ Failed to export PNG.');
+      }
+    };
+    img.src = scaledBase64;
+    return;
+  }
+
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      const scale = 2.0;
+      const width = image.naturalWidth || image.width || 1200;
+      const height = image.naturalHeight || image.height || 800;
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0c1322';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      const pngURL = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      const filename = defaultName.endsWith('.png') ? defaultName : defaultName + '.png';
+      a.download = filename;
+      a.href = pngURL;
+      a.click();
+      toast('✅ PNG Diagram downloaded!');
+    } catch (e) {
+      toast('❌ Failed to convert image to PNG.');
+    }
   };
   image.src = imgSrc;
 }
@@ -358,7 +540,7 @@ export function exportDiagramJPG() {
   downloadImageAsJPG(base64, name);
 }
 
-// ── Export as PNG image ──
+// ── Export as PNG image from Diagram Studio ──
 export function exportDiagramPNG() {
   const preview = document.getElementById('diag-preview-inner');
   const svg = preview?.querySelector('svg');
@@ -367,40 +549,13 @@ export function exportDiagramPNG() {
     return;
   }
 
-  try {
-    let svgData = new XMLSerializer().serializeToString(svg);
-    if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
-      svgData = svgData.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
-    }
-    const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const scale = 2.5; // High-DPI crisp export
-      const width = image.naturalWidth || image.width || 1200;
-      const height = image.naturalHeight || image.height || 800;
-      canvas.width = Math.round(width * scale);
-      canvas.height = Math.round(height * scale);
-
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#0c1322';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-      const pngURL = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_diagram.png';
-      a.download = name;
-      a.href = pngURL;
-      a.click();
-      toast('✅ PNG Diagram exported!');
-    };
-    image.src = base64;
-  } catch (e) {
-    console.error('[Diagram] PNG export error:', e);
-    toast('❌ Failed to export PNG.');
+  let svgData = new XMLSerializer().serializeToString(svg);
+  if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
+    svgData = svgData.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
   }
+  const base64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_diagram.png';
+  downloadImageAsPNG(base64, name);
 }
 
 // ── Export as SVG vector file ──
@@ -487,7 +642,7 @@ export async function insertDiagramIntoNotes() {
 }
 
 // ═══════════════════════════════════════════════
-// FULL-SCREEN DIAGRAM LIGHTBOX WITH PAN & ZOOM
+// FULL-SCREEN VECTOR DIAGRAM LIGHTBOX WITH ULTRA PAN & ZOOM
 // ═══════════════════════════════════════════════
 let _lbZoom = 1.0;
 let _lbPanX = 0;
@@ -495,13 +650,53 @@ let _lbPanY = 0;
 let _lbIsDragging = false;
 let _lbStartX = 0;
 let _lbStartY = 0;
+let _currentLightboxSvgData = null;
+let _currentLightboxImgSrc = null;
 
 export function openDiagramLightbox(imgSrc) {
   const modal = document.getElementById('mo-diagram-lightbox');
   const img = document.getElementById('lb-img');
-  if (!modal || !img) return;
+  const svgContainer = document.getElementById('lb-svg-container');
+  if (!modal) return;
 
-  img.src = imgSrc;
+  _currentLightboxImgSrc = imgSrc;
+  _currentLightboxSvgData = null;
+
+  if (imgSrc && imgSrc.startsWith('data:image/svg+xml;base64,')) {
+    try {
+      const b64 = imgSrc.replace('data:image/svg+xml;base64,', '');
+      const decoded = decodeURIComponent(escape(atob(b64)));
+      _currentLightboxSvgData = decoded;
+
+      if (svgContainer) {
+        svgContainer.innerHTML = decoded;
+        const svgEl = svgContainer.querySelector('svg');
+        if (svgEl) {
+          svgEl.style.width = '100%';
+          svgEl.style.height = '100%';
+          svgEl.style.display = 'block';
+          svgEl.style.overflow = 'visible';
+          svgEl.style.pointerEvents = 'none';
+        }
+        svgContainer.style.display = 'block';
+        if (img) img.style.display = 'none';
+      }
+    } catch (e) {
+      console.warn('[Diagram] Failed to parse vector SVG for lightbox:', e);
+      if (img) {
+        img.src = imgSrc;
+        img.style.display = 'block';
+      }
+      if (svgContainer) svgContainer.style.display = 'none';
+    }
+  } else {
+    if (img) {
+      img.src = imgSrc;
+      img.style.display = 'block';
+    }
+    if (svgContainer) svgContainer.style.display = 'none';
+  }
+
   _lbZoom = 1.0;
   _lbPanX = 0;
   _lbPanY = 0;
@@ -510,10 +705,10 @@ export function openDiagramLightbox(imgSrc) {
 }
 
 function updateLbTransform() {
-  const img = document.getElementById('lb-img');
+  const target = document.getElementById('lb-target') || document.getElementById('lb-img');
   const lbl = document.getElementById('lb-zoom-lbl');
-  if (!img) return;
-  img.style.transform = `translate(${_lbPanX}px, ${_lbPanY}px) scale(${_lbZoom})`;
+  if (!target) return;
+  target.style.transform = `translate(${_lbPanX}px, ${_lbPanY}px) scale(${_lbZoom})`;
   if (lbl) lbl.textContent = Math.round(_lbZoom * 100) + '%';
 }
 
@@ -531,24 +726,53 @@ export function initDiagramLightbox() {
     }
   });
 
-  // Download expanded diagram as JPG
+  // Download expanded diagram as high-resolution JPG
   document.getElementById('btn-lb-download-jpg')?.addEventListener('click', () => {
-    const img = document.getElementById('lb-img');
-    if (img && img.src) {
-      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_expanded.jpg';
-      downloadImageAsJPG(img.src, name);
+    const src = _currentLightboxSvgData ? _currentLightboxSvgData : _currentLightboxImgSrc;
+    if (src) {
+      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_ultra_hd.jpg';
+      downloadImageAsJPG(src, name);
     } else {
       toast('No diagram available to download.');
     }
   });
 
-  // Zoom controls
+  // Download expanded diagram as high-resolution PNG
+  document.getElementById('btn-lb-download-png')?.addEventListener('click', () => {
+    const src = _currentLightboxSvgData ? _currentLightboxSvgData : _currentLightboxImgSrc;
+    if (src) {
+      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_ultra_hd.png';
+      downloadImageAsPNG(src, name);
+    } else {
+      toast('No diagram available to download.');
+    }
+  });
+
+  // Download expanded diagram as raw Vector SVG (infinite resolution)
+  document.getElementById('btn-lb-download-svg')?.addEventListener('click', () => {
+    const svgData = _currentLightboxSvgData || _lastSvgData;
+    if (svgData) {
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const name = (S.curPDF ? S.curPDF.name.replace(/\.pdf$/i, '') : 'legal_diagram') + '_vector.svg';
+      a.download = name;
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('✅ Infinite-Resolution Vector SVG downloaded!');
+    } else {
+      toast('No vector diagram available to export.');
+    }
+  });
+
+  // Zoom controls (supports up to 3500% / 35x zoom for giant flowcharts!)
   document.getElementById('btn-lb-zin')?.addEventListener('click', () => {
-    _lbZoom = Math.min(6.0, _lbZoom + 0.25);
+    _lbZoom = Math.min(35.0, _lbZoom * 1.35);
     updateLbTransform();
   });
   document.getElementById('btn-lb-zout')?.addEventListener('click', () => {
-    _lbZoom = Math.max(0.2, _lbZoom - 0.25);
+    _lbZoom = Math.max(0.05, _lbZoom / 1.35);
     updateLbTransform();
   });
   document.getElementById('btn-lb-zreset')?.addEventListener('click', () => {
@@ -564,11 +788,11 @@ export function initDiagramLightbox() {
     updateLbTransform();
   });
 
-  // Smooth mouse wheel zoom
+  // Smooth mouse wheel zoom (5% to 3500%)
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.15 : -0.15;
-    _lbZoom = Math.max(0.2, Math.min(6.0, _lbZoom + delta));
+    const factor = e.deltaY < 0 ? 1.2 : 0.83;
+    _lbZoom = Math.max(0.05, Math.min(35.0, _lbZoom * factor));
     updateLbTransform();
   }, { passive: false });
 
