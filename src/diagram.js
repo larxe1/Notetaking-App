@@ -768,11 +768,11 @@ export function initDiagramLightbox() {
 
   // Zoom controls (supports up to 3500% / 35x zoom for giant flowcharts!)
   document.getElementById('btn-lb-zin')?.addEventListener('click', () => {
-    _lbZoom = Math.min(35.0, _lbZoom * 1.35);
+    _lbZoom = Math.min(35.0, _lbZoom * 1.25);
     updateLbTransform();
   });
   document.getElementById('btn-lb-zout')?.addEventListener('click', () => {
-    _lbZoom = Math.max(0.05, _lbZoom / 1.35);
+    _lbZoom = Math.max(0.05, _lbZoom / 1.25);
     updateLbTransform();
   });
   document.getElementById('btn-lb-zreset')?.addEventListener('click', () => {
@@ -788,12 +788,26 @@ export function initDiagramLightbox() {
     updateLbTransform();
   });
 
-  // Smooth mouse wheel zoom (5% to 3500%)
+  // Smooth, calibrated mouse wheel zoom (cursor-centered)
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.2 : 0.83;
-    _lbZoom = Math.max(0.05, Math.min(35.0, _lbZoom * factor));
-    updateLbTransform();
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - rect.width / 2;
+    const mouseY = e.clientY - rect.top - rect.height / 2;
+
+    // Normalize and clamp delta to prevent rapid jump on precision wheels / trackpads
+    const delta = Math.max(-120, Math.min(120, e.deltaY));
+    // Gentle exponential factor: ~1.12x per notch instead of explosive multiplication
+    const factor = Math.exp(-delta * 0.0012);
+    const newZoom = Math.max(0.05, Math.min(35.0, _lbZoom * factor));
+
+    if (newZoom !== _lbZoom) {
+      // Adjust pan so the diagram point under the mouse cursor stays locked in place
+      _lbPanX = mouseX - (mouseX - _lbPanX) * (newZoom / _lbZoom);
+      _lbPanY = mouseY - (mouseY - _lbPanY) * (newZoom / _lbZoom);
+      _lbZoom = newZoom;
+      updateLbTransform();
+    }
   }, { passive: false });
 
   // Pan / Drag handlers
