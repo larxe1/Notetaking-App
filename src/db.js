@@ -516,9 +516,23 @@ export async function dbLoadNotepad(pdf_id) {
   if (!content) content = localStorage.getItem('local_notepad_' + pdf_id) || '';
   if (!digest) digest = localStorage.getItem('local_digest_' + pdf_id) || '';
 
+  // Fallback to history snapshot if still empty
+  if (!content && !digest) {
+    try {
+      const hist = JSON.parse(localStorage.getItem('notepad_history_' + pdf_id) || '[]');
+      if (hist.length > 0) {
+        const last = hist[hist.length - 1];
+        if (last) {
+          content = last.content || '';
+          digest = last.digest || '';
+        }
+      }
+    } catch {}
+  }
+
   try {
-    localStorage.setItem('local_notepad_' + pdf_id, content);
-    localStorage.setItem('local_digest_' + pdf_id, digest);
+    if (content) localStorage.setItem('local_notepad_' + pdf_id, content);
+    if (digest) localStorage.setItem('local_digest_' + pdf_id, digest);
   } catch {}
 
   return { content, digest };

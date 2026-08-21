@@ -72,8 +72,12 @@ export function initRealtimeSync() {
           const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
           if (data.pdfId === trueId) {
             const editor = document.getElementById('np-editor');
-            if (editor && document.activeElement !== editor) {
+            const digestEditor = document.getElementById('np-digest-editor');
+            if (editor && document.activeElement !== editor && data.content !== undefined) {
               editor.innerHTML = data.content;
+            }
+            if (digestEditor && document.activeElement !== digestEditor && data.digest !== undefined) {
+              digestEditor.innerHTML = data.digest;
             }
           }
         }

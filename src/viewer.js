@@ -209,6 +209,10 @@ export function startBackgroundDocRenderer(docId) {
 
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 3) {
+  try {
+    const { flushNotepadSave } = await import('./notepad.js');
+    await flushNotepadSave();
+  } catch {}
   await flushFolderDoc();
   S.curPDF = pdfFile;
   updateActivePDF();
@@ -221,7 +225,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   
   const trueId = pdfFile.linked_pdf_id || pdfFile.id;
   const { notepadOnPDFChange } = await import('./notepad.js');
-  notepadOnPDFChange(trueId);
+  await notepadOnPDFChange(trueId);
 
   // Instantly clear memory of previous PDF's data so ghost highlights never bleed over
   S.annotations = [];

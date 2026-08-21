@@ -1,4 +1,4 @@
-﻿// ==============================================
+// ==============================================
 // DUALVIEW -- dual-pane PDF viewing logic
 // ==============================================
 import { S } from './state.js';
@@ -58,6 +58,11 @@ export async function swapPanes() {
   const oldB_pdfDoc = PB.pdfDoc;
   const oldB_total  = PB.totalPages;
 
+  try {
+    const { flushNotepadSave } = await import('./notepad.js');
+    await flushNotepadSave();
+  } catch {}
+
   // -- Reload pane A with former pane B content --
   S.curPDF     = oldB_pdf;
   S.pdfDoc     = oldB_pdfDoc;
@@ -73,7 +78,7 @@ export async function swapPanes() {
 
   updateActivePDF();
   const trueId = oldB_pdf.linked_pdf_id || oldB_pdf.id;
-  notepadOnPDFChange(trueId);
+  await notepadOnPDFChange(trueId);
 
   document.getElementById('pg-total').textContent = oldB_total;
   document.getElementById('pg-input').value = 1;

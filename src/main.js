@@ -76,6 +76,12 @@ async function init() {
   
   const welcomeHTML = document.getElementById('canvas-scroll')?.innerHTML;
   document.getElementById('app-title')?.addEventListener('click', async () => {
+    try {
+      const { flushNotepadSave, notepadOnPDFChange } = await import('./notepad.js');
+      await flushNotepadSave();
+      await notepadOnPDFChange(null);
+    } catch {}
+
     S.curPDF = null;
     const scroll = document.getElementById('canvas-scroll');
     if (scroll && welcomeHTML) scroll.innerHTML = welcomeHTML;
