@@ -549,9 +549,20 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     try { localStorage.setItem('local_digest_' + pdf_id, digest); } catch {}
   }
 
+  // Pre-check: if library is loaded and does not contain this pdf_id, save locally only
+  if (S.pdfs && S.pdfs.length > 0 && !S.pdfs.some(p => (p.linked_pdf_id || p.id) === pdf_id)) {
+    console.warn(`[dbSaveNotepad] PDF ${pdf_id} is not in current library (likely deleted). Saved locally.`);
+    return;
+  }
+
   try {
     await safeDbWrite(db, 'pdf_notes', 'upsert', payload);
   } catch (err) {
+    // If foreign key 23503, PDF does not exist in DB; data is safely in local storage
+    if (err?.code === '23503' || err?.message?.includes('23503') || err?.message?.includes('foreign key')) {
+      console.warn(`[dbSaveNotepad] PDF ${pdf_id} does not exist in DB (23503). Saved locally.`);
+      return;
+    }
     // If Supabase throws an error because 'digest' column does not exist yet, fallback to saving content only
     if (payload.digest !== undefined && (err?.message?.includes('digest') || err?.code === 'PGRST204')) {
       const fallbackPayload = { pdf_id };

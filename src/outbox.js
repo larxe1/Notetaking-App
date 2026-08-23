@@ -109,8 +109,8 @@ export async function replayOutbox(dbClient) {
       const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || 
                       errMsg.includes('violates') || errMsg.includes('column') || 
                       errMsg.includes('relation') || errMsg.includes('42703') ||
-                      errMsg.includes('23502') || errMsg.includes('22p02') || 
-                      errMsg.includes('23505') || item.retries >= 2 || 
+                      errMsg.includes('23502') || errMsg.includes('23503') || errMsg.includes('22p02') || 
+                      errMsg.includes('23505') || errMsg.includes('foreign key') || item.retries >= 2 || 
                       (Date.now() - (item.created_at || 0) > 120000);
       
       if (isFatal) {
@@ -160,6 +160,14 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
       }
     }
   } catch (err) {
+    const errMsg = (err?.message || err?.details || String(err)).toLowerCase();
+    const isForeignKey = err?.code === '23503' || errMsg.includes('23503') || errMsg.includes('foreign key') || errMsg.includes('fkey');
+
+    if (isForeignKey) {
+      console.warn(`[Outbox] Foreign key constraint on ${table} (referenced parent item missing/deleted). Skipping enqueue:`, err);
+      return;
+    }
+
     console.warn(`[Outbox] Direct Supabase write failed — saving to offline outbox queue:`, err);
     import('./ui.js').then(m => m.recordError(err, `Write to ${table}`));
     enqueueAction(table, action, data, matchQuery);
