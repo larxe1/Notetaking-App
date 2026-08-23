@@ -212,12 +212,11 @@ export async function getCachedPDF(fileId) {
         const item = req.result;
         if (!item) return resolve(null);
         try {
-          if (item.blob) {
-            const buf = await item.blob.arrayBuffer();
-            return resolve(buf);
-          }
+          // Return the Blob directly — caller uses URL.createObjectURL(), no conversion needed
+          if (item.blob) return resolve(item.blob);
           if (item.buffer) {
-            return resolve(item.buffer);
+            // Legacy ArrayBuffer entries: wrap in Blob for consistency
+            return resolve(new Blob([item.buffer], { type: 'application/pdf' }));
           }
           resolve(null);
         } catch {

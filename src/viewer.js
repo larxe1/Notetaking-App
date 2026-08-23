@@ -341,9 +341,12 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   ]);
 
   try {
-    const buf = await pdfFetchPromise;
+    const blob = await pdfFetchPromise;
 
-    S.pdfDoc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    // Create a temporary object URL — PDF.js streams it internally, no ArrayBuffer copy needed
+    const blobUrl = URL.createObjectURL(blob);
+    S.pdfDoc = await pdfjsLib.getDocument({ url: blobUrl }).promise;
+    URL.revokeObjectURL(blobUrl); // release the URL handle immediately (PDF.js already loaded it)
     S.totalPages = S.pdfDoc.numPages;
     document.getElementById('pg-total').textContent = S.totalPages;
     document.getElementById('pg-input').value = 1;

@@ -339,14 +339,14 @@ export async function driveFetchPDF(drive_file_id, onProgress = null, pdfName = 
   }
 
   const blob = new Blob(chunks, { type: 'application/pdf' });
-  const buf = await blob.arrayBuffer();
 
-  S.pdfCache[drive_file_id] = buf;
+  // Store Blob directly in RAM — no ArrayBuffer conversion, no extra 150MB memory copy
+  S.pdfCache[drive_file_id] = blob;
   syncOK('Downloaded & Cached');
 
-  // Save to persistent IndexedDB disk cache as Blob (Option 1 & 3: single write, zero V8 clone overhead!)
+  // Save to persistent IndexedDB disk cache as Blob (single write, zero V8 clone overhead)
   setCachedPDF(drive_file_id, blob, pdfName);
-  return buf;
+  return blob;
 }
 
 // ── Delete file from Drive + Local Cache ──
