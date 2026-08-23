@@ -99,6 +99,7 @@ export function closeOtherPanels(exceptId = null) {
     }
   });
 
+  // These modules may have internal cleanup state beyond just the CSS class
   if (exceptId !== 'notepad-panel') {
     import('./notepad.js').then(m => m.closeNotepad?.()).catch(() => {});
   }
@@ -108,10 +109,9 @@ export function closeOtherPanels(exceptId = null) {
   if (exceptId !== 'search-panel') {
     import('./search.js').then(m => m.closeSearch?.()).catch(() => {});
   }
-  if (exceptId !== 'dict-panel') {
-    import('./dictionary.js').then(m => m.closeDictionary?.()).catch(() => {});
-  }
+  // dict-panel: closed synchronously via classList.remove above — no async import needed
 }
+
 
 // ── Sync & Error Diagnostics Modal Wiring ──
 export function openSyncDiagnosticsModal() {

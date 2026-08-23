@@ -118,14 +118,8 @@ export async function openFolderDoc(fold) {
         insertWebLink(ed, () => ed.dispatchEvent(new Event('input')));
         return;
       }
-      if (btn.id === 'folder-doc-btn-dict') {
-        import('./dictionary.js').then(m => {
-          const panel = document.getElementById('dict-panel');
-          if (panel?.classList.contains('open')) m.closeDictionary();
-          else m.openDictionary();
-        });
-        return;
-      }
+      // NOTE: folder-doc-btn-dict is handled exclusively by initDictionary() in dictionary.js
+
 
       const cmd = btn.dataset.cmd;
       let val = btn.dataset.val || null;
