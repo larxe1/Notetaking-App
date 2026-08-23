@@ -574,28 +574,8 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
 }
 
 // ───────────────────────────────────────────────
-// DICTIONARY
+// IMPORTANT LINKS (Stored in DB)
 // ───────────────────────────────────────────────
-export async function dbSearchDictionary(term) {
-  if (!term || term.trim() === '') return [];
-  try {
-    const { data, error } = await db.from('dictionary')
-      .select('*')
-      .ilike('word', `%${term}%`)
-      .not('word', 'like', '__sys_%')
-      .order('word', { ascending: true })
-      .limit(10);
-    if (error) throw error;
-    return data || [];
-  } catch {
-    return [];
-  }
-}
-
-export async function dbSaveDictionary(word, definition) {
-  await safeDbWrite(db, 'dictionary', 'upsert', { word, definition });
-}
-
 export async function dbLoadLinks() {
   try {
     const { data, error } = await db.from('dictionary').select('definition').eq('word', '__sys_links').maybeSingle();

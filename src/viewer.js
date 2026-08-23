@@ -118,7 +118,6 @@ export async function openFolderDoc(fold) {
         insertWebLink(ed, () => ed.dispatchEvent(new Event('input')));
         return;
       }
-      // NOTE: folder-doc-btn-dict is handled exclusively by initDictionary() in dictionary.js
 
 
       const cmd = btn.dataset.cmd;

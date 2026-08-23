@@ -16,7 +16,6 @@ import {
   openModal, closeModal, autosave, updateAppTitle, openGoogleCompanion
 } from './ui.js';
 import { initNotepad } from './notepad.js';
-import { initDictionary } from './dictionary.js';
 import { initTableContextMenu, initTableLightbox } from './tablepicker.js';
 import { initDualView } from './dualview.js';
 import { initRealtimeSync } from './sync.js';
@@ -31,7 +30,7 @@ function setupGlobalErrorBoundary() {
     console.error('[Global Crash Boundary caught error]', event.error || event.message);
     errorCount++;
     if (errorCount <= 3) {
-      document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel')
+      document.querySelectorAll('#ann-panel, #notepad-panel, #search-panel')
         .forEach(el => el.classList.remove('open'));
     }
   });
@@ -44,7 +43,7 @@ function setupGlobalErrorBoundary() {
 async function init() {
   // 1. Setup crash boundary and pre-flight reset
   setupGlobalErrorBoundary();
-  document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel')
+  document.querySelectorAll('#ann-panel, #notepad-panel, #search-panel')
     .forEach(el => el.classList.remove('open'));
 
   // 2. Init Google Drive bar (guarded)
@@ -115,7 +114,6 @@ async function init() {
   safeInit(initNotepad, 'Notepad');
   safeInit(initTableContextMenu, 'TableContextMenu');
   safeInit(initTableLightbox, 'TableLightbox');
-  safeInit(initDictionary, 'Dictionary');
   safeInit(initDualView, 'DualView');
   safeInit(initContextMenu, 'ContextMenu');
   safeInit(initCalendar, 'Calendar');

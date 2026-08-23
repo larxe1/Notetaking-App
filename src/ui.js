@@ -92,7 +92,7 @@ export function openModal(id)  { document.getElementById(id)?.classList.add('ope
 export function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
 export function closeOtherPanels(exceptId = null) {
-  const panelIds = ['notepad-panel', 'ann-panel', 'search-panel', 'dict-panel'];
+  const panelIds = ['notepad-panel', 'ann-panel', 'search-panel'];
   panelIds.forEach(id => {
     if (id !== exceptId) {
       document.getElementById(id)?.classList.remove('open');
@@ -109,7 +109,6 @@ export function closeOtherPanels(exceptId = null) {
   if (exceptId !== 'search-panel') {
     import('./search.js').then(m => m.closeSearch?.()).catch(() => {});
   }
-  // dict-panel: closed synchronously via classList.remove above — no async import needed
 }
 
 
@@ -435,7 +434,6 @@ export function initKeyboard(deps) {
       deps.closeSearch();
       closeModal('mo-keys');
       document.getElementById('notepad-panel')?.classList.remove('open');
-      document.getElementById('dict-panel')?.classList.remove('open');
     }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); deps.openSearch(); }
     else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'G' || e.key === 'g')) {

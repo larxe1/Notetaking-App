@@ -151,11 +151,6 @@
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
         Search
       </button>
-
-      <button class="tb-btn" id="btn-dict" title="Dictionary">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-        Dictionary
-      </button>
       <button class="tb-btn" id="btn-google" title="Google Law Search Companion (Ctrl+Shift+G)">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
         Google
@@ -258,8 +253,6 @@
           <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
           <button class="folder-fmt-btn" id="folder-doc-link-pdf" title="Link a PDF from your library">📄 Link PDF</button>
           <button class="folder-fmt-btn" id="folder-doc-link-url" title="Insert Web Link">🌐 Web Link</button>
-          <div style="width:1px; background:var(--navy-b); margin:0 4px"></div>
-          <button class="folder-fmt-btn" id="folder-doc-btn-dict" title="Dictionary">📖 Dictionary</button>
         </div>
         <div id="folder-doc-editor" contenteditable="true" data-ph="Write general notes, provisions, or syllabus info for this folder..." spellcheck="true" style="flex:1; width:100%; min-height:800px; background:var(--navy); color:#e8e4db; border:1px solid var(--navy-b); padding:40px; font-size:16px; font-family:'Inter', sans-serif; line-height:1.6; outline:none; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
       </div>
@@ -489,30 +482,6 @@
         spellcheck="true"
         style="display:none;"
       ></div>
-    </div>
-  </div>
-
-  <!-- Dictionary Panel -->
-  <div id="dict-panel">
-    <div id="dict-resize-handle" class="panel-resizer-left" title="Drag to resize dictionary"></div>
-    <div class="np-hd">
-      <span class="np-title">📖 Dictionary</span>
-      <span id="dict-save-lbl"></span>
-      <button class="ap-close" id="dict-close">✕</button>
-    </div>
-    <div class="dict-body">
-      <input type="text" id="dict-search-input" placeholder="Search for a word or legal term..." autocomplete="off" spellcheck="false">
-      
-      <div id="dict-results">
-        <div style="color:var(--muted); font-style:italic;">Type a word to search or add...</div>
-      </div>
-      
-      <div id="dict-editor-area" style="display:none; flex-direction:column; gap:8px; border-top:1px solid var(--navy-b); padding-top:12px; margin-top:auto;">
-        <div style="font-weight:600; color:var(--gold); font-size:13px;" id="dict-editor-title">Add Definition</div>
-        <input type="text" id="dict-word-input" placeholder="Word" disabled>
-        <textarea id="dict-def-input" placeholder="Enter definition here..." rows="4"></textarea>
-        <button id="dict-save-btn" class="btn-gold">Save Definition</button>
-      </div>
     </div>
   </div>
 
@@ -1065,7 +1034,7 @@
 <!-- Wire help button (simple, no module needed) -->
 <script>
   // Pre-flight reset: ensure all panels start closed on page load
-  document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel').forEach(function(el) {
+  document.querySelectorAll('#ann-panel, #notepad-panel, #search-panel').forEach(function(el) {
     el.classList.remove('open');
   });
 
@@ -1073,7 +1042,6 @@
   var fallbackCloseMap = {
     'ap-close': 'ann-panel',
     'np-close': 'notepad-panel',
-    'dict-close': 'dict-panel',
     'search-close-btn': 'search-panel'
   };
   Object.keys(fallbackCloseMap).forEach(function(btnId) {
@@ -1089,7 +1057,7 @@
   // Fallback Escape listener
   window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      document.querySelectorAll('#ann-panel, #notepad-panel, #dict-panel, #search-panel').forEach(function(el) {
+      document.querySelectorAll('#ann-panel, #notepad-panel, #search-panel').forEach(function(el) {
         el.classList.remove('open');
       });
     }
