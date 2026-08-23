@@ -143,11 +143,52 @@ export async function openFolderDoc(fold) {
   }
 }
 
-// ── Virtualized Page Rendering Observer & Progressive Document Renderer ──
+// ── Virtualized Page Rendering Observer & Memory-Managed Document Renderer ──
 let _pageObserver = null;
 let _renderedPages = new Set();
 let _bgRenderActive = false;
 let _bgRenderDocId = null;
+let _unrenderTimer = null;
+
+// ── Canvas GPU/RAM Memory Recycling (Keeps Text Layer alive, frees heavy pixel bitmaps) ──
+export function unrenderFarPages(curPage) {
+  if (!S.pdfDoc || S.totalPages <= 45) return;
+  const KEEP_RADIUS = 18; // 18 pages ahead & behind = 37 active rendered canvases maximum in RAM
+
+  for (let p = 1; p <= S.totalPages; p++) {
+    if (Math.abs(p - curPage) > KEEP_RADIUS) {
+      const pg = S.pages?.[p];
+      if (pg && pg.rendered && !pg.rendering) {
+        // Free GPU/VRAM pixel canvas memory immediately
+        if (pg.pdfCanvas) {
+          pg.pdfCanvas.width = 1;
+          pg.pdfCanvas.height = 1;
+          pg.pdfCanvas = null;
+        }
+        if (pg.drawCanvas) {
+          pg.drawCanvas.width = 1;
+          pg.drawCanvas.height = 1;
+          pg.drawCanvas = null;
+        }
+        if (pg.wrap) {
+          pg.wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif;letter-spacing:.05em">Page ${p}</div>`;
+        }
+        pg.rendered = false;
+        _renderedPages.delete(p);
+        _boxDone.delete(p);
+        _drawDone.delete(p);
+        _textDone.delete(p);
+      }
+    }
+  }
+}
+
+export function scheduleUnrenderFarPages() {
+  clearTimeout(_unrenderTimer);
+  _unrenderTimer = setTimeout(() => {
+    unrenderFarPages(S.curPage || 1);
+  }, 800);
+}
 
 export function startBackgroundDocRenderer(docId) {
   _bgRenderDocId = docId;
@@ -160,18 +201,22 @@ export function startBackgroundDocRenderer(docId) {
       return;
     }
 
-    // Prioritize unrendered pages closest to S.curPage first, then expanding outward
+    const cur = S.curPage || 1;
+    // On large PDFs (> 45 pages), only pre-render up to 10 pages around the active reading window
+    const maxRadius = (S.totalPages > 45) ? 10 : S.totalPages;
+
     let nextP = null;
     let minDiff = Infinity;
-    const cur = S.curPage || 1;
 
     for (let p = 1; p <= S.totalPages; p++) {
-      const pg = S.pages?.[p];
-      if (pg && !pg.rendered && !pg.rendering) {
-        const diff = Math.abs(p - cur);
-        if (diff < minDiff) {
-          minDiff = diff;
-          nextP = p;
+      const diff = Math.abs(p - cur);
+      if (diff <= maxRadius) {
+        const pg = S.pages?.[p];
+        if (pg && !pg.rendered && !pg.rendering) {
+          if (diff < minDiff) {
+            minDiff = diff;
+            nextP = p;
+          }
         }
       }
     }
@@ -197,6 +242,43 @@ export function startBackgroundDocRenderer(docId) {
     window.requestIdleCallback(() => renderNextUnrendered(), { timeout: 150 });
   } else {
     setTimeout(renderNextUnrendered, 30);
+  }
+}
+
+// ── Smart Syllabus Pre-Fetching of Next PDF in Sequence ──
+export async function scheduleNextPdfPrefetch(pdfFile) {
+  if (!pdfFile || !S.pdfs?.length) return;
+
+  // Find all sibling PDFs in the same folder, sorted in order
+  const siblings = S.pdfs
+    .filter(p => (p.folder_id || null) === (pdfFile.folder_id || null))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+  const idx = siblings.findIndex(p => p.id === pdfFile.id);
+  const nextPdf = (idx !== -1 && idx < siblings.length - 1) ? siblings[idx + 1] : null;
+  if (!nextPdf) return;
+
+  const targetDriveId = nextPdf.drive_file_id || S.pdfs.find(p => p.id === nextPdf.linked_pdf_id)?.drive_file_id;
+  if (!targetDriveId) return;
+
+  // Check if already in RAM or IndexedDB
+  if (S.pdfCache[targetDriveId]) return;
+
+  try {
+    const { isPDFCached } = await import('./pdfcache.js');
+    const cached = await isPDFCached(targetDriveId);
+    if (cached) return;
+
+    // Silently pre-cache next syllabus PDF in background during idle time (after 3 seconds)
+    setTimeout(async () => {
+      if (S.curPDF?.id === pdfFile.id && navigator.onLine && S.driveToken) {
+        console.log(`[Smart Prefetch] Silently caching next syllabus PDF: "${nextPdf.name}"`);
+        const { driveFetchPDF } = await import('./drive.js');
+        await driveFetchPDF(targetDriveId, null, nextPdf.name).catch(() => {});
+      }
+    }, 3000);
+  } catch (err) {
+    console.warn('[Smart Prefetch] Check failed:', err);
   }
 }
 
@@ -342,6 +424,9 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
 
     // Start background full-document text indexing across all 1000+ pages
     import('./search.js').then(m => m.indexAllPagesText(S.pdfDoc)).catch(() => {});
+
+    // Smart syllabus pre-fetch: silently cache next PDF in folder for 0ms transition
+    scheduleNextPdfPrefetch(pdfFile);
 
     syncOK('Ready');
   } catch (e) {
@@ -504,6 +589,7 @@ export async function ensurePageRendered(pageNum) {
     }
 
     _renderedPages.add(pageNum);
+    scheduleUnrenderFarPages();
   } catch (err) {
     console.error(`Failed to render page ${pageNum}:`, err);
   } finally {

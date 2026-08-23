@@ -361,6 +361,7 @@ export function initNavButtons() {
           th.classList.toggle('active', parseInt(th.dataset.page) === foundPage)
         );
         updateAppTitle();
+        import('./viewer.js').then(m => m.scheduleUnrenderFarPages?.()).catch(()=>{});
       }
     }, 60);
   });
@@ -376,6 +377,7 @@ export async function jumpToPage(pg, smooth = false) {
     el.classList.toggle('active', parseInt(el.dataset.page) === pg)
   );
   updateAppTitle();
+  import('./viewer.js').then(m => m.scheduleUnrenderFarPages?.()).catch(()=>{});
   
   const pageState = S.pages?.[pg];
   if (pageState?.wrap) {
