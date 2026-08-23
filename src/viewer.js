@@ -284,7 +284,7 @@ export async function scheduleNextPdfPrefetch(pdfFile) {
 }
 
 // ── Open PDF from library ──
-export async function openPDFFromLibrary(pdfFile, retries = 3) {
+export async function openPDFFromLibrary(pdfFile, retries = 5) {
   try {
     const { flushNotepadSave } = await import('./notepad.js');
     await flushNotepadSave();
@@ -323,7 +323,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   document.getElementById('content-area').style.display = 'flex';
 
   const scroll = document.getElementById('canvas-scroll');
-  scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
+  scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 5 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
 
   // Start PDF fetch and Supabase database queries in parallel
   const pdfFetchPromise = driveFetchPDF(pdfFile.drive_file_id, (pct, loadedMB, totalMB) => {
@@ -344,13 +344,10 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   try {
     const blob = await pdfFetchPromise;
 
-    // Revoke the previous PDF's blob URL now that we're opening a new one
-    if (_activeBlobUrl) { URL.revokeObjectURL(_activeBlobUrl); _activeBlobUrl = null; }
-
-    // Create object URL and keep it alive for the entire session —
-    // PDF.js fetches pages lazily so revoking early causes infinite spinners
-    _activeBlobUrl = URL.createObjectURL(blob);
-    S.pdfDoc = await pdfjsLib.getDocument({ url: _activeBlobUrl }).promise;
+    // Convert Blob → ArrayBuffer once here for PDF.js (unavoidable).
+    // All storage (RAM cache + IndexedDB) remains Blob — this is the only copy.
+    const buf = await blob.arrayBuffer();
+    S.pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
     S.totalPages = S.pdfDoc.numPages;
     document.getElementById('pg-total').textContent = S.totalPages;
     document.getElementById('pg-input').value = 1;
@@ -439,7 +436,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   } catch (e) {
     if (retries > 0) {
       console.warn('PDF load failed, retrying...', e);
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 300));
       return openPDFFromLibrary(pdfFile, retries - 1);
     }
     console.error(e);
