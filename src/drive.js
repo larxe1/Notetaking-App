@@ -280,7 +280,7 @@ export async function driveUploadPDF(file, targetFolderId) {
 }
 
 // ── Fetch PDF bytes from Drive (with RAM + IndexedDB disk cache) ──
-export async function driveFetchPDF(drive_file_id) {
+export async function driveFetchPDF(drive_file_id, onProgress = null, pdfName = '') {
   // 1. Check in-memory RAM cache (instant 0ms)
   if (S.pdfCache[drive_file_id]) return S.pdfCache[drive_file_id];
 
@@ -310,10 +310,42 @@ export async function driveFetchPDF(drive_file_id) {
     syncErr('Download failed');
     throw new Error('Drive download failed: ' + resp.status);
   }
-  const buf = await resp.arrayBuffer();
+
+  // Stream chunks with live percentage & MB progress indicator
+  const contentLength = resp.headers.get('Content-Length');
+  const total = contentLength ? parseInt(contentLength, 10) : 0;
+  let loaded = 0;
+
+  const reader = resp.body.getReader();
+  const chunks = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+
+    if (total > 0) {
+      const pct = Math.min(100, Math.round((loaded / total) * 100));
+      const loadedMB = (loaded / (1024 * 1024)).toFixed(1);
+      const totalMB = (total / (1024 * 1024)).toFixed(1);
+      syncSpin(`Downloading: ${pct}% (${loadedMB}/${totalMB} MB)`);
+      if (onProgress) onProgress(pct, loadedMB, totalMB);
+    } else {
+      const loadedMB = (loaded / (1024 * 1024)).toFixed(1);
+      syncSpin(`Downloading: ${loadedMB} MB…`);
+      if (onProgress) onProgress(null, loadedMB, null);
+    }
+  }
+
+  const blob = new Blob(chunks, { type: 'application/pdf' });
+  const buf = await blob.arrayBuffer();
+
   S.pdfCache[drive_file_id] = buf;
-  // Save to persistent IndexedDB disk cache in background
-  setCachedPDF(drive_file_id, buf);
+  syncOK('Downloaded & Cached');
+
+  // Save to persistent IndexedDB disk cache as Blob (Option 1 & 3: single write, zero V8 clone overhead!)
+  setCachedPDF(drive_file_id, blob, pdfName);
   return buf;
 }
 

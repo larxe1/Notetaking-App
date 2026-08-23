@@ -30,7 +30,15 @@ export async function openPDFInPaneB(pdfFile) {
   _enterDualView(pdfFile.name);
 
   try {
-    const buf = await driveFetchPDF(pdfFile.drive_file_id);
+    const buf = await driveFetchPDF(pdfFile.drive_file_id, (pct, loadedMB, totalMB) => {
+      if (scroll) {
+        if (pct !== null) {
+          scroll.innerHTML = `<div class=spin-w><div class=spinner></div>Loading reference: ${pct}% (${loadedMB}/${totalMB} MB)</div>`;
+        } else {
+          scroll.innerHTML = `<div class=spin-w><div class=spinner></div>Loading reference: ${loadedMB} MB…</div>`;
+        }
+      }
+    }, pdfFile.name);
     PB.pdfDoc     = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
     PB.totalPages = PB.pdfDoc.numPages;
     PB.scale      = S.scale;

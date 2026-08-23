@@ -162,7 +162,6 @@ async function writeToCustomDir(dirHandle, fileId, buffer, filename) {
   }
 }
 
-// Copy all IndexedDB cached PDFs to custom directory
 async function exportAllCachedToCustomDir(dirHandle) {
   try {
     const db = await getDB();
@@ -173,8 +172,9 @@ async function exportAllCachedToCustomDir(dirHandle) {
     req.onsuccess = async () => {
       const items = req.result || [];
       for (const item of items) {
-        if (item.buffer) {
-          await writeToCustomDir(dirHandle, item.id, item.buffer, item.name);
+        const payload = item.blob || item.buffer;
+        if (payload) {
+          await writeToCustomDir(dirHandle, item.id, payload, item.name);
         }
       }
     };
@@ -208,7 +208,22 @@ export async function getCachedPDF(fileId) {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(fileId);
-      req.onsuccess = () => resolve(req.result ? req.result.buffer : null);
+      req.onsuccess = async () => {
+        const item = req.result;
+        if (!item) return resolve(null);
+        try {
+          if (item.blob) {
+            const buf = await item.blob.arrayBuffer();
+            return resolve(buf);
+          }
+          if (item.buffer) {
+            return resolve(item.buffer);
+          }
+          resolve(null);
+        } catch {
+          resolve(null);
+        }
+      };
       req.onerror = () => resolve(null);
     });
   } catch (err) {
@@ -217,19 +232,23 @@ export async function getCachedPDF(fileId) {
   }
 }
 
-export async function setCachedPDF(fileId, buffer, name = '') {
+export async function setCachedPDF(fileId, data, name = '') {
   try {
     const db = await getDB();
-    if (!db || !buffer) return;
+    if (!db || !data) return;
     
+    // Store as native Blob in IndexedDB (zero-copy streaming, avoids V8 clone memory spikes)
+    const blob = (data instanceof Blob) ? data : new Blob([data], { type: 'application/pdf' });
+    const size = blob.size;
+
     // 1. Always save in IndexedDB for fast random access
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     store.put({
       id: fileId,
       name: name,
-      size: buffer.byteLength || 0,
-      buffer: buffer,
+      size: size,
+      blob: blob,
       saved_at: Date.now(),
     });
 
@@ -238,7 +257,7 @@ export async function setCachedPDF(fileId, buffer, name = '') {
     if (dirHandle) {
       const hasPerm = await verifyPermission(dirHandle, true);
       if (hasPerm) {
-        await writeToCustomDir(dirHandle, fileId, buffer, name);
+        await writeToCustomDir(dirHandle, fileId, blob, name);
       }
     }
   } catch (err) {
@@ -276,7 +295,7 @@ export async function getCacheStorageStats() {
         const items = req.result || [];
         let totalBytes = 0;
         items.forEach(item => {
-          totalBytes += item.size || item.buffer?.byteLength || 0;
+          totalBytes += item.size || item.blob?.size || item.buffer?.byteLength || 0;
         });
         const mb = (totalBytes / (1024 * 1024)).toFixed(1);
         resolve({
@@ -331,8 +350,13 @@ export async function preCachePDF(pdf) {
 
   toast(`Downloading "${pdf.name}" for offline use…`);
   try {
-    const buf = await driveFetchPDF(driveId);
-    await setCachedPDF(driveId, buf, pdf.name);
+    // driveFetchPDF downloads via stream, updates live progress, and saves to IndexedDB once (no duplicate write!)
+    await driveFetchPDF(driveId, (pct, loadedMB, totalMB) => {
+      if (pct !== null) {
+        toast(`Downloading "${pdf.name}": ${pct}% (${loadedMB}/${totalMB} MB)`);
+      }
+    }, pdf.name);
+
     toast(`✅ "${pdf.name}" is now ready for offline reading!`);
   } catch (err) {
     console.error('Failed to pre-cache PDF:', err);

@@ -244,7 +244,15 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 3 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
 
   // Start PDF fetch and Supabase database queries in parallel
-  const pdfFetchPromise = driveFetchPDF(pdfFile.drive_file_id);
+  const pdfFetchPromise = driveFetchPDF(pdfFile.drive_file_id, (pct, loadedMB, totalMB) => {
+    if (scroll) {
+      if (pct !== null) {
+        scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>Loading PDF: ${pct}% (${loadedMB}/${totalMB} MB)</div>`;
+      } else {
+        scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>Loading PDF: ${loadedMB} MB…</div>`;
+      }
+    }
+  }, pdfFile.name);
   const dbDataPromise = Promise.all([
     dbLoadBookmarks(trueId),
     dbLoadAnnotations(trueId),
