@@ -62,6 +62,12 @@ export function updateOutboxUI() {
   }
 }
 
+function getUpsertOptions(table) {
+  if (table === 'dictionary') return { onConflict: 'word' };
+  if (table === 'pdf_notes') return { onConflict: 'pdf_id' };
+  return undefined;
+}
+
 // ── Replay all queued actions to Supabase ──
 export async function replayOutbox(dbClient) {
   if (_isReplaying) return;
@@ -83,7 +89,7 @@ export async function replayOutbox(dbClient) {
   for (const item of queue) {
     try {
       if (item.action === 'upsert') {
-        const { error } = await dbClient.from(item.table).upsert(item.data);
+        const { error } = await dbClient.from(item.table).upsert(item.data, getUpsertOptions(item.table));
         if (error) throw error;
       } else if (item.action === 'update') {
         let q = dbClient.from(item.table).update(item.data);
@@ -142,7 +148,7 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
 
   try {
     if (action === 'upsert') {
-      const { error } = await dbClient.from(table).upsert(data);
+      const { error } = await dbClient.from(table).upsert(data, getUpsertOptions(table));
       if (error) throw error;
     } else if (action === 'update') {
       let q = dbClient.from(table).update(data);
