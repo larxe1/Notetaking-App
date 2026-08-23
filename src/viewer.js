@@ -149,6 +149,7 @@ let _renderedPages = new Set();
 let _bgRenderActive = false;
 let _bgRenderDocId = null;
 let _unrenderTimer = null;
+let _activeBlobUrl = null; // kept alive for the full PDF session; revoked on next PDF open
 
 // ── Canvas GPU/RAM Memory Recycling (Keeps Text Layer alive, frees heavy pixel bitmaps) ──
 export function unrenderFarPages(curPage) {
@@ -343,10 +344,13 @@ export async function openPDFFromLibrary(pdfFile, retries = 3) {
   try {
     const blob = await pdfFetchPromise;
 
-    // Create a temporary object URL — PDF.js streams it internally, no ArrayBuffer copy needed
-    const blobUrl = URL.createObjectURL(blob);
-    S.pdfDoc = await pdfjsLib.getDocument({ url: blobUrl }).promise;
-    URL.revokeObjectURL(blobUrl); // release the URL handle immediately (PDF.js already loaded it)
+    // Revoke the previous PDF's blob URL now that we're opening a new one
+    if (_activeBlobUrl) { URL.revokeObjectURL(_activeBlobUrl); _activeBlobUrl = null; }
+
+    // Create object URL and keep it alive for the entire session —
+    // PDF.js fetches pages lazily so revoking early causes infinite spinners
+    _activeBlobUrl = URL.createObjectURL(blob);
+    S.pdfDoc = await pdfjsLib.getDocument({ url: _activeBlobUrl }).promise;
     S.totalPages = S.pdfDoc.numPages;
     document.getElementById('pg-total').textContent = S.totalPages;
     document.getElementById('pg-input').value = 1;
