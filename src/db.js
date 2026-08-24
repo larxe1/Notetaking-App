@@ -549,10 +549,13 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     try { localStorage.setItem('local_digest_' + pdf_id, digest); } catch {}
   }
 
-  // Pre-check: if library is loaded and does not contain this pdf_id, save locally only
-  if (S.pdfs && S.pdfs.length > 0 && !S.pdfs.some(p => (p.linked_pdf_id || p.id) === pdf_id)) {
-    console.warn(`[dbSaveNotepad] PDF ${pdf_id} is not in current library (likely deleted). Saved locally.`);
-    return;
+  // Pre-check: if library is loaded and does not contain this pdf_id, queue to outbox
+  // (don't silently drop — it may just be a timing issue where S.pdfs isn't current)
+  if (S.pdfs && S.pdfs.length > 0 && !S.pdfs.some(p => p.id === pdf_id || p.linked_pdf_id === pdf_id)) {
+    console.warn(`[dbSaveNotepad] PDF ${pdf_id} not in current library — queuing to outbox for retry.`);
+    const { enqueueAction } = await import('./outbox.js');
+    enqueueAction('pdf_notes', 'upsert', payload);
+    return { queued: true };
   }
 
   try {
@@ -561,7 +564,7 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     // If foreign key 23503, PDF does not exist in DB; data is safely in local storage
     if (err?.code === '23503' || err?.message?.includes('23503') || err?.message?.includes('foreign key')) {
       console.warn(`[dbSaveNotepad] PDF ${pdf_id} does not exist in DB (23503). Saved locally.`);
-      return;
+      return { localOnly: true };
     }
     // If Supabase throws an error because 'digest' column does not exist yet, fallback to saving content only
     if (payload.digest !== undefined && (err?.message?.includes('digest') || err?.code === 'PGRST204')) {
@@ -571,6 +574,7 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     }
   }
   broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content, digest });
+  return { saved: true };
 }
 
 // ───────────────────────────────────────────────

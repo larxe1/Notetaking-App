@@ -5,7 +5,27 @@ import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
 import { showTablePicker, handlePaste } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
-import { closeOtherPanels } from './ui.js';
+import { closeOtherPanels, toast } from './ui.js';
+
+// ── Timestamp helpers for conflict detection ──
+function setWriteTs(pdfId)  { try { localStorage.setItem('local_notepad_write_ts_' + pdfId, Date.now()); } catch {} }
+function setSyncTs(pdfId)   { try { localStorage.setItem('local_notepad_sync_ts_' + pdfId,  Date.now()); } catch {} }
+function getWriteTs(pdfId)  { return parseInt(localStorage.getItem('local_notepad_write_ts_' + pdfId) || '0'); }
+function getSyncTs(pdfId)   { return parseInt(localStorage.getItem('local_notepad_sync_ts_'  + pdfId) || '0'); }
+
+// ── Merge two HTML note bodies without losing either side ──
+function mergeNoteHtml(localHtml, remoteHtml) {
+  if (!localHtml && !remoteHtml) return '';
+  if (!localHtml) return remoteHtml;
+  if (!remoteHtml) return localHtml;
+  if (localHtml === remoteHtml) return localHtml;
+  return (
+    localHtml +
+    '<hr style="border-color:var(--gold);margin:14px 0;opacity:.5">' +
+    '<p style="color:var(--gold);font-size:11px;font-family:Inter,sans-serif;margin:0 0 6px">⚠️ Notes recovered from another device — please review and merge manually:</p>' +
+    remoteHtml
+  );
+}
 
 // In-memory per-PDF cache: pdfId -> { content, digest, dirty, timestamp }
 const _notepadCache = new Map();
@@ -73,6 +93,7 @@ async function executeSaveForPdf(targetPdfId) {
   const lbl = $saveLbl();
   try {
     await dbSaveNotepad(targetPdfId, content, digest);
+    setSyncTs(targetPdfId); // mark as successfully synced to Supabase
     saveHistorySnapshot(targetPdfId, content, digest);
 
     if (_activePdfId === targetPdfId && lbl) {
@@ -216,28 +237,61 @@ export async function openNotepad(pdfId) {
 
   // 3. Load latest data from database
   try {
-    const { content, digest } = await dbLoadNotepad(pdfId);
+    const { content: remoteContent, digest: remoteDigest } = await dbLoadNotepad(pdfId);
 
     // Sequence check: discard if user hopped to another PDF while loading
-    if (_loadSeq !== seq || _activePdfId !== pdfId) {
-      return;
-    }
+    if (_loadSeq !== seq || _activePdfId !== pdfId) return;
 
     const currentEntry = _notepadCache.get(pdfId);
-    // Don't overwrite if user is currently typing in this PDF
-    if (!currentEntry || !currentEntry.dirty) {
-      const finalContent = content || initialContent || '';
-      const finalDigest = digest || initialDigest || '';
+    // Don't overwrite if user is actively typing right now
+    if (currentEntry?.dirty) return;
 
-      _notepadCache.set(pdfId, {
-        content: finalContent,
-        digest: finalDigest,
-        dirty: false,
-        timestamp: Date.now()
-      });
+    const localContent = initialContent || '';
+    const localDigest  = initialDigest  || '';
+    const remC = remoteContent || '';
+    const remD = remoteDigest  || '';
 
-      if (notesEd) notesEd.innerHTML = finalContent;
-      if (digestEd) digestEd.innerHTML = finalDigest;
+    // ── Conflict detection: did this device have unsynced local writes? ──
+    const writeTs = getWriteTs(pdfId);
+    const syncTs  = getSyncTs(pdfId);
+    const hasLocalUnsaved = writeTs > 0 && writeTs > syncTs;
+    const contentDiffers  = localContent !== remC || localDigest !== remD;
+
+    let finalContent = remC || localContent;
+    let finalDigest  = remD || localDigest;
+    let didMerge = false;
+
+    if (hasLocalUnsaved && contentDiffers) {
+      if ((localContent || localDigest) && (remC || remD)) {
+        // Both devices have content — MERGE so nothing is lost
+        finalContent = mergeNoteHtml(localContent, remC);
+        finalDigest  = mergeNoteHtml(localDigest,  remD);
+        didMerge = true;
+      } else if ((localContent || localDigest) && !(remC || remD)) {
+        // Only local has content — push local up to Supabase
+        finalContent = localContent;
+        finalDigest  = localDigest;
+      }
+      // If only remote has content (local empty): use remote (handled by finalContent = remC above)
+    }
+
+    _notepadCache.set(pdfId, {
+      content:   finalContent,
+      digest:    finalDigest,
+      dirty:     didMerge, // merged content needs to be pushed
+      timestamp: Date.now()
+    });
+
+    if (notesEd) notesEd.innerHTML = finalContent;
+    if (digestEd) digestEd.innerHTML = finalDigest;
+
+    if (didMerge) {
+      // Push the merged version to Supabase immediately so all devices get it
+      scheduleSaveForPdf(pdfId);
+      toast('⚠️ Notes from two devices were merged — please review and clean up.');
+    } else if (hasLocalUnsaved && (localContent || localDigest) && !(remC || remD)) {
+      // Local-only content — push to Supabase now
+      scheduleSaveForPdf(pdfId);
     }
   } catch (e) {
     console.error('[Notepad load error]', e);
@@ -298,7 +352,8 @@ export async function notepadOnPDFChange(newPdfId) {
     } catch {}
 
     saveHistorySnapshot(oldPdfId, oldContent, oldDigest);
-    dbSaveNotepad(oldPdfId, oldContent, oldDigest).catch(() => {});
+    // NOTE: actual Supabase save is handled by the awaited flushNotepadSave()
+    // that every caller runs BEFORE calling notepadOnPDFChange. No fire-and-forget here.
   }
 
   // 2. Clear editor DOM immediately
@@ -415,6 +470,7 @@ export function initNotepad() {
         const content = $notesEditor()?.innerHTML ?? '';
         const digest = $digestEditor()?.innerHTML ?? '';
         _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
+        setWriteTs(_activePdfId); // record that this device has local unsaved changes
         try {
           localStorage.setItem('local_notepad_' + _activePdfId, content);
           localStorage.setItem('local_digest_' + _activePdfId, digest);
