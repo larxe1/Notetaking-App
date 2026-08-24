@@ -311,13 +311,24 @@ export function initTableContextMenu() {
 
   // Listen for right-clicks anywhere in the document
   document.addEventListener('contextmenu', (e) => {
-    // Only intercept if we right-clicked inside a table cell in one of our editors
-    const td = e.target.closest('td, th');
-    const editor = e.target.closest('[contenteditable="true"]');
+    const table = e.target.closest('table');
+    const inLightbox = e.target.closest('#table-lb-viewport');
     
-    if (td && editor) {
+    if (table && !inLightbox) {
       e.preventDefault();
+      const td = e.target.closest('td, th') || table.querySelector('td, th');
       activeTableCell = td;
+      
+      const isEditable = Boolean(table.closest('[contenteditable="true"]'));
+      
+      // If table is in a read-only note card, hide cell modification tools
+      const editItems = ctxMenu.querySelectorAll('#ctx-row-above, #ctx-row-below, #ctx-col-left, #ctx-col-right, #ctx-del-row, #ctx-del-col, #ctx-del-table');
+      editItems.forEach(item => {
+        item.style.display = isEditable ? 'block' : 'none';
+      });
+      ctxMenu.querySelectorAll('div[style*="height:1px"]').forEach(sep => {
+        sep.style.display = isEditable ? 'block' : 'none';
+      });
       
       ctxMenu.style.display = 'flex';
       
@@ -325,7 +336,6 @@ export function initTableContextMenu() {
       let x = e.pageX;
       let y = e.pageY;
       
-      // small delay to let browser calculate width
       requestAnimationFrame(() => {
         const mw = ctxMenu.offsetWidth;
         const mh = ctxMenu.offsetHeight;
@@ -585,25 +595,6 @@ export function initTableLightbox() {
   btnCopyMd?.addEventListener('click', () => copyTableMarkdown());
   btnCopyHtml?.addEventListener('click', () => copyTableHTML());
   btnExportCsv?.addEventListener('click', () => exportTableCSV());
-
-  // Click on any table inside note cards (.note-body table)
-  document.addEventListener('click', (e) => {
-    const noteCardTable = e.target.closest('.note-body table, .table-expandable');
-    if (noteCardTable && !noteCardTable.closest('#table-lb-viewport')) {
-      e.stopPropagation();
-      openTableLightbox(noteCardTable);
-      return;
-    }
-  });
-
-  // Double-click on any table in editable areas to expand
-  document.addEventListener('dblclick', (e) => {
-    const editorTable = e.target.closest('#folder-doc-editor table, #np-editor table, #np-digest-editor table, #note-editor table, #edit-note-ed table');
-    if (editorTable && !editorTable.closest('#table-lb-viewport')) {
-      e.stopPropagation();
-      openTableLightbox(editorTable);
-    }
-  });
 }
 
 // ── Insert styled section banner header (box with underline) ──
