@@ -466,7 +466,21 @@ export function initNotepad() {
     ed.addEventListener('keydown', e => {
       if (e.key === 'Tab') {
         e.preventDefault();
-        document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+        const sel = window.getSelection();
+        const isInsideList = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest('li');
+
+        if (e.shiftKey) {
+          document.execCommand('outdent');
+        } else if (!sel || sel.isCollapsed) {
+          if (isInsideList) {
+            document.execCommand('indent');
+          } else {
+            document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+          }
+        } else {
+          // Indent the entire highlighted block/paragraph(s) without erasing text
+          document.execCommand('indent');
+        }
       }
     });
 
