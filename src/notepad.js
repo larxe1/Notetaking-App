@@ -179,7 +179,10 @@ export async function flushNotepadSave() {
     } catch {}
 
     saveHistorySnapshot(targetPdfId, content, digest);
-    await dbSaveNotepad(targetPdfId, content, digest).catch(() => {});
+    try {
+      await dbSaveNotepad(targetPdfId, content, digest);
+      setSyncTs(targetPdfId);
+    } catch {}
   }
 }
 
@@ -287,20 +290,21 @@ export async function openNotepad(pdfId) {
 
     if (didMerge) {
       // Push the merged version to Supabase immediately so all devices get it
-      scheduleSaveForPdf(pdfId);
+      // (immediate, not debounced — user typing within 1s must not discard remote half)
+      executeSaveForPdf(pdfId);
       toast('⚠️ Notes from two devices were merged — please review and clean up.');
     } else if (hasLocalUnsaved && (localContent || localDigest) && !(remC || remD)) {
       // Local-only content — push to Supabase now
-      scheduleSaveForPdf(pdfId);
+      executeSaveForPdf(pdfId);
     }
   } catch (e) {
     console.error('[Notepad load error]', e);
   }
 }
 
-export function closeNotepad() {
+export async function closeNotepad() {
   $panel().classList.remove('open');
-  flushNotepadSave();
+  await flushNotepadSave();
 }
 
 // ── Switch between Notes and Digest tabs ──
@@ -445,6 +449,7 @@ export function initNotepad() {
           const content = $notesEditor()?.innerHTML ?? '';
           const digest = $digestEditor()?.innerHTML ?? '';
           _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
+          setWriteTs(_activePdfId);
           try {
             localStorage.setItem('local_notepad_' + _activePdfId, content);
             localStorage.setItem('local_digest_' + _activePdfId, digest);
@@ -486,6 +491,35 @@ export function initNotepad() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && $panel()?.classList.contains('open')) {
       closeNotepad();
+    }
+  });
+
+  // ── Bug A fix: flush notes when tab is closed, hidden, or app is backgrounded ──
+  // visibilitychange fires reliably on iOS/iPad when switching apps
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && _activePdfId) {
+      // Synchronous localStorage write is already done by the input handler.
+      // Fire the async Supabase save — the browser gives us a few seconds of grace.
+      flushNotepadSave();
+    }
+  });
+
+  // beforeunload is the last-resort on desktop tab close / navigation
+  window.addEventListener('beforeunload', () => {
+    if (_activePdfId) {
+      // Ensure localStorage has the latest (sync operation, always succeeds)
+      try {
+        const content = $notesEditor()?.innerHTML ?? '';
+        const digest  = $digestEditor()?.innerHTML ?? '';
+        if (content || digest) {
+          localStorage.setItem('local_notepad_' + _activePdfId, content);
+          localStorage.setItem('local_digest_'  + _activePdfId, digest);
+          setWriteTs(_activePdfId);
+          saveHistorySnapshot(_activePdfId, content, digest);
+        }
+      } catch {}
+      // Fire the async Supabase write — browser may or may not let it complete
+      flushNotepadSave();
     }
   });
 
