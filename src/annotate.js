@@ -7,7 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste, showTablePicker } from './tablepicker.js';
+import { handlePaste, showTablePicker, insertBannerHeader } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 
 // ── Create annotation (text or box) ──
@@ -370,6 +370,8 @@ export function initAnnPanel() {
 
       if (cmd === 'insertTable') {
         showTablePicker(b, ed);
+      } else if (cmd === 'insertBanner') {
+        insertBannerHeader(ed);
       } else if (b.id === 'btn-add-pdflink') {
         openPdfLinkModal(ed);
       } else if (b.id === 'btn-add-weblink') {
@@ -396,6 +398,8 @@ export function initAnnPanel() {
 
       if (cmd === 'insertTable') {
         showTablePicker(b, ed);
+      } else if (cmd === 'insertBanner') {
+        insertBannerHeader(ed);
       } else if (b.id === 'btn-edit-pdflink') {
         openPdfLinkModal(ed);
       } else if (b.id === 'btn-edit-weblink') {

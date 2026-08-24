@@ -6,7 +6,7 @@ import { syncOK, syncSpin, jumpToPage } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
-import { showTablePicker, handlePaste } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
@@ -145,6 +145,8 @@ export async function openFolderDoc(fold) {
       try {
         if (cmd === 'insertTable') {
           showTablePicker(btn, ed);
+        } else if (cmd === 'insertBanner') {
+          insertBannerHeader(ed);
         } else if (cmd) {
           document.execCommand(cmd, false, val);
         }
