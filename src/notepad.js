@@ -258,13 +258,20 @@ export async function openNotepad(pdfId) {
     const writeTs = getWriteTs(pdfId);
     const syncTs  = getSyncTs(pdfId);
     const hasLocalUnsaved = writeTs > 0 && writeTs > syncTs;
+
+    // Edge case: pre-v55 notes — write_ts was never set (writeTs === 0), BUT local content
+    // exists and differs from Supabase. This means the PC had notes that were saved to
+    // localStorage but never assigned a write_ts. Treat these as potentially unsaved so
+    // we don't silently overwrite them.
+    const hasLegacyLocal = writeTs === 0 && syncTs === 0 && !!(localContent || localDigest) && (localContent !== remC || localDigest !== remD);
+
     const contentDiffers  = localContent !== remC || localDigest !== remD;
 
     let finalContent = remC || localContent;
     let finalDigest  = remD || localDigest;
     let didMerge = false;
 
-    if (hasLocalUnsaved && contentDiffers) {
+    if ((hasLocalUnsaved || hasLegacyLocal) && contentDiffers) {
       if ((localContent || localDigest) && (remC || remD)) {
         // Both devices have content — MERGE so nothing is lost
         finalContent = mergeNoteHtml(localContent, remC);
@@ -277,6 +284,7 @@ export async function openNotepad(pdfId) {
       }
       // If only remote has content (local empty): use remote (handled by finalContent = remC above)
     }
+
 
     _notepadCache.set(pdfId, {
       content:   finalContent,
@@ -293,7 +301,7 @@ export async function openNotepad(pdfId) {
       // (immediate, not debounced — user typing within 1s must not discard remote half)
       executeSaveForPdf(pdfId);
       toast('⚠️ Notes from two devices were merged — please review and clean up.');
-    } else if (hasLocalUnsaved && (localContent || localDigest) && !(remC || remD)) {
+    } else if ((hasLocalUnsaved || hasLegacyLocal) && (localContent || localDigest) && !(remC || remD)) {
       // Local-only content — push to Supabase now
       executeSaveForPdf(pdfId);
     }
@@ -375,7 +383,156 @@ export async function notepadOnPDFChange(newPdfId) {
   }
 }
 
-// ── Wire up button + panel events ──
+// ── History panel: show snapshots and allow revert ──
+function formatHistoryDate(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch { return String(ts); }
+}
+
+function htmlToPlainPreview(html) {
+  if (!html) return '(empty)';
+  try {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return (tmp.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200) || '(empty)';
+  } catch { return '(empty)'; }
+}
+
+async function openHistoryPanel() {
+  const pdfId = _activePdfId;
+  if (!pdfId) {
+    toast('Open a PDF first to view its note history.');
+    return;
+  }
+
+  const modal = document.getElementById('np-history-modal');
+  const list  = document.getElementById('np-history-list');
+  if (!modal || !list) return;
+
+  modal.classList.add('open');
+  list.innerHTML = '<div class="nhm-empty">Loading…</div>';
+
+  // Snapshot current unsaved state before showing history (safety net)
+  const curContent = $notesEditor()?.innerHTML ?? '';
+  const curDigest  = $digestEditor()?.innerHTML ?? '';
+  if (curContent || curDigest) {
+    saveHistorySnapshot(pdfId, curContent, curDigest);
+  }
+
+  // Build entries array: start with live Supabase fetch
+  const entries = [];
+
+  try {
+    const { dbLoadNotepad: load } = await import('./db.js');
+    // Fetch raw Supabase (bypass local cache by calling dbLoadNotepad fresh)
+    const cloudData = await load(pdfId);
+    if (cloudData.content || cloudData.digest) {
+      entries.push({
+        t: null, // no timestamp for cloud version
+        content: cloudData.content || '',
+        digest:  cloudData.digest  || '',
+        badge:   'cloud',
+        label:   '☁️ Cloud (Supabase) — current saved version'
+      });
+    }
+  } catch (err) {
+    console.warn('[History] Could not fetch cloud version:', err);
+  }
+
+  // Local snapshots (most recent first)
+  try {
+    const hist = JSON.parse(localStorage.getItem('notepad_history_' + pdfId) || '[]');
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const snap = hist[i];
+      entries.push({
+        t:       snap.t,
+        content: snap.content || '',
+        digest:  snap.digest  || '',
+        badge:   i === hist.length - 1 ? 'current' : 'local',
+        label:   i === hist.length - 1 ? '📍 Latest local snapshot' : '📂 Local snapshot'
+      });
+    }
+  } catch {}
+
+  if (entries.length === 0) {
+    list.innerHTML = '<div class="nhm-empty">No history snapshots found for this PDF yet.<br>Snapshots are created automatically each time notes are saved.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  entries.forEach((entry, idx) => {
+    const div = document.createElement('div');
+    div.className = 'nhm-entry';
+
+    const tsStr = entry.t ? formatHistoryDate(entry.t) : '';
+    const badgeClass = entry.badge === 'cloud' ? 'nhm-badge-cloud' :
+                       entry.badge === 'current' ? 'nhm-badge-current' : 'nhm-badge-local';
+
+    const hd = document.createElement('div');
+    hd.className = 'nhm-entry-hd';
+    hd.innerHTML = `
+      <span class="nhm-ts">${entry.label}${tsStr ? ' — ' + tsStr : ''}</span>
+      <span class="nhm-badge ${badgeClass}">${entry.badge === 'cloud' ? 'CLOUD' : entry.badge === 'current' ? 'LATEST' : 'LOCAL'}</span>
+      <button class="nhm-restore-btn" data-idx="${idx}" title="Restore this version">Restore</button>
+    `;
+
+    const preview = document.createElement('div');
+    preview.className = 'nhm-preview';
+    const notesPreview = htmlToPlainPreview(entry.content);
+    const digestPreview = htmlToPlainPreview(entry.digest);
+    preview.textContent = notesPreview !== '(empty)'
+      ? notesPreview
+      : digestPreview !== '(empty)' ? '(Digest) ' + digestPreview : '(empty)';
+
+    div.appendChild(hd);
+    div.appendChild(preview);
+    list.appendChild(div);
+
+    hd.querySelector('.nhm-restore-btn').addEventListener('click', async () => {
+      const confirmRestore = confirm(
+        `Restore this version?\n\n"${notesPreview.slice(0, 120)}…"\n\nYour current notes will be snapshotted first so you can always revert again.`
+      );
+      if (!confirmRestore) return;
+
+      // Snapshot current before restoring
+      const before = $notesEditor()?.innerHTML ?? '';
+      const beforeD = $digestEditor()?.innerHTML ?? '';
+      saveHistorySnapshot(pdfId, before, beforeD);
+
+      // Apply restored content to editors
+      const notesEd = $notesEditor();
+      const digestEd = $digestEditor();
+      if (notesEd) notesEd.innerHTML = entry.content;
+      if (digestEd) digestEd.innerHTML = entry.digest;
+
+      // Update cache + mark dirty + write timestamps
+      _notepadCache.set(pdfId, {
+        content:   entry.content,
+        digest:    entry.digest,
+        dirty:     true,
+        timestamp: Date.now()
+      });
+      setWriteTs(pdfId);
+      try {
+        localStorage.setItem('local_notepad_' + pdfId, entry.content);
+        localStorage.setItem('local_digest_' + pdfId, entry.digest);
+      } catch {}
+
+      // Push to Supabase immediately
+      modal.classList.remove('open');
+      toast('⏪ Notes restored — saving to cloud…');
+      await executeSaveForPdf(pdfId);
+      toast('✓ Restored version saved to cloud.');
+    });
+  });
+}
+
+
 export function initNotepad() {
   document.getElementById('btn-notepad')?.addEventListener('click', () => {
     const panel = $panel();
@@ -394,6 +551,20 @@ export function initNotepad() {
   });
 
   document.getElementById('np-close')?.addEventListener('click', closeNotepad);
+
+  // History button — opens the history/recovery panel
+  document.getElementById('np-history-btn')?.addEventListener('click', () => {
+    openHistoryPanel();
+  });
+  document.getElementById('np-history-close')?.addEventListener('click', () => {
+    document.getElementById('np-history-modal')?.classList.remove('open');
+  });
+  // Close history modal on backdrop click
+  document.getElementById('np-history-modal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('np-history-modal')) {
+      document.getElementById('np-history-modal').classList.remove('open');
+    }
+  });
 
   // Tab switching (Notes vs Digest)
   document.querySelectorAll('#np-tabs .ap-tab').forEach(btn => {

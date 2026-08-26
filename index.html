@@ -467,6 +467,8 @@
       <button class="np-fmt-btn" data-cmd="fontSize" data-val="2" title="Small Text">S</button>
       <button class="np-fmt-btn" data-cmd="fontSize" data-val="3" title="Normal Text">M</button>
       <button class="np-fmt-btn" data-cmd="fontSize" data-val="5" title="Large Text">L</button>
+      <div class="tb-sep" style="height:14px; width:1px; background:var(--navy-b); margin:0 2px;"></div>
+      <button class="np-fmt-btn" id="np-history-btn" title="View note history and restore a previous version" style="font-size:11px;">🕐 History</button>
     </div>
     <div id="np-body">
       <div
@@ -484,6 +486,23 @@
         spellcheck="true"
         style="display:none;"
       ></div>
+    </div>
+  </div>
+
+  <!-- Notepad History Modal -->
+  <div id="np-history-modal" role="dialog" aria-modal="true" aria-label="Note History">
+    <div id="np-history-box">
+      <div class="nhm-header">
+        <h3>🕐 Note History &amp; Recovery</h3>
+        <button class="nhm-close" id="np-history-close" title="Close">✕</button>
+      </div>
+      <div id="np-history-warning">
+        ⚠️ Up to 20 local snapshots are kept per PDF. Restoring replaces your current notes — your current content is snapshotted first so you can always go back.
+      </div>
+      <div id="np-history-list">
+        <div class="nhm-empty">Loading history…</div>
+      </div>
+      <div class="nhm-footer">Local snapshots are stored on this device. The Supabase (cloud) version is shown at the top of the list for comparison.</div>
     </div>
   </div>
 
