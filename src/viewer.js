@@ -6,7 +6,7 @@ import { syncOK, syncSpin, jumpToPage } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
-import { showTablePicker, handlePaste, insertBannerHeader } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageGet } from './storage.js';
 
@@ -148,6 +148,8 @@ export async function openFolderDoc(fold) {
           showTablePicker(btn, ed);
         } else if (cmd === 'insertBanner') {
           insertBannerHeader(ed);
+        } else if (cmd === 'grayOut') {
+          toggleGrayOut(ed);
         } else if (cmd) {
           document.execCommand(cmd, false, val);
         }

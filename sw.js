@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v66';
+const CACHE_NAME = 'legal-annotator-shell-v67';
 
 const STATIC_ASSETS = [
   './',

@@ -331,6 +331,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .note-body i, .note-body em { font-style: italic; }
 .note-body u { text-decoration: underline; }
 .note-body s { text-decoration: line-through; }
+.dim-text, .note-body .dim-text, #folder-doc-editor .dim-text, #np-editor .dim-text, #np-digest-editor .dim-text, #note-editor .dim-text, #edit-note-ed .dim-text { opacity: 0.42; color: #94a3b8; display: inline; transition: opacity 0.15s ease; }
+.dim-text:hover, .note-body .dim-text:hover, #folder-doc-editor .dim-text:hover, #np-editor .dim-text:hover, #np-digest-editor .dim-text:hover, #note-editor .dim-text:hover, #edit-note-ed .dim-text:hover { opacity: 0.85; }
 .note-body table, #note-editor table, #edit-note-ed table, #np-editor table, #np-digest-editor table, #folder-doc-editor table, .note-table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; margin: 10px 0; border: 1px solid var(--navy-b); box-sizing: border-box; table-layout: auto; word-break: break-word; overflow-wrap: anywhere; }
 .note-body th, .note-body td, #note-editor th, #note-editor td, #edit-note-ed th, #edit-note-ed td, #np-editor th, #np-editor td, #np-digest-editor th, #np-digest-editor td, #folder-doc-editor th, #folder-doc-editor td { border: 1px solid var(--navy-b); padding: 6px 10px; min-width: 24px; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; box-sizing: border-box; }
 .note-body th, #note-editor th, #edit-note-ed th, #np-editor th, #np-digest-editor th, #folder-doc-editor th { background: rgba(255,255,255,0.06); font-weight: bold; }

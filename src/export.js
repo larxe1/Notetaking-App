@@ -330,6 +330,11 @@ export async function exportFolderToPDF(folder) {
     li {
       margin-bottom: 3pt !important;
     }
+    .dim-text {
+      opacity: 0.45 !important;
+      color: #64748b !important;
+      display: inline !important;
+    }
     @media print {
       .no-print {
         display: none !important;

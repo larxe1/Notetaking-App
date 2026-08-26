@@ -620,3 +620,47 @@ export function insertBannerHeader(editorElement) {
   document.execCommand('insertHTML', false, bannerHtml);
   editorElement.dispatchEvent(new Event('input'));
 }
+
+// ── Toggle subtle grayed-out / dimmed styling on selected text ──
+export function toggleGrayOut(editorElement) {
+  if (!editorElement) return;
+  editorElement.focus();
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  if (sel.isCollapsed) return;
+
+  const range = sel.getRangeAt(0);
+
+  // Check if current selection is inside an existing .dim-text element
+  let node = sel.anchorNode;
+  if (node && node.nodeType === 3) node = node.parentElement;
+  const existingDim = node ? node.closest('.dim-text') : null;
+
+  if (existingDim && editorElement.contains(existingDim)) {
+    // Unwrap the dimmed text (toggle off)
+    const parent = existingDim.parentNode;
+    while (existingDim.firstChild) {
+      parent.insertBefore(existingDim.firstChild, existingDim);
+    }
+    parent.removeChild(existingDim);
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  // Extract selected contents and wrap in .dim-text
+  const fragment = range.extractContents();
+  const span = document.createElement('span');
+  span.className = 'dim-text';
+  span.style.cssText = 'opacity: 0.45; color: #94a3b8; display: inline; transition: opacity .15s;';
+  span.appendChild(fragment);
+  range.insertNode(span);
+
+  // Re-select wrapped contents
+  sel.removeAllRanges();
+  const newRange = document.createRange();
+  newRange.selectNodeContents(span);
+  sel.addRange(newRange);
+
+  editorElement.dispatchEvent(new Event('input'));
+}
