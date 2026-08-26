@@ -667,12 +667,19 @@ export function toggleGrayOut(editorElement) {
 
 const INDENT_STEP = 28;
 
-// ── Outdent single element or line without affecting other lines ──
+// ── Outdent single element or selected paragraph(s) ──
 export function outdentLine(editorElement) {
   if (!editorElement) return;
   editorElement.focus();
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
+
+  // If text is selected (full paragraph or multiple lines), outdent the whole selection
+  if (!sel.isCollapsed) {
+    document.execCommand('outdent');
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
 
   let node = sel.anchorNode;
   if (!node) return;
@@ -686,10 +693,9 @@ export function outdentLine(editorElement) {
     return;
   }
 
-  // 2. Check if inside a blockquote
+  // 2. Check if inside a blockquote (split blockquote so only THIS line is outdented)
   const bq = elem?.closest('blockquote');
   if (bq && editorElement.contains(bq)) {
-    // Find the immediate child of blockquote corresponding to this line
     let lineChild = node;
     while (lineChild && lineChild.parentElement !== bq && lineChild !== bq) {
       lineChild = lineChild.parentElement;
@@ -711,8 +717,6 @@ export function outdentLine(editorElement) {
       });
 
       const parent = bq.parentNode;
-
-      // Keep preceding lines indented
       const hasMeaningful = (nodes) => nodes.some(n => (n.textContent || '').trim().length > 0 || n.nodeName === 'IMG' || n.nodeName === 'TABLE');
 
       if (beforeNodes.length > 0 && hasMeaningful(beforeNodes)) {
@@ -722,10 +726,8 @@ export function outdentLine(editorElement) {
         parent.insertBefore(bqBefore, bq);
       }
 
-      // Insert this single un-indented line outside the blockquote
       parent.insertBefore(lineChild, bq);
 
-      // Keep succeeding lines indented
       if (afterNodes.length > 0 && hasMeaningful(afterNodes)) {
         const bqAfter = document.createElement('blockquote');
         if (bq.getAttribute('style')) bqAfter.setAttribute('style', bq.getAttribute('style'));
@@ -733,10 +735,8 @@ export function outdentLine(editorElement) {
         parent.insertBefore(bqAfter, bq);
       }
 
-      // Remove the original combined blockquote
       parent.removeChild(bq);
 
-      // Position cursor on the outdented line
       try {
         const newRange = document.createRange();
         newRange.selectNodeContents(lineChild);
@@ -748,7 +748,6 @@ export function outdentLine(editorElement) {
       editorElement.dispatchEvent(new Event('input'));
       return;
     } else {
-      // Single item in blockquote -> unwrap
       const parent = bq.parentNode;
       while (bq.firstChild) {
         parent.insertBefore(bq.firstChild, bq);
@@ -793,45 +792,18 @@ export function outdentLine(editorElement) {
     }
   }
 
-  // Fallback
   document.execCommand('outdent');
   editorElement.dispatchEvent(new Event('input'));
 }
 
-// ── Indent single element or line ──
+// ── Indent single line or entire highlighted paragraph(s) ──
 export function indentLine(editorElement) {
   if (!editorElement) return;
   editorElement.focus();
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
 
-  let node = sel.anchorNode;
-  if (!node) return;
-  let elem = node.nodeType === 1 ? node : node.parentElement;
-
-  // 1. List item indent
-  const li = elem?.closest('li');
-  if (li && editorElement.contains(li)) {
-    document.execCommand('indent');
-    editorElement.dispatchEvent(new Event('input'));
-    return;
-  }
-
-  // 2. Block element margin-left indent
-  let block = elem;
-  while (block && block !== editorElement && !/^(DIV|P|H1|H2|H3|H4|H5|H6)$/i.test(block.tagName) && !block.classList?.contains('np-banner-hdr')) {
-    block = block.parentElement;
-  }
-
-  if (block && block !== editorElement) {
-    const currentMargin = parseInt(block.style.marginLeft || '0', 10);
-    const nextMargin = currentMargin + INDENT_STEP;
-    block.style.marginLeft = `${nextMargin}px`;
-    editorElement.dispatchEvent(new Event('input'));
-    return;
-  }
-
-  // 3. Fallback to execCommand indent
+  // When highlighting an entire paragraph or multiple lines, indent the whole selection together
   document.execCommand('indent');
   editorElement.dispatchEvent(new Event('input'));
 }
@@ -841,7 +813,7 @@ export function handleEditorKeyDown(e, editorElement) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
 
-  // 1. Tab / Shift+Tab -> Indent / Outdent line-by-line
+  // 1. Tab / Shift+Tab -> Indent / Outdent
   if (e.key === 'Tab') {
     e.preventDefault();
     if (e.shiftKey) {
@@ -869,9 +841,7 @@ export function handleEditorKeyDown(e, editorElement) {
       let elem = node.nodeType === 1 ? node : node.parentElement;
       const bq = elem?.closest('blockquote');
       const li = elem?.closest('li');
-      const banner = elem?.closest('.np-banner-hdr');
 
-      // Check if block has margin-left or is inside blockquote
       let block = elem;
       while (block && block !== editorElement && !/^(DIV|P|H1|H2|H3|H4|H5|H6)$/i.test(block.tagName) && !block.classList?.contains('np-banner-hdr')) {
         block = block.parentElement;
