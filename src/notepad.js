@@ -540,6 +540,23 @@ async function openHistoryPanel() {
   });
 }
 
+export function getCachedNotepad(pdfId) {
+  if (!pdfId) return null;
+  if (_activePdfId === pdfId) {
+    return {
+      content: $notesEditor()?.innerHTML ?? '',
+      digest: $digestEditor()?.innerHTML ?? ''
+    };
+  }
+  if (_notepadCache.has(pdfId)) {
+    const entry = _notepadCache.get(pdfId);
+    return {
+      content: entry.content || '',
+      digest: entry.digest || ''
+    };
+  }
+  return null;
+}
 
 export function initNotepad() {
   document.getElementById('btn-notepad')?.addEventListener('click', () => {

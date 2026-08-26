@@ -2,6 +2,7 @@ import { S } from './state.js';
 import { dbLoadNotepad } from './db.js';
 import { toast } from './ui.js';
 import { safeStorageGet } from './storage.js';
+import { getCachedNotepad } from './notepad.js';
 
 // Strip emojis using Unicode property escapes and common icon sets
 const stripEmojis = (str) => {
@@ -12,6 +13,17 @@ const stripEmojis = (str) => {
     .trim();
 };
 
+// Clean HTML to ensure dark text and strip light colors
+function cleanAndSanitizeHtml(html) {
+  if (!html) return '';
+  let clean = stripEmojis(html);
+  // Replace inline light colors (white, off-white, light gray) with dark slate
+  clean = clean
+    .replace(/color:\s*(#[d-fD-F0-9]{3,6}|rgb\(\s*2[0-5][0-9]\s*,\s*2[0-5][0-9]\s*,\s*2[0-5][0-9]\s*\)|white|#fff|#f1f5f9|#e8e4db|#e0dbd2)/gi, 'color: #0f172a')
+    .replace(/background:\s*(var\(--navy[^)]*\)|#0c1322|#141c2d|#1e293b|#101827)/gi, 'background: transparent');
+  return clean;
+}
+
 // Clean HTML check to verify if a section contains actual text, tables, or images
 function hasMeaningfulContent(html) {
   if (!html) return false;
@@ -21,7 +33,7 @@ function hasMeaningfulContent(html) {
   return stripped.length > 0 || hasImg || hasTable;
 }
 
-// Fetch notes and digest for a specific PDF (checking DB, in-memory cache, and local storage)
+// Fetch notes and digest for a specific PDF (checking active memory, DB, and local cache)
 async function fetchPdfNotesAndDigest(pdf) {
   const trueId = pdf.linked_pdf_id || pdf.id;
   let content = '';
@@ -29,15 +41,14 @@ async function fetchPdfNotesAndDigest(pdf) {
 
   // 1. Check in-memory active cache
   try {
-    const { getCachedNotepad } = await import('./notepad.js');
-    const mem = getCachedNotepad?.(trueId);
+    const mem = getCachedNotepad(trueId);
     if (mem) {
       content = mem.content || '';
       digest = mem.digest || '';
     }
   } catch {}
 
-  // 2. Query Database
+  // 2. Query Database / Local Storage
   if (!content && !digest) {
     try {
       const res = await dbLoadNotepad(trueId);
@@ -50,7 +61,7 @@ async function fetchPdfNotesAndDigest(pdf) {
     }
   }
 
-  // 3. Local storage fallbacks
+  // 3. Fallbacks
   if (!content) content = safeStorageGet('local_notepad_' + trueId, '') || '';
   if (!digest) digest = safeStorageGet('local_digest_' + trueId, '') || '';
 
@@ -71,7 +82,7 @@ async function buildFolderHTML(folderId, depth = 1) {
   
   let folderHeaderHtml = `
     <div style="margin-top: ${depth === 1 ? '0' : '28px'}; margin-bottom: 14px; page-break-after: avoid;">
-      <${hTag} style="margin: 0 0 6px 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 2px solid #334155; padding-bottom: 6px;">
+      <${hTag} style="margin: 0 0 6px 0; font-size: ${hSize}; color: #0f172a !important; font-weight: 700; border-bottom: 2px solid #334155; padding-bottom: 6px;">
         ${folderName}
       </${hTag}>
     </div>
@@ -82,9 +93,9 @@ async function buildFolderHTML(folderId, depth = 1) {
   if (hasMeaningfulContent(folderNotes)) {
     hasAnyContent = true;
     folderHeaderHtml += `
-      <div class="folder-notes-section" style="margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; color: #1e293b; line-height: 1.6;">
-        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Folder Notes</div>
-        <div class="note-content">${stripEmojis(folderNotes)}</div>
+      <div class="folder-notes-section" style="margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; color: #1e293b !important; line-height: 1.6;">
+        <div style="font-size: 11px; font-weight: 700; color: #475569 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Folder Notes</div>
+        <div class="note-content" style="color: #1e293b !important;">${cleanAndSanitizeHtml(folderNotes)}</div>
       </div>
     `;
   }
@@ -107,7 +118,7 @@ async function buildFolderHTML(folderId, depth = 1) {
 
       sectionHtml += `
         <div class="case-section" style="margin: 18px 0; padding: 14px 18px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; page-break-inside: avoid;">
-          <div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+          <div style="font-size: 15px; font-weight: 700; color: #0f172a !important; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
             ${pdfName}
           </div>
       `;
@@ -116,9 +127,9 @@ async function buildFolderHTML(folderId, depth = 1) {
       if (hasDigest) {
         sectionHtml += `
           <div style="margin-bottom: 14px;">
-            <div style="font-size: 11px; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Case Digest</div>
-            <div class="case-digest-body" style="padding-left: 12px; border-left: 3px solid #0284c7; color: #1e293b; line-height: 1.6;">
-              ${stripEmojis(digest)}
+            <div style="font-size: 11px; font-weight: 700; color: #0369a1 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Case Digest</div>
+            <div class="case-digest-body" style="padding-left: 12px; border-left: 3px solid #0284c7; color: #1e293b !important; line-height: 1.6;">
+              ${cleanAndSanitizeHtml(digest)}
             </div>
           </div>
         `;
@@ -128,9 +139,9 @@ async function buildFolderHTML(folderId, depth = 1) {
       if (hasContent) {
         sectionHtml += `
           <div style="margin-top: 10px;">
-            <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Appendix / Notes</div>
-            <div class="case-notes-body" style="padding-left: 12px; border-left: 3px solid #64748b; color: #1e293b; line-height: 1.6;">
-              ${stripEmojis(content)}
+            <div style="font-size: 11px; font-weight: 700; color: #475569 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Appendix / Notes</div>
+            <div class="case-notes-body" style="padding-left: 12px; border-left: 3px solid #64748b; color: #1e293b !important; line-height: 1.6;">
+              ${cleanAndSanitizeHtml(content)}
             </div>
           </div>
         `;
@@ -178,53 +189,79 @@ export async function exportFolderToPDF(folder) {
 
   toast('Generating PDF... Please wait.');
 
-  // Create an explicit, live DOM container behind the app layer so html2canvas can measure geometry
-  const container = document.createElement('div');
-  container.id = 'pdf-export-render-box';
-  container.style.cssText = `
+  // Create a clean, visible rendering overlay in foreground so html2canvas renders with full geometry
+  const overlay = document.createElement('div');
+  overlay.id = 'pdf-export-overlay';
+  overlay.style.cssText = `
     position: fixed;
     top: 0;
     left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(12, 19, 34, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding: 40px 20px;
+    box-sizing: border-box;
+  `;
+
+  const banner = document.createElement('div');
+  banner.style.cssText = `
+    color: #c9a84c;
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 20px;
+    background: #141c2d;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #c9a84c;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  `;
+  banner.textContent = 'Generating PDF Document…';
+  overlay.appendChild(banner);
+
+  const renderBox = document.createElement('div');
+  renderBox.id = 'pdf-export-render-box';
+  renderBox.style.cssText = `
     width: 760px;
-    z-index: -9999;
     background: #ffffff !important;
     color: #0f172a !important;
-    padding: 32px 36px;
-    box-sizing: border-box;
+    padding: 40px 48px;
+    border-radius: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 13px;
     line-height: 1.6;
-    overflow: visible;
+    box-sizing: border-box;
   `;
 
-  // Comprehensive styling to override dark mode & guarantee crisp printing
-  container.innerHTML = `
+  renderBox.innerHTML = `
     <style>
       #pdf-export-render-box * {
-        box-sizing: border-box;
+        box-sizing: border-box !important;
+        color: #1e293b !important;
       }
-      #pdf-export-render-box p, 
-      #pdf-export-render-box div, 
-      #pdf-export-render-box span, 
-      #pdf-export-render-box li {
-        color: #1e293b;
-      }
-      #pdf-export-render-box h1, 
-      #pdf-export-render-box h2, 
-      #pdf-export-render-box h3, 
+      #pdf-export-render-box h1,
+      #pdf-export-render-box h2,
+      #pdf-export-render-box h3,
       #pdf-export-render-box h4 {
-        color: #0f172a;
+        color: #0f172a !important;
       }
       #pdf-export-render-box table {
         width: 100% !important;
         border-collapse: collapse !important;
-        margin: 12px 0 !important;
+        margin: 14px 0 !important;
         page-break-inside: avoid;
       }
       #pdf-export-render-box th, 
       #pdf-export-render-box td {
         border: 1px solid #cbd5e1 !important;
-        padding: 6px 10px !important;
+        padding: 8px 12px !important;
         text-align: left !important;
         vertical-align: top !important;
         color: #1e293b !important;
@@ -282,10 +319,11 @@ export async function exportFolderToPDF(folder) {
     </div>
   `;
 
-  document.body.appendChild(container);
+  overlay.appendChild(renderBox);
+  document.body.appendChild(overlay);
 
-  // Give browser layout engine 100ms to calculate all dimensions and positions
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // Give the browser 150ms to render fonts and layout in DOM
+  await new Promise(resolve => setTimeout(resolve, 150));
 
   const rawName = stripEmojis(folder.name) || 'Folder';
   const cleanFileName = `${rawName.replace(/[^a-zA-Z0-9_\-]/g, '_')}_Notes.pdf`;
@@ -297,9 +335,7 @@ export async function exportFolderToPDF(folder) {
     html2canvas:  { 
       scale: 2, 
       useCORS: true, 
-      logging: false,
-      scrollY: 0,
-      scrollX: 0
+      logging: false
     },
     pagebreak:    { mode: ['css', 'legacy'] },
     jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
@@ -307,44 +343,17 @@ export async function exportFolderToPDF(folder) {
 
   try {
     if (typeof window.html2pdf === 'function') {
-      await window.html2pdf().set(opt).from(container).save();
+      await window.html2pdf().set(opt).from(renderBox).save();
       toast('PDF Downloaded successfully!');
     } else {
-      // Fallback print preview
-      const printWin = window.open('', '_blank');
-      if (printWin) {
-        printWin.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>${rawName} Notes</title>
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #000; background: #fff; }
-              table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-              th, td { border: 1px solid #999; padding: 6px 10px; }
-              th { background: #eee; font-weight: bold; }
-              .np-banner-hdr { background: #e0f2fe; border-bottom: 2px solid #0284c7; color: #0369a1; padding: 6px 12px; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            ${container.innerHTML}
-          </body>
-          </html>
-        `);
-        printWin.document.close();
-        printWin.focus();
-        printWin.print();
-        toast('Opened print preview');
-      } else {
-        toast('PDF library unavailable');
-      }
+      window.print();
     }
   } catch (err) {
     console.error('PDF Export Error:', err);
     toast('Failed to generate PDF. Check console.');
   } finally {
-    if (container.parentNode) {
-      document.body.removeChild(container);
+    if (overlay.parentNode) {
+      document.body.removeChild(overlay);
     }
   }
 }
