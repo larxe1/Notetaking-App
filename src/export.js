@@ -77,12 +77,12 @@ async function buildFolderHTML(folderId, depth = 1) {
 
   // 1. Folder Header
   const folderName = stripEmojis(folder.name) || 'Folder';
-  const hSize = depth === 1 ? '22px' : (depth === 2 ? '18px' : '15px');
+  const hSize = depth === 1 ? '22pt' : (depth === 2 ? '17pt' : '14pt');
   const hTag = depth === 1 ? 'h1' : (depth === 2 ? 'h2' : 'h3');
   
   let folderHeaderHtml = `
-    <div style="margin-top: ${depth === 1 ? '0' : '28px'}; margin-bottom: 14px; page-break-after: avoid;">
-      <${hTag} style="margin: 0 0 6px 0; font-size: ${hSize}; color: #0f172a !important; font-weight: 700; border-bottom: 2px solid #334155; padding-bottom: 6px;">
+    <div style="margin-top: ${depth === 1 ? '0' : '28pt'}; margin-bottom: 14pt; page-break-after: avoid;">
+      <${hTag} style="margin: 0 0 6pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 2pt solid #334155; padding-bottom: 4pt;">
         ${folderName}
       </${hTag}>
     </div>
@@ -93,9 +93,9 @@ async function buildFolderHTML(folderId, depth = 1) {
   if (hasMeaningfulContent(folderNotes)) {
     hasAnyContent = true;
     folderHeaderHtml += `
-      <div class="folder-notes-section" style="margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; color: #1e293b !important; line-height: 1.6;">
-        <div style="font-size: 11px; font-weight: 700; color: #475569 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Folder Notes</div>
-        <div class="note-content" style="color: #1e293b !important;">${cleanAndSanitizeHtml(folderNotes)}</div>
+      <div class="folder-notes-section" style="margin-bottom: 18pt; padding: 10pt 14pt; background: #f8fafc; border: 1pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.6;">
+        <div style="font-size: 9pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6pt;">Folder Notes</div>
+        <div class="note-content" style="color: #1e293b;">${cleanAndSanitizeHtml(folderNotes)}</div>
       </div>
     `;
   }
@@ -117,8 +117,8 @@ async function buildFolderHTML(folderId, depth = 1) {
       const pdfName = stripEmojis(pdf.name) || 'Case Document';
 
       sectionHtml += `
-        <div class="case-section" style="margin: 18px 0; padding: 14px 18px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff; page-break-inside: avoid;">
-          <div style="font-size: 15px; font-weight: 700; color: #0f172a !important; margin-bottom: 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+        <div class="case-section" style="margin: 16pt 0; padding: 12pt 16pt; border: 1pt solid #cbd5e1; border-radius: 6pt; background: #ffffff; page-break-inside: avoid;">
+          <div style="font-size: 13pt; font-weight: 700; color: #0f172a; margin-bottom: 8pt; border-bottom: 1pt solid #e2e8f0; padding-bottom: 4pt;">
             ${pdfName}
           </div>
       `;
@@ -126,9 +126,9 @@ async function buildFolderHTML(folderId, depth = 1) {
       // 3a. Case Digest
       if (hasDigest) {
         sectionHtml += `
-          <div style="margin-bottom: 14px;">
-            <div style="font-size: 11px; font-weight: 700; color: #0369a1 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Case Digest</div>
-            <div class="case-digest-body" style="padding-left: 12px; border-left: 3px solid #0284c7; color: #1e293b !important; line-height: 1.6;">
+          <div style="margin-bottom: 12pt;">
+            <div style="font-size: 9pt; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4pt;">Case Digest</div>
+            <div class="case-digest-body" style="padding-left: 10pt; border-left: 2.5pt solid #0284c7; color: #1e293b; line-height: 1.6;">
               ${cleanAndSanitizeHtml(digest)}
             </div>
           </div>
@@ -138,9 +138,9 @@ async function buildFolderHTML(folderId, depth = 1) {
       // 3b. Appendix / Notes
       if (hasContent) {
         sectionHtml += `
-          <div style="margin-top: 10px;">
-            <div style="font-size: 11px; font-weight: 700; color: #475569 !important; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;">Appendix / Notes</div>
-            <div class="case-notes-body" style="padding-left: 12px; border-left: 3px solid #64748b; color: #1e293b !important; line-height: 1.6;">
+          <div style="margin-top: 8pt;">
+            <div style="font-size: 9pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4pt;">Appendix / Notes</div>
+            <div class="case-notes-body" style="padding-left: 10pt; border-left: 2.5pt solid #64748b; color: #1e293b; line-height: 1.6;">
               ${cleanAndSanitizeHtml(content)}
             </div>
           </div>
@@ -187,173 +187,230 @@ export async function exportFolderToPDF(folder) {
     return;
   }
 
-  toast('Generating PDF... Please wait.');
-
-  // Create a clean, visible rendering overlay in foreground so html2canvas renders with full geometry
-  const overlay = document.createElement('div');
-  overlay.id = 'pdf-export-overlay';
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(12, 19, 34, 0.85);
-    backdrop-filter: blur(4px);
-    z-index: 999999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    overflow-y: auto;
-    padding: 40px 20px;
-    box-sizing: border-box;
-  `;
-
-  const banner = document.createElement('div');
-  banner.style.cssText = `
-    color: #c9a84c;
-    font-weight: 600;
-    font-size: 15px;
-    margin-bottom: 20px;
-    background: #141c2d;
-    padding: 10px 20px;
-    border-radius: 8px;
-    border: 1px solid #c9a84c;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  `;
-  banner.textContent = 'Generating PDF Document…';
-  overlay.appendChild(banner);
-
-  const renderBox = document.createElement('div');
-  renderBox.id = 'pdf-export-render-box';
-  renderBox.style.cssText = `
-    width: 760px;
-    background: #ffffff !important;
-    color: #0f172a !important;
-    padding: 40px 48px;
-    border-radius: 4px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13px;
-    line-height: 1.6;
-    box-sizing: border-box;
-  `;
-
-  renderBox.innerHTML = `
-    <style>
-      #pdf-export-render-box * {
-        box-sizing: border-box !important;
-        color: #1e293b !important;
-      }
-      #pdf-export-render-box h1,
-      #pdf-export-render-box h2,
-      #pdf-export-render-box h3,
-      #pdf-export-render-box h4 {
-        color: #0f172a !important;
-      }
-      #pdf-export-render-box table {
-        width: 100% !important;
-        border-collapse: collapse !important;
-        margin: 14px 0 !important;
-        page-break-inside: avoid;
-      }
-      #pdf-export-render-box th, 
-      #pdf-export-render-box td {
-        border: 1px solid #cbd5e1 !important;
-        padding: 8px 12px !important;
-        text-align: left !important;
-        vertical-align: top !important;
-        color: #1e293b !important;
-        font-size: 12px !important;
-        background: transparent !important;
-      }
-      #pdf-export-render-box th {
-        background-color: #f1f5f9 !important;
-        font-weight: 700 !important;
-        color: #0f172a !important;
-      }
-      #pdf-export-render-box img {
-        max-width: 100% !important;
-        height: auto !important;
-        display: block !important;
-        margin: 10px 0 !important;
-      }
-      #pdf-export-render-box blockquote {
-        margin: 8px 0 !important;
-        padding: 6px 12px !important;
-        border-left: 3px solid #94a3b8 !important;
-        background: #f8fafc !important;
-        color: #334155 !important;
-      }
-      #pdf-export-render-box pre, 
-      #pdf-export-render-box code {
-        background: #f1f5f9 !important;
-        color: #0f172a !important;
-        padding: 2px 4px !important;
-        border-radius: 4px !important;
-        font-size: 12px !important;
-      }
-      #pdf-export-render-box .np-banner-hdr {
-        background: #e0f2fe !important;
-        border-bottom: 2px solid #0284c7 !important;
-        color: #0369a1 !important;
-        padding: 6px 12px !important;
-        margin: 14px 0 8px !important;
-        font-weight: 700 !important;
-        font-size: 14px !important;
-        border-radius: 4px 4px 0 0 !important;
-        display: block !important;
-      }
-      #pdf-export-render-box ul, 
-      #pdf-export-render-box ol {
-        margin: 6px 0 !important;
-        padding-left: 24px !important;
-      }
-      #pdf-export-render-box li {
-        margin-bottom: 3px !important;
-      }
-    </style>
-    <div style="width: 100%;">
-      ${htmlContent}
-    </div>
-  `;
-
-  overlay.appendChild(renderBox);
-  document.body.appendChild(overlay);
-
-  // Give the browser 150ms to render fonts and layout in DOM
-  await new Promise(resolve => setTimeout(resolve, 150));
+  toast('Preparing PDF export document...');
 
   const rawName = stripEmojis(folder.name) || 'Folder';
-  const cleanFileName = `${rawName.replace(/[^a-zA-Z0-9_\-]/g, '_')}_Notes.pdf`;
+  const pageTitle = `${rawName} — Notes & Case Digests`;
 
-  const opt = {
-    margin:       [0.4, 0.4, 0.4, 0.4],
-    filename:     cleanFileName,
-    image:        { type: 'jpeg', quality: 0.98 },
-    html2canvas:  { 
-      scale: 2, 
-      useCORS: true, 
-      logging: false
-    },
-    pagebreak:    { mode: ['css', 'legacy'] },
-    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-  };
+  const fullDocumentHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${pageTitle}</title>
+  <style>
+    @page {
+      size: letter portrait;
+      margin: 0.6in 0.5in 0.6in 0.5in;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+    }
+    .top-bar {
+      position: sticky;
+      top: 0;
+      background: #0c1322;
+      color: #ffffff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      z-index: 10000;
+    }
+    .top-bar-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #c9a84c;
+    }
+    .top-bar-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-print {
+      background: #c9a84c;
+      color: #0c1322;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-print:hover {
+      background: #dfbe65;
+    }
+    .btn-close {
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-close:hover {
+      background: #334155;
+    }
+    .paper-container {
+      max-width: 8.5in;
+      margin: 24px auto;
+      background: #ffffff;
+      padding: 0.6in;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+      border-radius: 4px;
+    }
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      margin: 12pt 0 !important;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1pt solid #cbd5e1 !important;
+      padding: 6pt 10pt !important;
+      text-align: left !important;
+      vertical-align: top !important;
+      font-size: 10pt !important;
+      color: #1e293b !important;
+    }
+    th {
+      background-color: #f1f5f9 !important;
+      font-weight: 700 !important;
+      color: #0f172a !important;
+    }
+    img {
+      max-width: 100% !important;
+      height: auto !important;
+      display: block !important;
+      margin: 10pt 0 !important;
+      page-break-inside: avoid;
+    }
+    blockquote {
+      margin: 8pt 0 !important;
+      padding: 6pt 12pt !important;
+      border-left: 3pt solid #94a3b8 !important;
+      background: #f8fafc !important;
+      color: #334155 !important;
+    }
+    pre, code {
+      background: #f1f5f9 !important;
+      color: #0f172a !important;
+      padding: 2px 4px !important;
+      border-radius: 4px !important;
+      font-size: 10pt !important;
+    }
+    .np-banner-hdr {
+      background: #e0f2fe !important;
+      border-bottom: 2pt solid #0284c7 !important;
+      color: #0369a1 !important;
+      padding: 6pt 12pt !important;
+      margin: 12pt 0 6pt !important;
+      font-weight: 700 !important;
+      font-size: 12pt !important;
+      border-radius: 4pt 4pt 0 0 !important;
+      display: block !important;
+      page-break-after: avoid;
+    }
+    ul, ol {
+      margin: 6pt 0 !important;
+      padding-left: 20pt !important;
+    }
+    li {
+      margin-bottom: 3pt !important;
+    }
+    @media print {
+      .no-print {
+        display: none !important;
+      }
+      body {
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      .paper-container {
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        max-width: none !important;
+        width: 100% !important;
+      }
+      .case-section {
+        page-break-inside: avoid;
+      }
+      h1, h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar no-print">
+    <div class="top-bar-title">${pageTitle}</div>
+    <div class="top-bar-actions">
+      <button class="btn-print" onclick="window.print()">
+        <span>Print / Save to PDF</span>
+      </button>
+      <button class="btn-close" onclick="window.close()">Close</button>
+    </div>
+  </div>
 
-  try {
-    if (typeof window.html2pdf === 'function') {
-      await window.html2pdf().set(opt).from(renderBox).save();
-      toast('PDF Downloaded successfully!');
-    } else {
-      window.print();
+  <div class="paper-container">
+    ${htmlContent}
+  </div>
+
+  <script>
+    // Automatically open print dialog upon document readiness
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        window.focus();
+        window.print();
+      }, 350);
+    });
+  </script>
+</body>
+</html>`;
+
+  // 1. Try opening dedicated print preview tab
+  const printWin = window.open('', '_blank');
+  if (printWin) {
+    printWin.document.open();
+    printWin.document.write(fullDocumentHtml);
+    printWin.document.close();
+    toast('PDF export window opened — select "Save as PDF" to save.');
+  } else {
+    // 2. Fallback to hidden print iframe if popups are blocked
+    let iframe = document.getElementById('export-print-frame');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'export-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
     }
-  } catch (err) {
-    console.error('PDF Export Error:', err);
-    toast('Failed to generate PDF. Check console.');
-  } finally {
-    if (overlay.parentNode) {
-      document.body.removeChild(overlay);
-    }
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(fullDocumentHtml);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      toast('Print prompt opened — choose "Save as PDF"');
+    }, 400);
   }
 }
