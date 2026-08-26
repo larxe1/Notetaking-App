@@ -22,6 +22,7 @@ import { initRealtimeSync } from './sync.js';
 import { initOutbox } from './outbox.js';
 import { initDiagramStudio } from './diagram.js';
 import { initGlobalPdfLinks } from './pdflink.js';
+import { initStorageManager, safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 
 // Global Error Boundary to prevent tab-freezing crashes
 function setupGlobalErrorBoundary() {
@@ -41,6 +42,9 @@ function setupGlobalErrorBoundary() {
 }
 
 async function init() {
+  // 0. Storage health check (prevent quota exceeded crashes & prune old cache)
+  try { initStorageManager(); } catch (e) { console.warn('[Init] StorageManager error:', e); }
+
   // 1. Setup crash boundary and pre-flight reset
   setupGlobalErrorBoundary();
   document.querySelectorAll('#ann-panel, #notepad-panel, #search-panel')
@@ -414,7 +418,7 @@ function initCalendar() {
     
     curSubj = strong.textContent.trim();
     document.getElementById('mo-subj-notes-title').textContent = curSubj + ' Notes';
-    const notes = localStorage.getItem('subj_notes_' + curSubj) || '';
+    const notes = safeStorageGet('subj_notes_' + curSubj, '') || '';
     document.getElementById('subj-notes-ta').value = notes;
     openModal('mo-subj-notes');
   });
@@ -426,7 +430,7 @@ function initCalendar() {
     const strong = item.querySelector('strong');
     if (!strong) return;
     const subj = strong.textContent.trim();
-    const notes = localStorage.getItem('subj_notes_' + subj);
+    const notes = safeStorageGet('subj_notes_' + subj);
     if (notes) {
       // Limit notes preview length and escape quotes if needed, but native title handles raw strings fine
       item.title = notes.length > 500 ? notes.substring(0, 500) + '...' : notes;
@@ -438,7 +442,7 @@ function initCalendar() {
   document.getElementById('save-subj-notes')?.addEventListener('click', () => {
     if (!curSubj) return;
     const notes = document.getElementById('subj-notes-ta').value;
-    localStorage.setItem('subj_notes_' + curSubj, notes);
+    safeStorageSet('subj_notes_' + curSubj, notes);
     closeModal('mo-subj-notes');
   });
 }
@@ -449,7 +453,7 @@ function initLinks() {
   
   // 1. Prime cache immediately from localStorage (instant 0ms response)
   try {
-    S.links = JSON.parse(localStorage.getItem('local_sys_links') || localStorage.getItem('law_school_links') || '[]');
+    S.links = JSON.parse(safeStorageGet('local_sys_links') || safeStorageGet('law_school_links') || '[]');
   } catch {
     S.links = [];
   }
@@ -467,24 +471,25 @@ function initLinks() {
   const urlInp = document.getElementById('new-link-url');
 
   const doAddLink = async () => {
-    if (!titleInp || !urlInp) return;
-    const title = titleInp.value.trim();
-    let url = urlInp.value.trim();
+    const title = titleInp?.value.trim();
+    let url = urlInp?.value.trim();
     if (!title || !url) return;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+
+    if (!/^https?:\/\//i.test(url)) {
       url = 'https://' + url;
     }
-    
-    if (!Array.isArray(S.links)) S.links = [];
-    S.links.push({ id: Date.now().toString(), title, url });
-    titleInp.value = '';
-    urlInp.value = '';
+
+    const newLink = { id: 'link_' + Date.now(), title, url, created_at: Date.now() };
+    S.links.push(newLink);
     renderLinks();
-    
+    if (titleInp) titleInp.value = '';
+    if (urlInp) urlInp.value = '';
+
     try {
       await dbSaveLinks(S.links);
-    } catch (err) {
-      console.warn('[dbSaveLinks error]', err);
+      toast('Link saved!');
+    } catch {
+      toast('Saved locally (offline)');
     }
   };
 
@@ -496,7 +501,7 @@ function initLinks() {
   (async () => {
     try {
       let links = await dbLoadLinks();
-      const localLinks = JSON.parse(localStorage.getItem('law_school_links') || '[]');
+      const localLinks = JSON.parse(safeStorageGet('law_school_links', '[]') || '[]');
       
       if (localLinks.length > 0) {
         const existingUrls = new Set(links.map(l => l.url));
@@ -508,7 +513,7 @@ function initLinks() {
           }
         }
         if (added) await dbSaveLinks(links);
-        localStorage.removeItem('law_school_links');
+        safeStorageRemove('law_school_links');
       }
       
       if (links && links.length > 0) {

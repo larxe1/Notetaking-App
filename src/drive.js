@@ -4,6 +4,7 @@
 import { S } from './state.js';
 import { toast, syncSpin, syncOK, syncErr } from './ui.js';
 import { getCachedPDF, setCachedPDF, deleteCachedPDF } from './pdfcache.js';
+import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 
 const CLIENT_ID   = window.APP_CONFIG?.GOOGLE_CLIENT_ID || '';
 const SCOPE       = 'https://www.googleapis.com/auth/drive.file';
@@ -22,8 +23,8 @@ function _requestToken(silent = false) {
       callback: async (resp) => {
         if (resp.error) { reject(resp); return; }
         S.driveToken = resp.access_token;
-        localStorage.setItem('driveToken', S.driveToken);
-        localStorage.setItem('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
+        safeStorageSet('driveToken', S.driveToken);
+        safeStorageSet('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
         // Get user info (only needed on first sign-in)
         if (!S.driveUser) {
           try {
@@ -32,15 +33,15 @@ function _requestToken(silent = false) {
             });
             const info = await r.json();
             S.driveUser = info.email || 'Connected';
-            localStorage.setItem('driveUser', S.driveUser);
+            safeStorageSet('driveUser', S.driveUser);
           } catch {
             S.driveUser = 'Connected';
-            localStorage.setItem('driveUser', S.driveUser);
+            safeStorageSet('driveUser', S.driveUser);
           }
         }
         // Ensure our app folder exists
         S.driveFolderId = await ensureAppFolder();
-        localStorage.setItem('driveFolderId', S.driveFolderId);
+        safeStorageSet('driveFolderId', S.driveFolderId);
         updateDriveBar();
         _scheduleRefresh();   // schedule the next silent refresh
         _startHealthCheck(); // begin periodic token health checks
@@ -114,10 +115,10 @@ export function _onSessionExpired() {
   S.driveToken    = null;
   S.driveUser     = null;
   S.driveFolderId = null;
-  localStorage.removeItem('driveToken');
-  localStorage.removeItem('driveUser');
-  localStorage.removeItem('driveTokenExpiry');
-  localStorage.removeItem('driveFolderId');
+  safeStorageRemove('driveToken');
+  safeStorageRemove('driveUser');
+  safeStorageRemove('driveTokenExpiry');
+  safeStorageRemove('driveFolderId');
   updateDriveBar();
 
   // Automatically trigger the Google Account Picker prompt so user just clicks their email
@@ -384,15 +385,15 @@ async function drivePost(url, body) {
 
 // ── Init: render drive bar on load ──
 export function initDriveBar() {
-  const token  = localStorage.getItem('driveToken');
-  const expiry = localStorage.getItem('driveTokenExpiry');
-  const user   = localStorage.getItem('driveUser');
+  const token  = safeStorageGet('driveToken');
+  const expiry = safeStorageGet('driveTokenExpiry');
+  const user   = safeStorageGet('driveUser');
 
   if (token && expiry && Date.now() < parseInt(expiry)) {
     // Token still valid from cache — restore session
     S.driveToken    = token;
     S.driveUser     = user;
-    S.driveFolderId = localStorage.getItem('driveFolderId');
+    S.driveFolderId = safeStorageGet('driveFolderId');
     updateDriveBar();
     // Verify the cached token is actually still accepted by Google
     // (It may have been revoked, even if it hasn't expired yet)

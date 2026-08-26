@@ -3,10 +3,13 @@
 // Supports both Browser Sandboxed IndexedDB and Custom PC Folders (File System Access API)
 // ═══════════════════════════════════════════════
 
+import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
+
 const DB_NAME = 'LegalAnnotatorCache';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'pdf_blobs';
 const CONFIG_STORE = 'fs_config';
+const HISTORY_STORE = 'notepad_history';
 
 let _dbPromise = null;
 
@@ -25,6 +28,9 @@ function getDB() {
       if (!db.objectStoreNames.contains(CONFIG_STORE)) {
         db.createObjectStore(CONFIG_STORE, { keyPath: 'key' });
       }
+      if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+        db.createObjectStore(HISTORY_STORE, { keyPath: 'pdf_id' });
+      }
     };
     request.onsuccess = (e) => resolve(e.target.result);
     request.onerror = (e) => {
@@ -33,6 +39,36 @@ function getDB() {
     };
   });
   return _dbPromise;
+}
+
+// ── Notepad History in IndexedDB (virtually unlimited quota) ──
+export async function getNotepadHistoryIDB(pdfId) {
+  try {
+    const db = await getDB();
+    if (!db || !db.objectStoreNames.contains(HISTORY_STORE)) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(HISTORY_STORE, 'readonly');
+      const store = tx.objectStore(HISTORY_STORE);
+      const req = store.get(pdfId);
+      req.onsuccess = () => resolve(req.result ? req.result.history : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (err) {
+    console.warn('[PDFCache] getNotepadHistoryIDB error', err);
+    return null;
+  }
+}
+
+export async function saveNotepadHistoryIDB(pdfId, history) {
+  try {
+    const db = await getDB();
+    if (!db || !db.objectStoreNames.contains(HISTORY_STORE)) return;
+    const tx = db.transaction(HISTORY_STORE, 'readwrite');
+    const store = tx.objectStore(HISTORY_STORE);
+    store.put({ pdf_id: pdfId, history: history, updated_at: Date.now() });
+  } catch (err) {
+    console.warn('[PDFCache] saveNotepadHistoryIDB error', err);
+  }
 }
 
 // ── Ask browser to never purge our cache under low disk space ──
@@ -122,7 +158,7 @@ export async function chooseCustomDirectory() {
     }
 
     await setStoredDirHandle(handle, handle.name);
-    localStorage.setItem('custom_cache_dir_name', handle.name);
+    safeStorageSet('custom_cache_dir_name', handle.name);
 
     // Sync all currently cached PDFs into the new folder
     await exportAllCachedToCustomDir(handle);
@@ -139,11 +175,11 @@ export async function chooseCustomDirectory() {
 // ── User-Facing: Reset back to Default Browser Sandbox ──
 export async function resetToDefaultStorage() {
   await clearStoredDirHandle();
-  localStorage.removeItem('custom_cache_dir_name');
+  safeStorageRemove('custom_cache_dir_name');
 }
 
 export function getCustomDirectoryName() {
-  return localStorage.getItem('custom_cache_dir_name') || null;
+  return safeStorageGet('custom_cache_dir_name', null);
 }
 
 // ── Write binary to custom folder ──

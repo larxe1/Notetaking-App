@@ -4,24 +4,22 @@
 // and automatically replays all changes to Supabase when reconnected.
 // ═══════════════════════════════════════════════
 
+import { safeStorageSet, safeStorageGet } from './storage.js';
+
 const QUEUE_KEY = 'offline_outbox_queue';
 let _isReplaying = false;
 
 // ── Read / Write Queue in localStorage ──
 export function getOutboxQueue() {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    return JSON.parse(safeStorageGet(QUEUE_KEY, '[]') || '[]');
   } catch {
     return [];
   }
 }
 
 function saveOutboxQueue(queue) {
-  try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  } catch (e) {
-    console.warn('[Outbox] Failed to save queue to localStorage:', e);
-  }
+  safeStorageSet(QUEUE_KEY, JSON.stringify(queue));
   updateOutboxUI();
 }
 

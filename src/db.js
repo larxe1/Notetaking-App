@@ -5,6 +5,7 @@ import { S } from './state.js';
 import { driveDeleteFile } from './drive.js';
 import { broadcastSync } from './sync.js';
 import { safeDbWrite } from './outbox.js';
+import { safeStorageSet, safeStorageGet } from './storage.js';
 
 // Inline sync helpers (avoids circular dep with ui.js)
 const _el = id => document.getElementById(id);
@@ -65,15 +66,13 @@ export async function dbLoad(retries = 3) {
     }
 
     // Save snapshot to local disk for offline startup
-    try {
-      localStorage.setItem('local_lib_snapshot', JSON.stringify({
-        subjects: S.subjects,
-        folders: S.folders,
-        pdfs: S.pdfs,
-        colorCats: S.colorCats,
-        saved_at: Date.now()
-      }));
-    } catch {}
+    safeStorageSet('local_lib_snapshot', JSON.stringify({
+      subjects: S.subjects,
+      folders: S.folders,
+      pdfs: S.pdfs,
+      colorCats: S.colorCats,
+      saved_at: Date.now()
+    }));
 
     syncOK('DB Sync Active');
   } catch (e) {
@@ -85,7 +84,7 @@ export async function dbLoad(retries = 3) {
     import('./ui.js').then(m => m.recordError(e, 'Database Load'));
 
     // Fallback: Restore from local snapshot if device is offline
-    const snapStr = localStorage.getItem('local_lib_snapshot');
+    const snapStr = safeStorageGet('local_lib_snapshot');
     if (snapStr) {
       try {
         const snap = JSON.parse(snapStr);
@@ -116,11 +115,11 @@ export async function dbLoadAnnCounts() {
       for (const row of data) {
         S.annCounts[row.pdf_file_id] = (S.annCounts[row.pdf_file_id] || 0) + 1;
       }
-      try { localStorage.setItem('local_ann_counts', JSON.stringify(S.annCounts)); } catch {}
+      safeStorageSet('local_ann_counts', JSON.stringify(S.annCounts));
     }
   } catch {
     try {
-      S.annCounts = JSON.parse(localStorage.getItem('local_ann_counts') || '{}');
+      S.annCounts = JSON.parse(safeStorageGet('local_ann_counts', '{}') || '{}');
     } catch {}
   }
 }
@@ -196,9 +195,9 @@ export async function dbCreateFolder(subject_id, name, folder_type = 'custom', p
 
   // Save snapshot immediately so reload / dbLoad doesn't lose it
   try {
-    const snap = JSON.parse(localStorage.getItem('local_lib_snapshot') || '{}');
+    const snap = JSON.parse(safeStorageGet('local_lib_snapshot', '{}') || '{}');
     snap.folders = S.folders;
-    localStorage.setItem('local_lib_snapshot', JSON.stringify(snap));
+    safeStorageSet('local_lib_snapshot', JSON.stringify(snap));
   } catch {}
 
   const dbPayload = { id, subject_id, name, folder_type, sort_order };
@@ -354,10 +353,10 @@ export async function dbLoadAnnotations(pfid) {
       ...a,
       notes: notes.filter(n => n.annotation_id === a.id),
     }));
-    try { localStorage.setItem('local_anns_' + pfid, JSON.stringify(S.annotations)); } catch {}
+    safeStorageSet('local_anns_' + pfid, JSON.stringify(S.annotations));
   } catch {
     try {
-      S.annotations = JSON.parse(localStorage.getItem('local_anns_' + pfid) || '[]');
+      S.annotations = JSON.parse(safeStorageGet('local_anns_' + pfid, '[]') || '[]');
       console.log(`[DB] Restored annotations for ${pfid} from local cache`);
     } catch {
       S.annotations = [];
@@ -376,7 +375,7 @@ export async function dbCreateAnnotation(ann) {
     highlight_mode: ann.highlight_mode,
   };
   await safeDbWrite(db, 'annotations', 'upsert', annRec);
-  try { localStorage.setItem('local_anns_' + ann.pdf_file_id, JSON.stringify(S.annotations)); } catch {}
+  safeStorageSet('local_anns_' + ann.pdf_file_id, JSON.stringify(S.annotations));
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: ann.pdf_file_id });
 }
 
@@ -390,7 +389,7 @@ export async function dbDelAnnotation(id) {
   await safeDbWrite(db, 'annotations', 'delete', null, { id });
   S.annotations = S.annotations.filter(a => a.id !== id);
   if (S.currentPdfId) {
-    try { localStorage.setItem('local_anns_' + S.currentPdfId, JSON.stringify(S.annotations)); } catch {}
+    safeStorageSet('local_anns_' + S.currentPdfId, JSON.stringify(S.annotations));
   }
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
@@ -400,10 +399,10 @@ export async function dbLoadBookmarks(pfid) {
   try {
     const { data } = await db.from('pdf_bookmarks').select('*').eq('pdf_file_id', pfid).order('page');
     S.bookmarks = data || [];
-    try { localStorage.setItem('local_bms_' + pfid, JSON.stringify(S.bookmarks)); } catch {}
+    safeStorageSet('local_bms_' + pfid, JSON.stringify(S.bookmarks));
   } catch {
     try {
-      S.bookmarks = JSON.parse(localStorage.getItem('local_bms_' + pfid) || '[]');
+      S.bookmarks = JSON.parse(safeStorageGet('local_bms_' + pfid, '[]') || '[]');
     } catch {
       S.bookmarks = [];
     }
@@ -416,7 +415,7 @@ export async function dbCreateBookmark(pfid, page, title) {
   await safeDbWrite(db, 'pdf_bookmarks', 'upsert', bm);
   S.bookmarks.push(bm);
   S.bookmarks.sort((a, b) => a.page - b.page);
-  try { localStorage.setItem('local_bms_' + pfid, JSON.stringify(S.bookmarks)); } catch {}
+  safeStorageSet('local_bms_' + pfid, JSON.stringify(S.bookmarks));
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
   return bm;
 }
@@ -425,7 +424,7 @@ export async function dbDelBookmark(id) {
   await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { id });
   S.bookmarks = S.bookmarks.filter(b => b.id !== id);
   if (S.currentPdfId) {
-    try { localStorage.setItem('local_bms_' + S.currentPdfId, JSON.stringify(S.bookmarks)); } catch {}
+    safeStorageSet('local_bms_' + S.currentPdfId, JSON.stringify(S.bookmarks));
   }
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
 }
@@ -455,10 +454,10 @@ export async function dbLoadDrawings(pfid) {
     const { data } = await db.from('drawings').select('*').eq('pdf_file_id', pfid);
     S.drawData = {};
     for (const d of data || []) S.drawData[d.page] = d.strokes || [];
-    try { localStorage.setItem('local_draws_' + pfid, JSON.stringify(S.drawData)); } catch {}
+    safeStorageSet('local_draws_' + pfid, JSON.stringify(S.drawData));
   } catch {
     try {
-      S.drawData = JSON.parse(localStorage.getItem('local_draws_' + pfid) || '{}');
+      S.drawData = JSON.parse(safeStorageGet('local_draws_' + pfid, '{}') || '{}');
     } catch {
       S.drawData = {};
     }
@@ -472,7 +471,7 @@ export async function dbSaveDrawings(pfid, page, strokes) {
     updated_at: new Date().toISOString(),
   };
   await safeDbWrite(db, 'drawings', 'upsert', drawObj);
-  try { localStorage.setItem('local_draws_' + pfid, JSON.stringify(S.drawData)); } catch {}
+  safeStorageSet('local_draws_' + pfid, JSON.stringify(S.drawData));
   broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
 }
 
@@ -513,13 +512,13 @@ export async function dbLoadNotepad(pdf_id) {
   }
 
   // Fallback to local storage if offline or not returned
-  if (!content) content = localStorage.getItem('local_notepad_' + pdf_id) || '';
-  if (!digest) digest = localStorage.getItem('local_digest_' + pdf_id) || '';
+  if (!content) content = safeStorageGet('local_notepad_' + pdf_id, '') || '';
+  if (!digest) digest = safeStorageGet('local_digest_' + pdf_id, '') || '';
 
   // Fallback to history snapshot if still empty
   if (!content && !digest) {
     try {
-      const hist = JSON.parse(localStorage.getItem('notepad_history_' + pdf_id) || '[]');
+      const hist = JSON.parse(safeStorageGet('notepad_history_' + pdf_id, '[]') || '[]');
       if (hist.length > 0) {
         const last = hist[hist.length - 1];
         if (last) {
@@ -530,10 +529,8 @@ export async function dbLoadNotepad(pdf_id) {
     } catch {}
   }
 
-  try {
-    if (content) localStorage.setItem('local_notepad_' + pdf_id, content);
-    if (digest) localStorage.setItem('local_digest_' + pdf_id, digest);
-  } catch {}
+  safeStorageSet('local_notepad_' + pdf_id, content);
+  safeStorageSet('local_digest_' + pdf_id, digest);
 
   return { content, digest };
 }
@@ -542,11 +539,11 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
   const payload = { pdf_id };
   if (content !== undefined) {
     payload.content = content;
-    try { localStorage.setItem('local_notepad_' + pdf_id, content); } catch {}
+    safeStorageSet('local_notepad_' + pdf_id, content);
   }
   if (digest !== undefined) {
     payload.digest = digest;
-    try { localStorage.setItem('local_digest_' + pdf_id, digest); } catch {}
+    safeStorageSet('local_digest_' + pdf_id, digest);
   }
 
   // Pre-check: if library is loaded and does not contain this pdf_id, queue to outbox
@@ -585,11 +582,11 @@ export async function dbLoadLinks() {
     const { data, error } = await db.from('dictionary').select('definition').eq('word', '__sys_links').maybeSingle();
     if (error || !data) return [];
     const links = JSON.parse(data.definition) || [];
-    try { localStorage.setItem('local_sys_links', JSON.stringify(links)); } catch {}
+    safeStorageSet('local_sys_links', JSON.stringify(links));
     return links;
   } catch {
     try {
-      return JSON.parse(localStorage.getItem('local_sys_links') || '[]');
+      return JSON.parse(safeStorageGet('local_sys_links', '[]') || '[]');
     } catch {
       return [];
     }
@@ -598,5 +595,5 @@ export async function dbLoadLinks() {
 
 export async function dbSaveLinks(links) {
   await safeDbWrite(db, 'dictionary', 'upsert', { word: '__sys_links', definition: JSON.stringify(links) });
-  try { localStorage.setItem('local_sys_links', JSON.stringify(links)); } catch {}
+  safeStorageSet('local_sys_links', JSON.stringify(links));
 }

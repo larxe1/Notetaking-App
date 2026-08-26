@@ -8,6 +8,7 @@ import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { showTablePicker, handlePaste, insertBannerHeader } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
+import { safeStorageGet } from './storage.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
 const _boxDone  = new Set();
@@ -326,11 +327,11 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
 
   // Prime immediately from local cache if present (instant 0ms restore)
   try {
-    const cachedAnns = localStorage.getItem('local_anns_' + trueId);
+    const cachedAnns = safeStorageGet('local_anns_' + trueId);
     if (cachedAnns) S.annotations = JSON.parse(cachedAnns);
-    const cachedDraws = localStorage.getItem('local_draws_' + trueId);
+    const cachedDraws = safeStorageGet('local_draws_' + trueId);
     if (cachedDraws) S.drawData = JSON.parse(cachedDraws);
-    const cachedBms = localStorage.getItem('local_bms_' + trueId);
+    const cachedBms = safeStorageGet('local_bms_' + trueId);
     if (cachedBms) S.bookmarks = JSON.parse(cachedBms);
   } catch {}
 
@@ -416,7 +417,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     }
 
     // Determine starting page (saved bookmark or page 1)
-    const savedStart = localStorage.getItem('bookmark_' + pdfFile.id);
+    const savedStart = safeStorageGet('bookmark_' + pdfFile.id);
     const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
 
     S.curPage = startPage;

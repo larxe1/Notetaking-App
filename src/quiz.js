@@ -1,6 +1,7 @@
 import { S } from './state.js';
 import { openModal, toast } from './ui.js';
 import { generateMCQ, generateEssayQuestion, gradeEssay } from './ai.js';
+import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 
 let currentPdfText = '';
 let currentMCQ = null;
@@ -86,7 +87,7 @@ document.getElementById('btn-quiz-pdf').addEventListener('click', async () => {
   
   panel.style.display = 'flex';
   
-  if (!localStorage.getItem('gemini_api_key')) {
+  if (!safeStorageGet('gemini_api_key')) {
     showState('setup');
   } else {
     showState('selectMode');
@@ -100,12 +101,12 @@ document.getElementById('btn-close-quiz').addEventListener('click', () => {
 document.getElementById('btn-save-key').addEventListener('click', () => {
   const key = document.getElementById('quiz-api-key').value.trim();
   if (!key) return toast('Please enter a valid key.');
-  localStorage.setItem('gemini_api_key', key);
+  safeStorageSet('gemini_api_key', key);
   showState('selectMode');
 });
 
 document.getElementById('btn-change-key').addEventListener('click', () => {
-  localStorage.removeItem('gemini_api_key');
+  safeStorageRemove('gemini_api_key');
   document.getElementById('quiz-api-key').value = '';
   showState('setup');
 });
@@ -115,7 +116,7 @@ document.getElementById('btn-quiz-mcq').addEventListener('click', async () => {
   showState('loading');
   els.loadingTxt.textContent = 'Extracting PDF text...';
   
-  const key = localStorage.getItem('gemini_api_key');
+  const key = safeStorageGet('gemini_api_key');
   if (!currentPdfText) currentPdfText = await extractPdfText();
   
   els.loadingTxt.textContent = 'Gemini AI is generating your quiz...';
@@ -188,7 +189,7 @@ document.getElementById('btn-quiz-essay').addEventListener('click', async () => 
   showState('loading');
   els.loadingTxt.textContent = 'Extracting PDF text...';
   
-  const key = localStorage.getItem('gemini_api_key');
+  const key = safeStorageGet('gemini_api_key');
   if (!currentPdfText) currentPdfText = await extractPdfText();
   
   els.loadingTxt.textContent = 'Gemini AI is crafting a complex essay question...';
@@ -213,7 +214,7 @@ document.getElementById('btn-submit-essay').addEventListener('click', async () =
   
   showState('loading');
   els.loadingTxt.textContent = 'The Professor is grading your essay...';
-  const key = localStorage.getItem('gemini_api_key');
+  const key = safeStorageGet('gemini_api_key');
   
   try {
     const result = await gradeEssay(currentPdfText, currentEssayQuestion, ans, key);

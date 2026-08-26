@@ -9,6 +9,7 @@ import {
 } from './db.js';
 import { handlePaste, showTablePicker, insertBannerHeader } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
+import { safeStorageSet, safeStorageGet } from './storage.js';
 
 // ── Create annotation (text or box) ──
 export async function createAnnotation(pageNum, rects, text, mode_) {
@@ -475,7 +476,7 @@ function initAnnPanelResizer() {
   if (!handle || !panel) return;
 
   // Restore saved width from localStorage
-  const savedWidth = localStorage.getItem('ann_panel_width');
+  const savedWidth = safeStorageGet('ann_panel_width');
   if (savedWidth) {
     const w = parseInt(savedWidth);
     if (w >= 260 && w <= window.innerWidth * 0.85) {
@@ -519,7 +520,7 @@ function initAnnPanelResizer() {
     try {
       handle.releasePointerCapture(e.pointerId);
     } catch {}
-    localStorage.setItem('ann_panel_width', panel.offsetWidth);
+    safeStorageSet('ann_panel_width', panel.offsetWidth);
   };
 
   handle.addEventListener('pointerup', stopResize);

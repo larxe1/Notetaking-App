@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { openModal, closeModal, toast } from './ui.js';
+import { safeStorageSet, safeStorageGet } from './storage.js';
 
 // ── Built-in Law School Templates ──
 export const LEGAL_TEMPLATES = {
@@ -200,7 +201,7 @@ export async function openDiagramStudio() {
   const ed = document.getElementById('diag-editor');
   if (ed) {
     const key = S.curPDF ? `diagram_${S.curPDF.id}` : 'diagram_global';
-    const saved = localStorage.getItem(key);
+    const saved = safeStorageGet(key);
     if (saved && saved.trim()) {
       ed.value = saved;
     } else {
@@ -285,7 +286,7 @@ function scheduleSave() {
     const key = S.curPDF ? `diagram_${S.curPDF.id}` : 'diagram_global';
     const val = ed.value;
     try {
-      localStorage.setItem(key, val);
+      safeStorageSet(key, val);
       // Also save to Supabase via safeDbWrite
       const { safeDbWrite } = await import('./outbox.js');
       const { db } = await import('./db.js');

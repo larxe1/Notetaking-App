@@ -3,6 +3,7 @@
 //      modals, keyboard shortcuts, export
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
+import { safeStorageSet, safeStorageRemove } from './storage.js';
 
 // ── Sync status ──
 const $sdot = () => document.getElementById('sdot');
@@ -186,7 +187,7 @@ export function initSyncDiagnostics() {
 
   // Clear Queue button
   document.getElementById('diag-btn-clear-queue')?.addEventListener('click', () => {
-    localStorage.removeItem('offline_outbox_queue');
+    safeStorageRemove('offline_outbox_queue');
     import('./outbox.js').then(outbox => {
       outbox.updateOutboxUI();
       closeModal('mo-sync-diag');
@@ -356,7 +357,7 @@ export function initNavButtons() {
       if (foundPage && foundPage !== S.curPage && foundPage >= 1 && foundPage <= S.totalPages) {
         S.curPage = foundPage;
         document.getElementById('pg-input').value = foundPage;
-        if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, foundPage);
+        if (S.curPDF) safeStorageSet('bookmark_' + S.curPDF.id, foundPage);
         document.querySelectorAll('.thumb-item').forEach(th =>
           th.classList.toggle('active', parseInt(th.dataset.page) === foundPage)
         );
@@ -371,7 +372,7 @@ export async function jumpToPage(pg, smooth = false) {
   if (!S.totalPages || pg < 1 || pg > S.totalPages) return;
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
-  if (S.curPDF) localStorage.setItem('bookmark_' + S.curPDF.id, pg);
+  if (S.curPDF) safeStorageSet('bookmark_' + S.curPDF.id, pg);
 
   document.querySelectorAll('.thumb-item').forEach(el =>
     el.classList.toggle('active', parseInt(el.dataset.page) === pg)

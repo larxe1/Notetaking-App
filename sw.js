@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v60';
+const CACHE_NAME = 'legal-annotator-shell-v61';
 
 const STATIC_ASSETS = [
   './',
@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   './icon.svg',
   './src/style.css',
   './src/main.js',
+  './src/storage.js',
   './src/annotate.js',
   './src/viewer.js',
   './src/db.js',

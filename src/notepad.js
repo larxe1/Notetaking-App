@@ -6,12 +6,14 @@ import { dbLoadNotepad, dbSaveNotepad } from './db.js';
 import { showTablePicker, handlePaste, insertBannerHeader } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
+import { safeStorageSet, safeStorageGet } from './storage.js';
+import { getNotepadHistoryIDB, saveNotepadHistoryIDB } from './pdfcache.js';
 
 // ── Timestamp helpers for conflict detection ──
-function setWriteTs(pdfId)  { try { localStorage.setItem('local_notepad_write_ts_' + pdfId, Date.now()); } catch {} }
-function setSyncTs(pdfId)   { try { localStorage.setItem('local_notepad_sync_ts_' + pdfId,  Date.now()); } catch {} }
-function getWriteTs(pdfId)  { return parseInt(localStorage.getItem('local_notepad_write_ts_' + pdfId) || '0'); }
-function getSyncTs(pdfId)   { return parseInt(localStorage.getItem('local_notepad_sync_ts_'  + pdfId) || '0'); }
+function setWriteTs(pdfId)  { safeStorageSet('local_notepad_write_ts_' + pdfId, Date.now()); }
+function setSyncTs(pdfId)   { safeStorageSet('local_notepad_sync_ts_' + pdfId,  Date.now()); }
+function getWriteTs(pdfId)  { return parseInt(safeStorageGet('local_notepad_write_ts_' + pdfId, '0') || '0'); }
+function getSyncTs(pdfId)   { return parseInt(safeStorageGet('local_notepad_sync_ts_'  + pdfId, '0') || '0'); }
 
 // ── Merge two HTML note bodies without losing either side ──
 function mergeNoteHtml(localHtml, remoteHtml) {
@@ -52,11 +54,14 @@ function $currentEditor(){ return _activeTab === 'digest' ? $digestEditor() : $n
 function $saveLbl()      { return document.getElementById('np-save-lbl'); }
 
 // ── Snapshot backup helper to protect against any data loss ──
-function saveHistorySnapshot(pdfId, content, digest) {
+async function saveHistorySnapshot(pdfId, content, digest) {
   if (!pdfId || (!content && !digest)) return;
   try {
     const histKey = 'notepad_history_' + pdfId;
-    const history = JSON.parse(localStorage.getItem(histKey) || '[]');
+    let history = await getNotepadHistoryIDB(pdfId);
+    if (!Array.isArray(history) || history.length === 0) {
+      history = JSON.parse(safeStorageGet(histKey, '[]') || '[]');
+    }
     const latest = history[history.length - 1];
     if (!latest || latest.content !== content || latest.digest !== digest) {
       history.push({
@@ -64,10 +69,16 @@ function saveHistorySnapshot(pdfId, content, digest) {
         content: content || '',
         digest: digest || ''
       });
-      if (history.length > 20) history.shift();
-      localStorage.setItem(histKey, JSON.stringify(history));
+      if (history.length > 50) history.shift();
+      // 1. Save full rich history to IndexedDB (virtually unlimited quota)
+      await saveNotepadHistoryIDB(pdfId, history);
+      // 2. Keep only top 3 in localStorage so quota is never exceeded
+      const top3 = history.slice(-3);
+      safeStorageSet(histKey, JSON.stringify(top3));
     }
-  } catch {}
+  } catch (e) {
+    console.warn('[Notepad] saveHistorySnapshot error:', e);
+  }
 }
 
 // ── Execute an explicit save for a specific PDF ID ──
@@ -86,8 +97,8 @@ async function executeSaveForPdf(targetPdfId) {
     content = $notesEditor()?.innerHTML ?? '';
     digest = $digestEditor()?.innerHTML ?? '';
   } else {
-    content = localStorage.getItem('local_notepad_' + targetPdfId) || '';
-    digest = localStorage.getItem('local_digest_' + targetPdfId) || '';
+    content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
+    digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
   }
 
   const lbl = $saveLbl();
@@ -162,8 +173,8 @@ export async function flushNotepadSave() {
       content = entry.content;
       digest = entry.digest;
     } else {
-      content = localStorage.getItem('local_notepad_' + targetPdfId) || '';
-      digest = localStorage.getItem('local_digest_' + targetPdfId) || '';
+      content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
+      digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
     }
 
     _notepadCache.set(targetPdfId, {
@@ -173,10 +184,8 @@ export async function flushNotepadSave() {
       timestamp: Date.now()
     });
 
-    try {
-      localStorage.setItem('local_notepad_' + targetPdfId, content);
-      localStorage.setItem('local_digest_' + targetPdfId, digest);
-    } catch {}
+    safeStorageSet('local_notepad_' + targetPdfId, content);
+    safeStorageSet('local_digest_' + targetPdfId, digest);
 
     saveHistorySnapshot(targetPdfId, content, digest);
     try {
@@ -218,8 +227,8 @@ export async function openNotepad(pdfId) {
     initialContent = entry.content || '';
     initialDigest = entry.digest || '';
   } else {
-    initialContent = localStorage.getItem('local_notepad_' + pdfId) || '';
-    initialDigest = localStorage.getItem('local_digest_' + pdfId) || '';
+    initialContent = safeStorageGet('local_notepad_' + pdfId, '') || '';
+    initialDigest = safeStorageGet('local_digest_' + pdfId, '') || '';
   }
 
   if (notesEd) notesEd.innerHTML = initialContent;
@@ -358,10 +367,8 @@ export async function notepadOnPDFChange(newPdfId) {
       timestamp: Date.now()
     });
 
-    try {
-      localStorage.setItem('local_notepad_' + oldPdfId, oldContent);
-      localStorage.setItem('local_digest_' + oldPdfId, oldDigest);
-    } catch {}
+    safeStorageSet('local_notepad_' + oldPdfId, oldContent);
+    safeStorageSet('local_digest_' + oldPdfId, oldDigest);
 
     saveHistorySnapshot(oldPdfId, oldContent, oldDigest);
     // NOTE: actual Supabase save is handled by the awaited flushNotepadSave()
@@ -421,7 +428,7 @@ async function openHistoryPanel() {
   const curContent = $notesEditor()?.innerHTML ?? '';
   const curDigest  = $digestEditor()?.innerHTML ?? '';
   if (curContent || curDigest) {
-    saveHistorySnapshot(pdfId, curContent, curDigest);
+    await saveHistorySnapshot(pdfId, curContent, curDigest);
   }
 
   // Build entries array: start with live Supabase fetch
@@ -444,9 +451,12 @@ async function openHistoryPanel() {
     console.warn('[History] Could not fetch cloud version:', err);
   }
 
-  // Local snapshots (most recent first)
+  // Local snapshots (IndexedDB first, fallback to localStorage)
   try {
-    const hist = JSON.parse(localStorage.getItem('notepad_history_' + pdfId) || '[]');
+    let hist = await getNotepadHistoryIDB(pdfId);
+    if (!Array.isArray(hist) || hist.length === 0) {
+      hist = JSON.parse(safeStorageGet('notepad_history_' + pdfId, '[]') || '[]');
+    }
     for (let i = hist.length - 1; i >= 0; i--) {
       const snap = hist[i];
       entries.push({
@@ -518,10 +528,8 @@ async function openHistoryPanel() {
         timestamp: Date.now()
       });
       setWriteTs(pdfId);
-      try {
-        localStorage.setItem('local_notepad_' + pdfId, entry.content);
-        localStorage.setItem('local_digest_' + pdfId, entry.digest);
-      } catch {}
+      safeStorageSet('local_notepad_' + pdfId, entry.content);
+      safeStorageSet('local_digest_' + pdfId, entry.digest);
 
       // Push to Supabase immediately
       modal.classList.remove('open');
@@ -623,10 +631,8 @@ export function initNotepad() {
           const digest = $digestEditor()?.innerHTML ?? '';
           _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
           setWriteTs(_activePdfId);
-          try {
-            localStorage.setItem('local_notepad_' + _activePdfId, content);
-            localStorage.setItem('local_digest_' + _activePdfId, digest);
-          } catch {}
+          safeStorageSet('local_notepad_' + _activePdfId, content);
+          safeStorageSet('local_digest_' + _activePdfId, digest);
           scheduleSaveForPdf(_activePdfId);
         }
       }
@@ -663,10 +669,8 @@ export function initNotepad() {
         const digest = $digestEditor()?.innerHTML ?? '';
         _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
         setWriteTs(_activePdfId); // record that this device has local unsaved changes
-        try {
-          localStorage.setItem('local_notepad_' + _activePdfId, content);
-          localStorage.setItem('local_digest_' + _activePdfId, digest);
-        } catch {}
+        safeStorageSet('local_notepad_' + _activePdfId, content);
+        safeStorageSet('local_digest_' + _activePdfId, digest);
         scheduleSaveForPdf(_activePdfId);
       }
     });
@@ -699,8 +703,8 @@ export function initNotepad() {
         const content = $notesEditor()?.innerHTML ?? '';
         const digest  = $digestEditor()?.innerHTML ?? '';
         if (content || digest) {
-          localStorage.setItem('local_notepad_' + _activePdfId, content);
-          localStorage.setItem('local_digest_'  + _activePdfId, digest);
+          safeStorageSet('local_notepad_' + _activePdfId, content);
+          safeStorageSet('local_digest_'  + _activePdfId, digest);
           setWriteTs(_activePdfId);
           saveHistorySnapshot(_activePdfId, content, digest);
         }
@@ -719,7 +723,7 @@ function initNotepadResizer() {
   if (!handle || !panel) return;
 
   // Restore saved width from localStorage
-  const savedWidth = localStorage.getItem('notepad_width');
+  const savedWidth = safeStorageGet('notepad_width');
   if (savedWidth) {
     const w = parseInt(savedWidth);
     if (w >= 260 && w <= window.innerWidth * 0.85) {
@@ -763,7 +767,7 @@ function initNotepadResizer() {
     try {
       handle.releasePointerCapture(e.pointerId);
     } catch {}
-    localStorage.setItem('notepad_width', panel.offsetWidth);
+    safeStorageSet('notepad_width', panel.offsetWidth);
   };
 
   handle.addEventListener('pointerup', stopResize);
