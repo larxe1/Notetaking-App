@@ -493,13 +493,15 @@ export async function dbDelColorCat(id) {
 
 // ── PDF Notepad & Case Digest ──
 export async function dbLoadNotepad(pdf_id) {
+  if (!pdf_id) return { content: '', digest: '' };
+  const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
   let content = '';
   let digest = '';
   try {
-    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', pdf_id).maybeSingle();
+    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
     if (error) {
       // Fallback in case 'digest' column is not created in Supabase yet
-      const fallback = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+      const fallback = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
       if (!fallback.error && fallback.data) {
         content = fallback.data.content || '';
       }
@@ -512,13 +514,13 @@ export async function dbLoadNotepad(pdf_id) {
   }
 
   // Fallback to local storage if offline or not returned
-  if (!content) content = safeStorageGet('local_notepad_' + pdf_id, '') || '';
-  if (!digest) digest = safeStorageGet('local_digest_' + pdf_id, '') || '';
+  if (!content) content = safeStorageGet('local_notepad_' + truePdfId, '') || '';
+  if (!digest) digest = safeStorageGet('local_digest_' + truePdfId, '') || '';
 
   // Fallback to history snapshot if still empty
   if (!content && !digest) {
     try {
-      const hist = JSON.parse(safeStorageGet('notepad_history_' + pdf_id, '[]') || '[]');
+      const hist = JSON.parse(safeStorageGet('notepad_history_' + truePdfId, '[]') || '[]');
       if (hist.length > 0) {
         const last = hist[hist.length - 1];
         if (last) {
@@ -529,48 +531,45 @@ export async function dbLoadNotepad(pdf_id) {
     } catch {}
   }
 
-  safeStorageSet('local_notepad_' + pdf_id, content);
-  safeStorageSet('local_digest_' + pdf_id, digest);
+  safeStorageSet('local_notepad_' + truePdfId, content);
+  safeStorageSet('local_digest_' + truePdfId, digest);
 
   return { content, digest };
 }
 
 export async function dbSaveNotepad(pdf_id, content, digest) {
-  const payload = { pdf_id };
+  if (!pdf_id) return { error: 'Missing pdf_id' };
+  const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
+  const payload = { pdf_id: truePdfId };
   if (content !== undefined) {
     payload.content = content;
-    safeStorageSet('local_notepad_' + pdf_id, content);
+    safeStorageSet('local_notepad_' + truePdfId, content);
   }
   if (digest !== undefined) {
     payload.digest = digest;
-    safeStorageSet('local_digest_' + pdf_id, digest);
-  }
-
-  // Pre-check: if library is loaded and does not contain this pdf_id, queue to outbox
-  // (don't silently drop — it may just be a timing issue where S.pdfs isn't current)
-  if (S.pdfs && S.pdfs.length > 0 && !S.pdfs.some(p => p.id === pdf_id || p.linked_pdf_id === pdf_id)) {
-    console.warn(`[dbSaveNotepad] PDF ${pdf_id} not in current library — queuing to outbox for retry.`);
-    const { enqueueAction } = await import('./outbox.js');
-    enqueueAction('pdf_notes', 'upsert', payload);
-    return { queued: true };
+    safeStorageSet('local_digest_' + truePdfId, digest);
   }
 
   try {
-    await safeDbWrite(db, 'pdf_notes', 'upsert', payload);
+    const { error } = await db.from('pdf_notes').upsert(payload, { onConflict: 'pdf_id' });
+    if (error) {
+      // If error is related to missing 'digest' column, fallback to content only
+      if (payload.digest !== undefined && (error.message?.includes('digest') || error.code === 'PGRST204' || error.code === '42703')) {
+        const fallbackPayload = { pdf_id: truePdfId };
+        if (content !== undefined) fallbackPayload.content = content;
+        await db.from('pdf_notes').upsert(fallbackPayload, { onConflict: 'pdf_id' });
+      } else {
+        const { enqueueAction } = await import('./outbox.js');
+        enqueueAction('pdf_notes', 'upsert', payload);
+      }
+    }
   } catch (err) {
-    // If foreign key 23503, PDF does not exist in DB; data is safely in local storage
-    if (err?.code === '23503' || err?.message?.includes('23503') || err?.message?.includes('foreign key')) {
-      console.warn(`[dbSaveNotepad] PDF ${pdf_id} does not exist in DB (23503). Saved locally.`);
-      return { localOnly: true };
-    }
-    // If Supabase throws an error because 'digest' column does not exist yet, fallback to saving content only
-    if (payload.digest !== undefined && (err?.message?.includes('digest') || err?.code === 'PGRST204')) {
-      const fallbackPayload = { pdf_id };
-      if (content !== undefined) fallbackPayload.content = content;
-      await safeDbWrite(db, 'pdf_notes', 'upsert', fallbackPayload).catch(() => {});
-    }
+    console.warn(`[dbSaveNotepad] Direct Supabase write failed, queuing to outbox:`, err);
+    const { enqueueAction } = await import('./outbox.js');
+    enqueueAction('pdf_notes', 'upsert', payload);
   }
-  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: pdf_id, content, digest });
+
+  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: truePdfId, content, digest });
   return { saved: true };
 }
 

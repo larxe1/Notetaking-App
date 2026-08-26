@@ -48,20 +48,20 @@ async function fetchPdfNotesAndDigest(pdf) {
     }
   } catch {}
 
-  // 2. Query Database / Local Storage
-  if (!content && !digest) {
+  // 2. Query Database / Local Storage if either content or digest is missing
+  if (!content || !digest) {
     try {
       const res = await dbLoadNotepad(trueId);
       if (res) {
-        content = res.content || '';
-        digest = res.digest || '';
+        if (!content) content = res.content || '';
+        if (!digest) digest = res.digest || '';
       }
     } catch (err) {
       console.warn('[PDF Export] dbLoadNotepad failed:', err);
     }
   }
 
-  // 3. Fallbacks
+  // 3. Fallbacks from local storage
   if (!content) content = safeStorageGet('local_notepad_' + trueId, '') || '';
   if (!digest) digest = safeStorageGet('local_digest_' + trueId, '') || '';
 

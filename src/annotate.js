@@ -344,6 +344,10 @@ export function initAnnPanel() {
     autosave('saving');
     const note = await dbCreateNote(S.selAnn.id, htmlToSave, S.selAnn.notes.length);
     S.selAnn.notes.push(note);
+    const trueId = S.selAnn.pdf_file_id;
+    if (trueId) {
+      safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+    }
     ed.innerHTML = '';
     renderNotes(S.selAnn);
     autosave('saved');
@@ -359,7 +363,14 @@ export function initAnnPanel() {
     const htmlToSave = wrapNoteHtml(rawHtml, noteType);
     autosave('saving');
     await dbUpdateNote(S.editingNoteId, htmlToSave);
-    if (note) { note.note_html = htmlToSave; renderNotes(S.selAnn); }
+    if (note) {
+      note.note_html = htmlToSave;
+      const trueId = S.selAnn?.pdf_file_id;
+      if (trueId) {
+        safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+      }
+      renderNotes(S.selAnn);
+    }
     closeModal('mo-edit-note');
     autosave('saved');
     toast(noteType === 'case' ? 'Case summary updated' : 'Note updated');

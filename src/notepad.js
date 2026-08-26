@@ -326,6 +326,22 @@ export async function closeNotepad() {
 
 // ── Switch between Notes and Digest tabs ──
 export function switchNotepadTab(tab) {
+  // Capture latest text from both editors before switching tabs
+  if (_activePdfId) {
+    const curContent = $notesEditor()?.innerHTML ?? '';
+    const curDigest = $digestEditor()?.innerHTML ?? '';
+    _notepadCache.set(_activePdfId, {
+      content: curContent,
+      digest: curDigest,
+      dirty: true,
+      timestamp: Date.now()
+    });
+    safeStorageSet('local_notepad_' + _activePdfId, curContent);
+    safeStorageSet('local_digest_' + _activePdfId, curDigest);
+    setWriteTs(_activePdfId);
+    scheduleSaveForPdf(_activePdfId);
+  }
+
   _activeTab = tab;
   document.querySelectorAll('#np-tabs .ap-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.nptab === tab);
@@ -778,4 +794,19 @@ function initNotepadResizer() {
 
   handle.addEventListener('pointerup', stopResize);
   handle.addEventListener('pointercancel', stopResize);
+}
+
+// ── Global lifecycle safeguards: Flush on tab close, hide, or reload ──
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    flushNotepadSave();
+  });
+  window.addEventListener('pagehide', () => {
+    flushNotepadSave();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushNotepadSave();
+    }
+  });
 }
