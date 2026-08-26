@@ -615,7 +615,7 @@ export function insertBannerHeader(editorElement) {
 
   if (!text) text = 'Header Title';
 
-  const bannerHtml = `<div class="np-banner-hdr" style="background:rgba(148,197,207,0.22);border-bottom:2px solid #7dd3fc;padding:6px 12px;margin:12px 0 8px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:block;color:#f1f5f9;letter-spacing:0.01em;">${text}</div><p><br></p>`;
+  const bannerHtml = `<div class="np-banner-hdr" style="background:rgba(148,197,207,0.22);border-bottom:2px solid #7dd3fc;padding:8px 14px;margin:16px 0 10px;font-weight:800;font-size:18px;border-radius:4px 4px 0 0;display:block;color:#f1f5f9;letter-spacing:0.02em;">${text}</div><p><br></p>`;
 
   document.execCommand('insertHTML', false, bannerHtml);
   editorElement.dispatchEvent(new Event('input'));

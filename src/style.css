@@ -456,20 +456,26 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 #np-editor:empty::before,
 #np-digest-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
 
-/* ── Section Banner Header Box ── */
+/* ── Section Banner Header Box (Big Prominent Header) ── */
 .np-banner-hdr,
 .note-banner-hdr,
 .folder-banner-hdr {
   background: rgba(148, 197, 207, 0.22);
   border-bottom: 2px solid #7dd3fc;
-  padding: 6px 12px;
-  margin: 12px 0 8px 0;
-  font-weight: 700;
-  font-size: 14px;
+  padding: 8px 14px;
+  margin: 16px 0 10px 0;
+  font-weight: 800;
+  font-size: 18px;
   border-radius: 4px 4px 0 0;
   display: block;
   color: #f1f5f9;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
+}
+
+#folder-doc-editor .np-banner-hdr,
+#folder-doc-editor .folder-banner-hdr {
+  font-size: 20px;
+  padding: 10px 16px;
 }
 
 @media (max-width: 1024px) {

@@ -313,14 +313,15 @@ export async function exportFolderToPDF(folder) {
     }
     .np-banner-hdr {
       background: #e0f2fe !important;
-      border-bottom: 2pt solid #0284c7 !important;
+      border-bottom: 2.5pt solid #0284c7 !important;
       color: #0369a1 !important;
-      padding: 6pt 12pt !important;
-      margin: 12pt 0 6pt !important;
-      font-weight: 700 !important;
-      font-size: 12pt !important;
+      padding: 8pt 14pt !important;
+      margin: 16pt 0 8pt !important;
+      font-weight: 800 !important;
+      font-size: 14pt !important;
       border-radius: 4pt 4pt 0 0 !important;
       display: block !important;
+      letter-spacing: 0.02em !important;
       page-break-after: avoid;
     }
     ul, ol {
