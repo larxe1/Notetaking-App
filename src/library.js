@@ -21,12 +21,22 @@ let _pdfToLink = null;
 let _folderNotesId = null;
 
 // ── Library Right-Click Context Menu ──
-let _ctxTargetPdf = null;
+let _ctxTarget = null;
+let _ctxIsFolder = false;
 
-function showLibCtxMenu(pdf, x, y) {
-  _ctxTargetPdf = pdf;
+function showLibCtxMenu(item, x, y, isFolder = false) {
+  _ctxTarget = item;
+  _ctxIsFolder = isFolder;
   const menu = document.getElementById('lib-ctx-menu');
   if (!menu) return;
+
+  // Toggle visibility of context items
+  document.getElementById('lib-ctx-open').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-reference').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-offline').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-export-pdf').style.display = isFolder ? 'block' : 'none';
+
   menu.classList.add('open');
 
   // Position menu, keeping it on-screen
@@ -39,7 +49,7 @@ function showLibCtxMenu(pdf, x, y) {
 
 function hideLibCtxMenu() {
   document.getElementById('lib-ctx-menu')?.classList.remove('open');
-  _ctxTargetPdf = null;
+  _ctxTarget = null;
 }
 
 export function initContextMenu() {
@@ -48,16 +58,16 @@ export function initContextMenu() {
 
   // "Open" — normal open in primary pane
   document.getElementById('lib-ctx-open').addEventListener('click', () => {
-    if (!_ctxTargetPdf) return;
+    if (!_ctxTarget || _ctxIsFolder) return;
     hideLibCtxMenu();
-    openPDFFromLibrary(_ctxTargetPdf);
+    openPDFFromLibrary(_ctxTarget);
     closeSidebar();
   });
 
   // "Open as Reference" — open in pane B
   document.getElementById('lib-ctx-reference').addEventListener('click', async () => {
-    if (!_ctxTargetPdf) return;
-    const pdf = _ctxTargetPdf;
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
     hideLibCtxMenu();
 
     if (!S.curPDF) {
@@ -77,8 +87,8 @@ export function initContextMenu() {
 
   // "Open in Google Drive" — opens file directly in Google Drive in new tab
   document.getElementById('lib-ctx-gdrive')?.addEventListener('click', () => {
-    if (!_ctxTargetPdf) return;
-    const pdf = _ctxTargetPdf;
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
     hideLibCtxMenu();
 
     const driveId = pdf.drive_file_id || S.pdfs.find(p => p.id === pdf.linked_pdf_id)?.drive_file_id;
@@ -93,11 +103,20 @@ export function initContextMenu() {
 
   // "Save for Offline" — pre-cache PDF to IndexedDB
   document.getElementById('lib-ctx-offline')?.addEventListener('click', async () => {
-    if (!_ctxTargetPdf) return;
-    const pdf = _ctxTargetPdf;
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
     hideLibCtxMenu();
     const { preCachePDF } = await import('./pdfcache.js');
     await preCachePDF(pdf);
+  });
+
+  // "Export Notes to PDF"
+  document.getElementById('lib-ctx-export-pdf')?.addEventListener('click', async () => {
+    if (!_ctxTarget || !_ctxIsFolder) return;
+    const folder = _ctxTarget;
+    hideLibCtxMenu();
+    const { exportFolderToPDF } = await import('./export.js');
+    await exportFolderToPDF(folder);
   });
 
   // Dismiss on outside click
@@ -434,6 +453,13 @@ function buildFolderEl(fold) {
       handleSelection(fold.id, e);
       return;
     }
+  });
+
+  // Right-click context menu for folder
+  hd.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    showLibCtxMenu(fold, e.clientX, e.clientY, true);
   });
 
   // Handle expand/collapse on chevron OR open general notes on folder click
