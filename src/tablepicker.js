@@ -665,24 +665,194 @@ export function toggleGrayOut(editorElement) {
   editorElement.dispatchEvent(new Event('input'));
 }
 
+const INDENT_STEP = 28;
+
+// ── Outdent single element or line without affecting other lines ──
+export function outdentLine(editorElement) {
+  if (!editorElement) return;
+  editorElement.focus();
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  let node = sel.anchorNode;
+  if (!node) return;
+  let elem = node.nodeType === 1 ? node : node.parentElement;
+
+  // 1. List item outdent
+  const li = elem?.closest('li');
+  if (li && editorElement.contains(li)) {
+    document.execCommand('outdent');
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  // 2. Check if inside a blockquote
+  const bq = elem?.closest('blockquote');
+  if (bq && editorElement.contains(bq)) {
+    // Find the immediate child of blockquote corresponding to this line
+    let lineChild = node;
+    while (lineChild && lineChild.parentElement !== bq && lineChild !== bq) {
+      lineChild = lineChild.parentElement;
+    }
+
+    if (lineChild && lineChild !== bq) {
+      const beforeNodes = [];
+      const afterNodes = [];
+      let found = false;
+
+      Array.from(bq.childNodes).forEach(child => {
+        if (child === lineChild) {
+          found = true;
+        } else if (!found) {
+          beforeNodes.push(child);
+        } else {
+          afterNodes.push(child);
+        }
+      });
+
+      const parent = bq.parentNode;
+
+      // Keep preceding lines indented
+      const hasMeaningful = (nodes) => nodes.some(n => (n.textContent || '').trim().length > 0 || n.nodeName === 'IMG' || n.nodeName === 'TABLE');
+
+      if (beforeNodes.length > 0 && hasMeaningful(beforeNodes)) {
+        const bqBefore = document.createElement('blockquote');
+        if (bq.getAttribute('style')) bqBefore.setAttribute('style', bq.getAttribute('style'));
+        beforeNodes.forEach(n => bqBefore.appendChild(n));
+        parent.insertBefore(bqBefore, bq);
+      }
+
+      // Insert this single un-indented line outside the blockquote
+      parent.insertBefore(lineChild, bq);
+
+      // Keep succeeding lines indented
+      if (afterNodes.length > 0 && hasMeaningful(afterNodes)) {
+        const bqAfter = document.createElement('blockquote');
+        if (bq.getAttribute('style')) bqAfter.setAttribute('style', bq.getAttribute('style'));
+        afterNodes.forEach(n => bqAfter.appendChild(n));
+        parent.insertBefore(bqAfter, bq);
+      }
+
+      // Remove the original combined blockquote
+      parent.removeChild(bq);
+
+      // Position cursor on the outdented line
+      try {
+        const newRange = document.createRange();
+        newRange.selectNodeContents(lineChild);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      } catch {}
+
+      editorElement.dispatchEvent(new Event('input'));
+      return;
+    } else {
+      // Single item in blockquote -> unwrap
+      const parent = bq.parentNode;
+      while (bq.firstChild) {
+        parent.insertBefore(bq.firstChild, bq);
+      }
+      parent.removeChild(bq);
+      editorElement.dispatchEvent(new Event('input'));
+      return;
+    }
+  }
+
+  // 3. Check for custom margin-left on block element
+  let block = elem;
+  while (block && block !== editorElement && !/^(DIV|P|H1|H2|H3|H4|H5|H6)$/i.test(block.tagName) && !block.classList?.contains('np-banner-hdr')) {
+    block = block.parentElement;
+  }
+
+  if (block && block !== editorElement) {
+    const currentMargin = parseInt(block.style.marginLeft || '0', 10);
+    if (currentMargin > 0) {
+      const nextMargin = Math.max(0, currentMargin - INDENT_STEP);
+      block.style.marginLeft = nextMargin > 0 ? `${nextMargin}px` : '';
+      editorElement.dispatchEvent(new Event('input'));
+      return;
+    }
+  }
+
+  // 4. Check for leading whitespace / non-breaking spaces in text node
+  if (node && node.nodeType === 3) {
+    const val = node.textContent;
+    const match = val.match(/^(\u00A0| ){1,4}/);
+    if (match) {
+      const removeLen = match[0].length;
+      node.textContent = val.slice(removeLen);
+      const newOffset = Math.max(0, sel.anchorOffset - removeLen);
+      const newRange = document.createRange();
+      newRange.setStart(node, newOffset);
+      newRange.setEnd(node, newOffset);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      editorElement.dispatchEvent(new Event('input'));
+      return;
+    }
+  }
+
+  // Fallback
+  document.execCommand('outdent');
+  editorElement.dispatchEvent(new Event('input'));
+}
+
+// ── Indent single element or line ──
+export function indentLine(editorElement) {
+  if (!editorElement) return;
+  editorElement.focus();
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  let node = sel.anchorNode;
+  if (!node) return;
+  let elem = node.nodeType === 1 ? node : node.parentElement;
+
+  // 1. List item indent
+  const li = elem?.closest('li');
+  if (li && editorElement.contains(li)) {
+    document.execCommand('indent');
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  // 2. Block element margin-left indent
+  let block = elem;
+  while (block && block !== editorElement && !/^(DIV|P|H1|H2|H3|H4|H5|H6)$/i.test(block.tagName) && !block.classList?.contains('np-banner-hdr')) {
+    block = block.parentElement;
+  }
+
+  if (block && block !== editorElement) {
+    const currentMargin = parseInt(block.style.marginLeft || '0', 10);
+    const nextMargin = currentMargin + INDENT_STEP;
+    block.style.marginLeft = `${nextMargin}px`;
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  // 3. Fallback to execCommand indent
+  document.execCommand('indent');
+  editorElement.dispatchEvent(new Event('input'));
+}
+
 // ── Unified keyboard handling: Indent on Tab, Outdent on Shift+Tab, and Smart Outdent on Backspace at start of line ──
 export function handleEditorKeyDown(e, editorElement) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
 
-  // 1. Tab / Shift+Tab -> Indent / Outdent
+  // 1. Tab / Shift+Tab -> Indent / Outdent line-by-line
   if (e.key === 'Tab') {
     e.preventDefault();
     if (e.shiftKey) {
-      document.execCommand('outdent');
+      outdentLine(editorElement);
     } else {
-      document.execCommand('indent');
+      indentLine(editorElement);
     }
-    editorElement.dispatchEvent(new Event('input'));
     return;
   }
 
-  // 2. Backspace at start of indented block or blockquote -> Outdent / Remove Indent
+  // 2. Backspace at start of indented block or line -> Outdent THIS single line
   if (e.key === 'Backspace' && sel.isCollapsed) {
     let node = sel.anchorNode;
     let offset = sel.anchorOffset;
@@ -701,25 +871,16 @@ export function handleEditorKeyDown(e, editorElement) {
       const li = elem?.closest('li');
       const banner = elem?.closest('.np-banner-hdr');
 
-      if (bq && editorElement.contains(bq)) {
-        e.preventDefault();
+      // Check if block has margin-left or is inside blockquote
+      let block = elem;
+      while (block && block !== editorElement && !/^(DIV|P|H1|H2|H3|H4|H5|H6)$/i.test(block.tagName) && !block.classList?.contains('np-banner-hdr')) {
+        block = block.parentElement;
+      }
+      const hasMargin = block && parseInt(block.style.marginLeft || '0', 10) > 0;
 
-        // If cursor is on a banner header trapped inside blockquote, lift it out
-        if (banner && bq.contains(banner)) {
-          const parent = bq.parentNode;
-          parent.insertBefore(banner, bq);
-          if (!bq.textContent.trim()) {
-            parent.removeChild(bq);
-          }
-        } else {
-          document.execCommand('outdent');
-        }
-        editorElement.dispatchEvent(new Event('input'));
-        return;
-      } else if (li && editorElement.contains(li)) {
+      if ((bq && editorElement.contains(bq)) || (li && editorElement.contains(li)) || hasMargin) {
         e.preventDefault();
-        document.execCommand('outdent');
-        editorElement.dispatchEvent(new Event('input'));
+        outdentLine(editorElement);
         return;
       }
     }

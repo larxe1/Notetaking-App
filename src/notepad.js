@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
@@ -638,6 +638,10 @@ export function initNotepad() {
           insertBannerHeader(activeEd);
         } else if (cmd === 'grayOut') {
           toggleGrayOut(activeEd);
+        } else if (cmd === 'outdent') {
+          outdentLine(activeEd);
+        } else if (cmd === 'indent') {
+          indentLine(activeEd);
         } else if (cmd) {
           document.execCommand(cmd, false, val);
         }

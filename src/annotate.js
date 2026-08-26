@@ -7,7 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown } from './tablepicker.js';
+import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
 
@@ -375,6 +375,10 @@ export function initAnnPanel() {
         insertBannerHeader(ed);
       } else if (cmd === 'grayOut') {
         toggleGrayOut(ed);
+      } else if (cmd === 'outdent') {
+        outdentLine(ed);
+      } else if (cmd === 'indent') {
+        indentLine(ed);
       } else if (b.id === 'btn-add-pdflink') {
         openPdfLinkModal(ed);
       } else if (b.id === 'btn-add-weblink') {
@@ -405,6 +409,10 @@ export function initAnnPanel() {
         insertBannerHeader(ed);
       } else if (cmd === 'grayOut') {
         toggleGrayOut(ed);
+      } else if (cmd === 'outdent') {
+        outdentLine(ed);
+      } else if (cmd === 'indent') {
+        indentLine(ed);
       } else if (b.id === 'btn-edit-pdflink') {
         openPdfLinkModal(ed);
       } else if (b.id === 'btn-edit-weblink') {
