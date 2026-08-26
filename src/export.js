@@ -223,7 +223,7 @@ export async function exportFolderToPDF(folder) {
   <style>
     @page {
       size: letter portrait;
-      margin: 0.65in 0.5in 0.55in 0.5in;
+      margin: 0.5in 0.5in 0.5in 0.5in;
     }
     * {
       box-sizing: border-box;
@@ -334,26 +334,72 @@ export async function exportFolderToPDF(folder) {
       border-radius: 4px;
     }
 
-    /* Print Header and Footer */
-    .print-header {
-      display: none;
+    /* Print Document Report Table for Perfect Non-Overlapping Repeating Header & Footer */
+    .report-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      border: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: transparent !important;
+      table-layout: fixed !important;
     }
-    .print-footer {
-      display: none;
+    .report-table thead {
+      display: table-header-group !important;
+    }
+    .report-table tfoot {
+      display: table-footer-group !important;
+    }
+    .report-table tbody {
+      display: table-row-group !important;
+    }
+    .report-th, .report-tf, .report-body-cell {
+      border: none !important;
+      padding: 0 !important;
+      background: transparent !important;
+      text-align: left !important;
+      font-weight: normal !important;
+    }
+    .report-header {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      padding-bottom: 3pt !important;
+      margin-bottom: 8pt !important;
+      border-bottom: 1.5pt solid #334155 !important;
+      font-size: 8.5pt !important;
+      font-weight: 700 !important;
+      color: #475569 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.04em !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif !important;
+      width: 100% !important;
+    }
+    .report-footer {
+      display: flex !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      padding-top: 3pt !important;
+      margin-top: 8pt !important;
+      border-top: 0.75pt solid #cbd5e1 !important;
+      font-size: 7.5pt !important;
+      color: #64748b !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif !important;
+      width: 100% !important;
     }
 
     /* Compact Layout Styling */
     p {
       margin: 3pt 0 !important;
     }
-    table {
+    table:not(.report-table) {
       width: 100% !important;
       border-collapse: collapse !important;
       margin: 6pt 0 !important;
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    th, td {
+    th:not(.report-th), td:not(.report-tf):not(.report-body-cell) {
       border: 1pt solid #cbd5e1 !important;
       padding: 4pt 6pt !important;
       text-align: left !important;
@@ -362,7 +408,7 @@ export async function exportFolderToPDF(folder) {
       color: #1e293b !important;
       line-height: 1.25 !important;
     }
-    th {
+    th:not(.report-th) {
       background-color: #f1f5f9 !important;
       font-weight: 700 !important;
       color: #0f172a !important;
@@ -447,7 +493,7 @@ export async function exportFolderToPDF(folder) {
     .standard-mode p {
       margin: 6pt 0 !important;
     }
-    .standard-mode th, .standard-mode td {
+    .standard-mode th:not(.report-th), .standard-mode td:not(.report-tf):not(.report-body-cell) {
       font-size: 10pt !important;
       padding: 6pt 8pt !important;
     }
@@ -459,41 +505,6 @@ export async function exportFolderToPDF(folder) {
       body {
         background: #ffffff !important;
         color: #000000 !important;
-      }
-      .print-header {
-        display: flex !important;
-        position: fixed;
-        top: -0.42in;
-        left: 0;
-        right: 0;
-        height: 16pt;
-        border-bottom: 0.75pt solid #94a3b8;
-        padding-bottom: 2pt;
-        justify-content: space-between;
-        align-items: flex-end;
-        font-size: 8pt;
-        color: #475569;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 600;
-        z-index: 1000;
-      }
-      .print-footer {
-        display: flex !important;
-        position: fixed;
-        bottom: -0.36in;
-        left: 0;
-        right: 0;
-        height: 14pt;
-        border-top: 0.5pt solid #cbd5e1;
-        padding-top: 2pt;
-        justify-content: space-between;
-        align-items: flex-start;
-        font-size: 7.5pt;
-        color: #64748b;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif;
-        z-index: 1000;
       }
       .paper-container {
         margin: 0 !important;
@@ -536,18 +547,38 @@ export async function exportFolderToPDF(folder) {
     </div>
   </div>
 
-  <div class="print-header">
-    <span class="print-header-path">${folderPath}</span>
-    <span class="print-header-title">Notes &amp; Case Digests</span>
-  </div>
-
-  <div class="print-footer">
-    <span class="print-footer-folder">${rawName}</span>
-    <span class="print-footer-page">Legal Annotator</span>
-  </div>
-
-  <div class="paper-container" id="document-body">
-    ${htmlContent}
+  <div class="paper-container">
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th class="report-th">
+            <div class="report-header">
+              <span class="report-header-path">${folderPath}</span>
+              <span class="report-header-title">Notes &amp; Case Digests</span>
+            </div>
+          </th>
+        </tr>
+      </thead>
+      <tfoot>
+        <tr>
+          <td class="report-tf">
+            <div class="report-footer">
+              <span class="report-footer-topic">${folderPath}</span>
+              <span class="report-footer-brand">${rawName} — Legal Annotator</span>
+            </div>
+          </td>
+        </tr>
+      </tfoot>
+      <tbody>
+        <tr>
+          <td class="report-body-cell">
+            <div id="document-body">
+              ${htmlContent}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <script>
