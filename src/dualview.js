@@ -29,8 +29,14 @@ export async function openPDFInPaneB(pdfFile) {
 
   _enterDualView(pdfFile.name);
 
+  const targetDriveId = pdfFile.drive_file_id || S.pdfs.find(p => p.id === pdfFile.linked_pdf_id)?.drive_file_id;
+  if (!targetDriveId) {
+    scroll.innerHTML = '<div style=color:var(--red);padding:20px;font-size:13px>Could not find Google Drive file for this PDF.<br><br><button onclick=document.getElementById(\'btn-close-pane-b\').click() style=padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer>Close</button></div>';
+    return;
+  }
+
   try {
-    const buf = await driveFetchPDF(pdfFile.drive_file_id, (pct, loadedMB, totalMB) => {
+    const blob = await driveFetchPDF(targetDriveId, (pct, loadedMB, totalMB) => {
       if (scroll) {
         if (pct !== null) {
           scroll.innerHTML = `<div class=spin-w><div class=spinner></div>Loading reference: ${pct}% (${loadedMB}/${totalMB} MB)</div>`;
@@ -39,7 +45,8 @@ export async function openPDFInPaneB(pdfFile) {
         }
       }
     }, pdfFile.name);
-    PB.pdfDoc     = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    const buf = await blob.arrayBuffer();
+    PB.pdfDoc     = await pdfjsLib.getDocument({ data: buf }).promise;
     PB.totalPages = PB.pdfDoc.numPages;
     PB.scale      = S.scale;
 

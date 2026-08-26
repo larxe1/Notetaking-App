@@ -343,7 +343,8 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
   scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>${retries < 5 ? 'Retrying PDF...' : 'Loading PDF…'}</div>`;
 
   // Start PDF fetch and Supabase database queries in parallel
-  const pdfFetchPromise = driveFetchPDF(pdfFile.drive_file_id, (pct, loadedMB, totalMB) => {
+  const targetDriveId = pdfFile.drive_file_id || S.pdfs.find(p => p.id === pdfFile.linked_pdf_id)?.drive_file_id;
+  const pdfFetchPromise = driveFetchPDF(targetDriveId, (pct, loadedMB, totalMB) => {
     if (scroll) {
       if (pct !== null) {
         scroll.innerHTML = `<div class="spin-w"><div class="spinner"></div>Loading PDF: ${pct}% (${loadedMB}/${totalMB} MB)</div>`;
