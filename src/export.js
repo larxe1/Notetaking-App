@@ -327,6 +327,15 @@ export async function exportFolderToPDF(folder) {
     ul, ol {
       margin: 6pt 0 !important;
       padding-left: 20pt !important;
+      list-style-type: disc !important;
+    }
+    ul ul, ol ol, ul ol, ol ul {
+      margin: 2pt 0 !important;
+      padding-left: 20pt !important;
+      list-style-type: circle !important;
+    }
+    ul ul ul, ol ol ol {
+      list-style-type: square !important;
     }
     li {
       margin-bottom: 3pt !important;

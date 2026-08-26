@@ -340,8 +340,47 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .dim-text:hover, .note-body .dim-text:hover, #folder-doc-editor .dim-text:hover, #np-editor .dim-text:hover, #np-digest-editor .dim-text:hover, #note-editor .dim-text:hover, #edit-note-ed .dim-text:hover { opacity: 0.85; }
 .note-body table, #note-editor table, #edit-note-ed table, #np-editor table, #np-digest-editor table, #folder-doc-editor table, .note-table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; margin: 10px 0; border: 1px solid var(--navy-b); box-sizing: border-box; table-layout: auto; word-break: break-word; overflow-wrap: anywhere; }
 .note-body th, .note-body td, #note-editor th, #note-editor td, #edit-note-ed th, #edit-note-ed td, #np-editor th, #np-editor td, #np-digest-editor th, #np-digest-editor td, #folder-doc-editor th, #folder-doc-editor td { border: 1px solid var(--navy-b); padding: 6px 10px; min-width: 24px; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; box-sizing: border-box; }
-.note-body th, #note-editor th, #edit-note-ed th, #np-editor th, #np-digest-editor th, #folder-doc-editor th { background: rgba(255,255,255,0.06); font-weight: bold; }
-.note-body ul, .note-body ol, #note-editor ul, #note-editor ol, #edit-note-ed ul, #edit-note-ed ol { padding-left: 20px; margin: 6px 0; }
+/* ── Rich Text Editor Lists & Nested Sub-Bullet Indentation ── */
+#folder-doc-editor ul, #folder-doc-editor ol,
+#np-editor ul, #np-editor ol,
+#np-digest-editor ul, #np-digest-editor ol,
+#note-editor ul, #note-editor ol,
+#edit-note-ed ul, #edit-note-ed ol,
+.note-body ul, .note-body ol {
+  padding-left: 28px !important;
+  margin: 6px 0 !important;
+}
+
+#folder-doc-editor li,
+#np-editor li,
+#np-digest-editor li,
+#note-editor li,
+#edit-note-ed li,
+.note-body li {
+  margin: 3px 0 !important;
+  display: list-item !important;
+}
+
+#folder-doc-editor ul ul, #folder-doc-editor ol ol, #folder-doc-editor ul ol, #folder-doc-editor ol ul,
+#np-editor ul ul, #np-editor ol ol, #np-editor ul ol, #np-editor ol ul,
+#np-digest-editor ul ul, #np-digest-editor ol ol, #np-digest-editor ul ol, #np-digest-editor ol ul,
+#note-editor ul ul, #note-editor ol ol, #note-editor ul ol, #note-editor ol ul,
+#edit-note-ed ul ul, #edit-note-ed ol ol, #edit-note-ed ul ol, #edit-note-ed ol ul,
+.note-body ul ul, .note-body ol ol, .note-body ul ol, .note-body ol ul {
+  padding-left: 28px !important;
+  margin: 2px 0 !important;
+}
+
+#folder-doc-editor ul, #np-editor ul, #np-digest-editor ul, #note-editor ul, #edit-note-ed ul, .note-body ul {
+  list-style-type: disc !important;
+}
+#folder-doc-editor ul ul, #np-editor ul ul, #np-digest-editor ul ul, #note-editor ul ul, #edit-note-ed ul ul, .note-body ul ul {
+  list-style-type: circle !important;
+}
+#folder-doc-editor ul ul ul, #np-editor ul ul ul, #np-digest-editor ul ul ul, #note-editor ul ul ul, #edit-note-ed ul ul ul, .note-body ul ul ul {
+  list-style-type: square !important;
+}
+
 .note-body h1, #note-editor h1, #edit-note-ed h1 { font-size: 15px; font-weight: 700; color: var(--gold); margin: 8px 0 4px; }
 .note-body h2, #note-editor h2, #edit-note-ed h2 { font-size: 13px; font-weight: 600; color: #e8e4db; margin: 6px 0 3px; }
 .note-body blockquote, #note-editor blockquote, #edit-note-ed blockquote { border-left: 3px solid var(--gold); margin: 6px 0; padding: 4px 10px; background: rgba(201,168,76,0.06); font-style: italic; }
