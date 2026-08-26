@@ -353,7 +353,7 @@ export async function exportFolderToPDF(folder) {
     .report-table tbody {
       display: table-row-group !important;
     }
-    .report-th, .report-tf, .report-body-cell {
+    .report-th, .report-body-cell {
       border: none !important;
       padding: 0 !important;
       background: transparent !important;
@@ -372,18 +372,6 @@ export async function exportFolderToPDF(folder) {
       color: #475569 !important;
       text-transform: uppercase !important;
       letter-spacing: 0.04em !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif !important;
-      width: 100% !important;
-    }
-    .report-footer {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: center !important;
-      padding-top: 3pt !important;
-      margin-top: 8pt !important;
-      border-top: 0.75pt solid #cbd5e1 !important;
-      font-size: 7.5pt !important;
-      color: #64748b !important;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif !important;
       width: 100% !important;
     }
@@ -529,7 +517,7 @@ export async function exportFolderToPDF(folder) {
   <div class="top-bar no-print">
     <div class="top-bar-left">
       <div class="top-bar-title">${pageTitle}</div>
-      <div class="top-bar-sub">${folderPath}</div>
+      <div class="top-bar-sub">${folderPath} &bull; <span style="color:#fcd34d;">Tip: In print settings, uncheck "Headers and footers" for a clean look without browser URLs.</span></div>
     </div>
     <div class="top-bar-actions">
       <div class="btn-group">
@@ -559,16 +547,6 @@ export async function exportFolderToPDF(folder) {
           </th>
         </tr>
       </thead>
-      <tfoot>
-        <tr>
-          <td class="report-tf">
-            <div class="report-footer">
-              <span class="report-footer-topic">${folderPath}</span>
-              <span class="report-footer-brand">${rawName} — Legal Annotator</span>
-            </div>
-          </td>
-        </tr>
-      </tfoot>
       <tbody>
         <tr>
           <td class="report-body-cell">
