@@ -282,9 +282,9 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 ════════════════════════════════════════ */
 #ann-panel {
   position: absolute; top: 0; right: 0; bottom: 0;
-  width: var(--ann-w, 320px);
-  min-width: 260px;
-  max-width: 85vw;
+  width: var(--ann-w, 380px);
+  min-width: 280px;
+  max-width: 90vw;
   height: 100%;
   max-height: 100%;
   background: var(--navy-l);
@@ -318,13 +318,18 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .aptab-badge { font-size: 10px; background: rgba(255,255,255,0.08); color: var(--muted); border-radius: 10px; padding: 1px 6px; min-width: 14px; text-align: center; }
 .ap-tab.active .aptab-badge { background: rgba(201,168,76,0.25); color: var(--gold); font-weight: bold; }
 
-#ann-notes { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
-.note-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 16px 0; font-style: italic; }
-.note-card { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 10px 10px 8px; position: relative; overflow: hidden; }
+#ann-notes { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 14px 28px 14px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+.note-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 24px 0; font-style: italic; }
+.note-card { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 10px 12px 12px; position: relative; height: auto; min-height: auto; display: flex; flex-direction: column; }
 .note-card.case-card { border-left: 3px solid var(--gold); background: linear-gradient(180deg, rgba(201,168,76,0.06) 0%, var(--navy) 100%); }
-.note-card.case-card .note-num { color: var(--gold); font-weight: 600; }
-.note-num { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 4px; }
-.note-body { font-size: 13px; line-height: 1.6; color: #e0dbd2; word-break: break-word; overflow-x: auto; }
+.note-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); flex-shrink: 0; }
+.note-num { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.note-card.case-card .note-num { color: var(--gold); }
+.note-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.note-act-btn { font-size: 11px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--navy-b); color: var(--muted); border-radius: 4px; padding: 2px 8px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .15s; display: inline-flex; align-items: center; gap: 3px; line-height: 1.4; }
+.note-act-btn:hover { color: #e8e4db; border-color: rgba(255,255,255,.25); background: rgba(255, 255, 255, 0.12); }
+.note-act-btn.del:hover { color: #ef4444; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.12); }
+.note-body { font-size: 13px; line-height: 1.6; color: #e0dbd2; word-break: break-word; overflow-x: auto; height: auto; min-height: auto; }
 .note-body * { position: static !important; max-width: 100% !important; box-sizing: border-box; }
 .note-body .hi-grp, .note-body .hr, .note-body .ann-ov, .note-body .txt-layer, .note-body .draw-canvas { display: none !important; }
 .note-body b, .note-body strong { font-weight: 700; }
@@ -340,10 +345,6 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .note-body h1, #note-editor h1, #edit-note-ed h1 { font-size: 15px; font-weight: 700; color: var(--gold); margin: 8px 0 4px; }
 .note-body h2, #note-editor h2, #edit-note-ed h2 { font-size: 13px; font-weight: 600; color: #e8e4db; margin: 6px 0 3px; }
 .note-body blockquote, #note-editor blockquote, #edit-note-ed blockquote { border-left: 3px solid var(--gold); margin: 6px 0; padding: 4px 10px; background: rgba(201,168,76,0.06); font-style: italic; }
-.note-actions { display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end; }
-.note-act-btn { font-size: 11px; background: none; border: 1px solid var(--navy-b); color: var(--muted); border-radius: 4px; padding: 3px 8px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .15s; }
-.note-act-btn:hover { color: #e8e4db; border-color: rgba(255,255,255,.2); }
-.note-act-btn.del:hover { color: var(--red); border-color: var(--red); }
 #add-note-area { padding: 10px 14px 14px; border-top: 1px solid var(--navy-b); flex-shrink: 0; }
 .fmt-bar { display: flex; gap: 3px; margin-bottom: 6px; }
 .fmt-btn, .folder-fmt-btn, .np-fmt-btn { background: rgba(255,255,255,.06); border: 1px solid var(--navy-b); color: #b0aaa0; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; transition: all .15s; font-family: 'Inter', sans-serif; min-width: 28px; text-align: center; }

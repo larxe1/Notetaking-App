@@ -254,7 +254,16 @@ function renderNotes(ann) {
     const cardTitle = isCase ? `⚖️ Case Summary ${i + 1}` : `📝 Note ${i + 1}`;
     const cleanBody = getNoteBody(note);
 
-    card.innerHTML = `<div class="note-num">${cardTitle}</div><div class="note-body">${cleanBody}</div><div class="note-actions"><button class="note-act-btn">✏ Edit</button><button class="note-act-btn del">🗑 Delete</button></div>`;
+    card.innerHTML = `
+      <div class="note-card-header">
+        <div class="note-num">${cardTitle}</div>
+        <div class="note-actions">
+          <button class="note-act-btn edit-btn" title="Edit Note">✏ Edit</button>
+          <button class="note-act-btn del" title="Delete Note">🗑 Delete</button>
+        </div>
+      </div>
+      <div class="note-body">${cleanBody}</div>
+    `;
     
     // Intercept PDF links
     card.querySelectorAll('[data-pdf-link]').forEach(link => {
@@ -270,7 +279,7 @@ function renderNotes(ann) {
       });
     });
 
-    card.querySelector('.note-act-btn').addEventListener('click', () => {
+    card.querySelector('.note-act-btn.edit-btn').addEventListener('click', () => {
       S.editingNoteId = note.id;
       const modalTitle = document.getElementById('mo-edit-note-title');
       if (modalTitle) modalTitle.textContent = isCase ? 'Edit Case Summary' : 'Edit Note';
