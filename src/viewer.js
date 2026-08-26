@@ -6,7 +6,7 @@ import { syncOK, syncSpin, jumpToPage } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageGet } from './storage.js';
 
@@ -71,24 +71,7 @@ export async function openFolderDoc(fold) {
     ed.dataset.listener = 'true';
     
     ed.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const sel = window.getSelection();
-        const isInsideList = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest('li');
-
-        if (e.shiftKey) {
-          document.execCommand('outdent');
-        } else if (!sel || sel.isCollapsed) {
-          if (isInsideList) {
-            document.execCommand('indent');
-          } else {
-            document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-          }
-        } else {
-          // Indent the entire highlighted block/paragraph(s) without erasing text
-          document.execCommand('indent');
-        }
-      }
+      handleEditorKeyDown(e, ed);
     });
 
     ed.addEventListener('input', async () => {

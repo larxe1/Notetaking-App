@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
@@ -662,24 +662,7 @@ export function initNotepad() {
   [$notesEditor(), $digestEditor()].forEach(ed => {
     if (!ed) return;
     ed.addEventListener('keydown', e => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const sel = window.getSelection();
-        const isInsideList = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest('li');
-
-        if (e.shiftKey) {
-          document.execCommand('outdent');
-        } else if (!sel || sel.isCollapsed) {
-          if (isInsideList) {
-            document.execCommand('indent');
-          } else {
-            document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-          }
-        } else {
-          // Indent the entire highlighted block/paragraph(s) without erasing text
-          document.execCommand('indent');
-        }
-      }
+      handleEditorKeyDown(e, ed);
     });
 
     ed.addEventListener('input', () => {

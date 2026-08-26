@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { safeStorageSet, safeStorageRemove } from './storage.js';
+import { handleEditorKeyDown } from './tablepicker.js';
 
 // ── Sync status ──
 const $sdot = () => document.getElementById('sdot');
@@ -454,24 +455,11 @@ export function initKeyboard(deps) {
   });
 
   document.getElementById('note-editor').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) document.getElementById('btn-add-note').click();
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const sel = window.getSelection();
-      const isInsideList = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest('li');
-
-      if (e.shiftKey) {
-        document.execCommand('outdent');
-      } else if (!sel || sel.isCollapsed) {
-        if (isInsideList) {
-          document.execCommand('indent');
-        } else {
-          document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-        }
-      } else {
-        document.execCommand('indent');
-      }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      document.getElementById('btn-add-note').click();
+      return;
     }
+    handleEditorKeyDown(e, document.getElementById('note-editor'));
   });
 }
 

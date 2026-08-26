@@ -664,3 +664,64 @@ export function toggleGrayOut(editorElement) {
 
   editorElement.dispatchEvent(new Event('input'));
 }
+
+// ── Unified keyboard handling: Indent on Tab, Outdent on Shift+Tab, and Smart Outdent on Backspace at start of line ──
+export function handleEditorKeyDown(e, editorElement) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  // 1. Tab / Shift+Tab -> Indent / Outdent
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      document.execCommand('outdent');
+    } else {
+      document.execCommand('indent');
+    }
+    editorElement.dispatchEvent(new Event('input'));
+    return;
+  }
+
+  // 2. Backspace at start of indented block or blockquote -> Outdent / Remove Indent
+  if (e.key === 'Backspace' && sel.isCollapsed) {
+    let node = sel.anchorNode;
+    let offset = sel.anchorOffset;
+
+    let isAtStart = (offset === 0);
+    if (node && node.nodeType === 3 && offset > 0) {
+      const preText = node.textContent.slice(0, offset);
+      if (preText === '' || /^[\s\u00A0]+$/.test(preText)) {
+        isAtStart = true;
+      }
+    }
+
+    if (isAtStart) {
+      let elem = node.nodeType === 1 ? node : node.parentElement;
+      const bq = elem?.closest('blockquote');
+      const li = elem?.closest('li');
+      const banner = elem?.closest('.np-banner-hdr');
+
+      if (bq && editorElement.contains(bq)) {
+        e.preventDefault();
+
+        // If cursor is on a banner header trapped inside blockquote, lift it out
+        if (banner && bq.contains(banner)) {
+          const parent = bq.parentNode;
+          parent.insertBefore(banner, bq);
+          if (!bq.textContent.trim()) {
+            parent.removeChild(bq);
+          }
+        } else {
+          document.execCommand('outdent');
+        }
+        editorElement.dispatchEvent(new Event('input'));
+        return;
+      } else if (li && editorElement.contains(li)) {
+        e.preventDefault();
+        document.execCommand('outdent');
+        editorElement.dispatchEvent(new Event('input'));
+        return;
+      }
+    }
+  }
+}

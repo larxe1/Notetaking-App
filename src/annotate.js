@@ -7,7 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut } from './tablepicker.js';
+import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
 
@@ -424,24 +424,9 @@ export function initAnnPanel() {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       document.getElementById('save-edit-note')?.click();
+      return;
     }
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const sel = window.getSelection();
-      const isInsideList = sel?.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement)?.closest('li');
-
-      if (e.shiftKey) {
-        document.execCommand('outdent');
-      } else if (!sel || sel.isCollapsed) {
-        if (isInsideList) {
-          document.execCommand('indent');
-        } else {
-          document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-        }
-      } else {
-        document.execCommand('indent');
-      }
-    }
+    handleEditorKeyDown(e, document.getElementById('edit-note-ed'));
   });
 
   // Selection confirm/cancel (fixes bug #1 — was cut off in original)
