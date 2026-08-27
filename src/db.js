@@ -6,6 +6,7 @@ import { driveDeleteFile } from './drive.js';
 import { broadcastSync } from './sync.js';
 import { safeDbWrite } from './outbox.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
+import { logNotepadDiagnostic } from './diag.js';
 
 // Inline sync helpers (avoids circular dep with ui.js)
 const _el = id => document.getElementById(id);
@@ -493,29 +494,64 @@ export async function dbDelColorCat(id) {
 
 // ── PDF Notepad & Case Digest ──
 export async function dbLoadNotepad(pdf_id) {
-  if (!pdf_id) return { content: '', digest: '' };
+  if (!pdf_id) {
+    logNotepadDiagnostic(pdf_id, 'LOAD', 'ERR', 'ERR_NO_PDF_ID', 'Load aborted: missing pdf_id');
+    return { content: '', digest: '', code: 'ERR_NO_PDF_ID', status: 'ERR', source: 'none' };
+  }
   const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
   let content = '';
   let digest = '';
+  let source = 'none';
+  let diagCode = '200_OK';
+  let diagStatus = 'OK';
+
   try {
     const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
     if (error) {
+      diagCode = error.code || 'ERR_SELECT';
+      diagStatus = 'WARN';
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'WARN', diagCode, `Supabase select error: ${error.message} (${diagCode}). Retrying without digest column.`, { error });
+      
       // Fallback in case 'digest' column is not created in Supabase yet
       const fallback = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
       if (!fallback.error && fallback.data) {
         content = fallback.data.content || '';
+        source = 'cloud';
+        diagCode = 'WARN_NO_DIGEST_COL';
+        logNotepadDiagnostic(truePdfId, 'LOAD', 'WARN', 'WARN_NO_DIGEST_COL', `Loaded content only (${content.length} chars) from Supabase. "digest" column does not exist in DB table.`, { contentLen: content.length });
+      } else if (fallback.error) {
+        diagCode = fallback.error.code || 'ERR_FALLBACK_FAIL';
+        diagStatus = 'ERR';
+        logNotepadDiagnostic(truePdfId, 'LOAD', 'ERR', diagCode, `Fallback select also failed: ${fallback.error.message}`, { error: fallback.error });
       }
     } else if (data) {
       content = data.content || '';
       digest = data.digest || '';
+      source = 'cloud';
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'OK', '200_OK', `Successfully loaded from Supabase (Notes: ${content.length} chars, Digest: ${digest.length} chars)`, { contentLen: content.length, digestLen: digest.length });
+    } else {
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'OK', '200_EMPTY', `Supabase has no existing row for PDF ${truePdfId}. Checking local cache.`);
     }
   } catch (err) {
-    console.warn('[dbLoadNotepad]', err);
+    diagCode = !navigator.onLine ? 'ERR_OFFLINE' : (err?.code || 'ERR_NETWORK');
+    diagStatus = 'ERR';
+    logNotepadDiagnostic(truePdfId, 'LOAD', 'ERR', diagCode, `Exception during Supabase load: ${err?.message || String(err)}`, { error: String(err) });
   }
 
   // Fallback to local storage if offline or not returned
-  if (!content) content = safeStorageGet('local_notepad_' + truePdfId, '') || '';
-  if (!digest) digest = safeStorageGet('local_digest_' + truePdfId, '') || '';
+  const localC = safeStorageGet('local_notepad_' + truePdfId, '') || '';
+  const localD = safeStorageGet('local_digest_' + truePdfId, '') || '';
+
+  if (!content && localC) {
+    content = localC;
+    if (source === 'none') source = 'local';
+    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_NOTES', `Restored notes from local storage (${content.length} chars)`);
+  }
+  if (!digest && localD) {
+    digest = localD;
+    if (source === 'none') source = 'local';
+    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_DIGEST', `Restored digest from local storage (${digest.length} chars)`);
+  }
 
   // Fallback to history snapshot if still empty
   if (!content && !digest) {
@@ -526,6 +562,10 @@ export async function dbLoadNotepad(pdf_id) {
         if (last) {
           content = last.content || '';
           digest = last.digest || '';
+          if (content || digest) {
+            source = 'snapshot';
+            logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_SNAPSHOT_RESTORE', `Restored from snapshot history (Notes: ${content.length} chars, Digest: ${digest.length} chars)`);
+          }
         }
       }
     } catch {}
@@ -534,11 +574,14 @@ export async function dbLoadNotepad(pdf_id) {
   safeStorageSet('local_notepad_' + truePdfId, content);
   safeStorageSet('local_digest_' + truePdfId, digest);
 
-  return { content, digest };
+  return { content, digest, code: diagCode, status: diagStatus, source };
 }
 
 export async function dbSaveNotepad(pdf_id, content, digest) {
-  if (!pdf_id) return { error: 'Missing pdf_id' };
+  if (!pdf_id) {
+    logNotepadDiagnostic(pdf_id, 'SAVE', 'ERR', 'ERR_NO_PDF_ID', 'Save aborted: missing pdf_id');
+    return { error: 'Missing pdf_id', code: 'ERR_NO_PDF_ID', saved: false };
+  }
   const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
   const payload = { pdf_id: truePdfId };
   if (content !== undefined) {
@@ -550,27 +593,56 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     safeStorageSet('local_digest_' + truePdfId, digest);
   }
 
+  const cLen = content?.length || 0;
+  const dLen = digest?.length || 0;
+
   try {
     const { error } = await db.from('pdf_notes').upsert(payload, { onConflict: 'pdf_id' });
     if (error) {
-      // If error is related to missing 'digest' column, fallback to content only
-      if (payload.digest !== undefined && (error.message?.includes('digest') || error.code === 'PGRST204' || error.code === '42703')) {
+      const errCode = error.code || 'ERR_UPSERT';
+      const errMsg = error.message || JSON.stringify(error);
+
+      // 1. Foreign Key error (23503): PDF does not exist in Supabase pdf_files
+      if (errCode === '23503' || errMsg.includes('foreign key') || errMsg.includes('23503')) {
+        logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', 'ERR_23503_FK', `Foreign key violation (23503): PDF "${truePdfId}" does not exist in Supabase "pdf_files" table. Saved locally.`, { error, payloadLength: { content: cLen, digest: dLen } });
+        return { error: errMsg, code: 'ERR_23503_FK', localOnly: true, saved: true };
+      }
+
+      // 2. Missing 'digest' column error (PGRST204 / 42703)
+      if (payload.digest !== undefined && (errMsg.includes('digest') || errCode === 'PGRST204' || errCode === '42703')) {
+        logNotepadDiagnostic(truePdfId, 'SAVE', 'WARN', 'WARN_NO_DIGEST_COL', `Supabase table "pdf_notes" is missing column "digest". Falling back to saving content only.`, { error });
         const fallbackPayload = { pdf_id: truePdfId };
         if (content !== undefined) fallbackPayload.content = content;
-        await db.from('pdf_notes').upsert(fallbackPayload, { onConflict: 'pdf_id' });
-      } else {
-        const { enqueueAction } = await import('./outbox.js');
-        enqueueAction('pdf_notes', 'upsert', payload);
+        const fallbackRes = await db.from('pdf_notes').upsert(fallbackPayload, { onConflict: 'pdf_id' });
+        if (fallbackRes.error) {
+          logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', fallbackRes.error.code || 'ERR_FALLBACK', `Fallback save failed: ${fallbackRes.error.message}`, { error: fallbackRes.error });
+          return { error: fallbackRes.error.message, code: fallbackRes.error.code, saved: false };
+        } else {
+          logNotepadDiagnostic(truePdfId, 'SAVE', 'WARN', 'WARN_SAVED_WITHOUT_DIGEST', `Content saved to cloud (${cLen} chars), but digest (${dLen} chars) could not be saved to cloud because the "digest" column is missing in Supabase! Digest is safely saved locally.`, { payloadLength: { content: cLen, digest: dLen } });
+          broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: truePdfId, content, digest });
+          return { saved: true, code: 'WARN_SAVED_WITHOUT_DIGEST', warning: 'Digest column missing in cloud database' };
+        }
       }
+
+      // 3. Other Supabase error: queue to outbox
+      logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', errCode, `Supabase upsert failed: ${errMsg}. Queuing to offline outbox.`, { error, payloadLength: { content: cLen, digest: dLen } });
+      const { enqueueAction } = await import('./outbox.js');
+      enqueueAction('pdf_notes', 'upsert', payload);
+      return { error: errMsg, code: errCode, queued: true, saved: false };
     }
+
+    // Direct Success
+    logNotepadDiagnostic(truePdfId, 'SAVE', 'OK', '200_OK', `Successfully saved to Supabase (Notes: ${cLen} chars, Digest: ${dLen} chars)`, { payloadLength: { content: cLen, digest: dLen } });
+    broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: truePdfId, content, digest });
+    return { saved: true, code: '200_OK' };
   } catch (err) {
-    console.warn(`[dbSaveNotepad] Direct Supabase write failed, queuing to outbox:`, err);
+    const errCode = !navigator.onLine ? 'ERR_OFFLINE' : (err?.code || 'ERR_NETWORK');
+    const errMsg = err?.message || String(err);
+    logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', errCode, `Network/system exception during save: ${errMsg}. Queuing to outbox.`, { error: String(err), payloadLength: { content: cLen, digest: dLen } });
     const { enqueueAction } = await import('./outbox.js');
     enqueueAction('pdf_notes', 'upsert', payload);
+    return { error: errMsg, code: errCode, queued: true, saved: false };
   }
-
-  broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: truePdfId, content, digest });
-  return { saved: true };
 }
 
 // ───────────────────────────────────────────────

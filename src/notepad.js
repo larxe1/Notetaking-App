@@ -8,6 +8,7 @@ import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
 import { getNotepadHistoryIDB, saveNotepadHistoryIDB } from './pdfcache.js';
+import { getNotepadDiagnostics, generateDiagnosticReport, logNotepadDiagnostic } from './diag.js';
 
 // ── Timestamp helpers for conflict detection ──
 function setWriteTs(pdfId)  { safeStorageSet('local_notepad_write_ts_' + pdfId, Date.now()); }
@@ -103,25 +104,49 @@ async function executeSaveForPdf(targetPdfId) {
 
   const lbl = $saveLbl();
   try {
-    await dbSaveNotepad(targetPdfId, content, digest);
+    const res = await dbSaveNotepad(targetPdfId, content, digest);
     setSyncTs(targetPdfId); // mark as successfully synced to Supabase
     saveHistorySnapshot(targetPdfId, content, digest);
 
     if (_activePdfId === targetPdfId && lbl) {
-      lbl.textContent = '✓ Saved';
-      lbl.className = 'saved';
+      if (res?.saved && res?.code === '200_OK') {
+        lbl.textContent = '✓ Saved';
+        lbl.className = 'saved';
+        lbl.title = 'Saved to Supabase cloud (Click for Error & Sync Log)';
+      } else if (res?.code === 'WARN_SAVED_WITHOUT_DIGEST') {
+        lbl.textContent = '⚠️ Saved (No Cloud Digest)';
+        lbl.className = 'saving';
+        lbl.title = 'Notes saved to cloud, but "digest" column is missing in Supabase. Digest saved locally. Click for Error Log.';
+      } else if (res?.code === 'ERR_23503_FK' || res?.localOnly) {
+        lbl.textContent = '💾 Local Only (23503)';
+        lbl.className = 'saving';
+        lbl.title = 'PDF missing in Supabase library table (23503). Saved safely to local storage. Click for Error Log.';
+      } else if (res?.queued) {
+        lbl.textContent = '⏳ Queued Offline';
+        lbl.className = 'saving';
+        lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
+      } else if (res?.error) {
+        lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
+        lbl.className = 'err';
+        lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
+      } else {
+        lbl.textContent = '✓ Saved';
+        lbl.className = 'saved';
+      }
+
       setTimeout(() => {
-        if (_activePdfId === targetPdfId && lbl.textContent === '✓ Saved') {
+        if (_activePdfId === targetPdfId && (lbl.textContent === '✓ Saved' || lbl.textContent.startsWith('✓'))) {
           lbl.textContent = '';
           lbl.className = '';
         }
-      }, 2000);
+      }, 3500);
     }
   } catch (err) {
     console.error(`[Notepad] Save failed for ${targetPdfId}:`, err);
     if (_activePdfId === targetPdfId && lbl) {
-      lbl.textContent = '✗ Error';
-      lbl.className = '';
+      lbl.textContent = `✗ Err: ${err?.code || 'FAIL'}`;
+      lbl.className = 'err';
+      lbl.title = `Save failed: ${err?.message || err}. Click to open Error Log.`;
     }
   }
 }
@@ -426,134 +451,225 @@ function htmlToPlainPreview(html) {
   } catch { return '(empty)'; }
 }
 
-async function openHistoryPanel() {
+// ── History & Diagnostics panel: show snapshots and live error logs ──
+export async function openHistoryPanel(initialTab = 'snapshots') {
   const pdfId = _activePdfId;
   if (!pdfId) {
-    toast('Open a PDF first to view its note history.');
+    toast('Open a PDF first to view its note history and error logs.');
     return;
   }
 
   const modal = document.getElementById('np-history-modal');
-  const list  = document.getElementById('np-history-list');
-  if (!modal || !list) return;
+  const snapList  = document.getElementById('np-history-list');
+  const diagList  = document.getElementById('np-diag-list');
+  const btnSnapshots = document.getElementById('nhm-tab-snapshots');
+  const btnLogs      = document.getElementById('nhm-tab-logs');
+  const viewSnapshots= document.getElementById('np-history-view-snapshots');
+  const viewLogs     = document.getElementById('np-history-view-logs');
+  const copyBtn      = document.getElementById('nhm-copy-diag-btn');
+  const countSpan    = document.getElementById('nhm-log-count');
+
+  if (!modal) return;
 
   modal.classList.add('open');
-  list.innerHTML = '<div class="nhm-empty">Loading…</div>';
 
-  // Snapshot current unsaved state before showing history (safety net)
-  const curContent = $notesEditor()?.innerHTML ?? '';
-  const curDigest  = $digestEditor()?.innerHTML ?? '';
-  if (curContent || curDigest) {
-    await saveHistorySnapshot(pdfId, curContent, curDigest);
+  // Wire up tabs
+  function switchTab(t) {
+    if (t === 'logs') {
+      btnLogs?.classList.add('active');
+      btnSnapshots?.classList.remove('active');
+      if (viewLogs) viewLogs.style.display = 'flex';
+      if (viewSnapshots) viewSnapshots.style.display = 'none';
+      renderLogs();
+    } else {
+      btnSnapshots?.classList.add('active');
+      btnLogs?.classList.remove('active');
+      if (viewSnapshots) viewSnapshots.style.display = 'flex';
+      if (viewLogs) viewLogs.style.display = 'none';
+      renderSnapshots();
+    }
   }
 
-  // Build entries array: start with live Supabase fetch
-  const entries = [];
+  if (btnSnapshots) btnSnapshots.onclick = () => switchTab('snapshots');
+  if (btnLogs) btnLogs.onclick = () => switchTab('logs');
 
-  try {
-    const { dbLoadNotepad: load } = await import('./db.js');
-    // Fetch raw Supabase (bypass local cache by calling dbLoadNotepad fresh)
-    const cloudData = await load(pdfId);
-    if (cloudData.content || cloudData.digest) {
-      entries.push({
-        t: null, // no timestamp for cloud version
-        content: cloudData.content || '',
-        digest:  cloudData.digest  || '',
-        badge:   'cloud',
-        label:   '☁️ Cloud (Supabase) — current saved version'
-      });
-    }
-  } catch (err) {
-    console.warn('[History] Could not fetch cloud version:', err);
+  // Copy diagnostics button
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      const curPdf = S.pdfs?.find(p => p.id === pdfId);
+      const report = generateDiagnosticReport(pdfId, curPdf?.name || '');
+      try {
+        await navigator.clipboard.writeText(report);
+        copyBtn.textContent = '✓ Copied Report!';
+        setTimeout(() => { copyBtn.textContent = '📋 Copy Diagnostics'; }, 2500);
+        toast('📋 Diagnostic error report copied to clipboard!');
+      } catch {
+        toast('Clipboard copy blocked by browser. Please select text manually.');
+      }
+    };
   }
 
-  // Local snapshots (IndexedDB first, fallback to localStorage)
-  try {
-    let hist = await getNotepadHistoryIDB(pdfId);
-    if (!Array.isArray(hist) || hist.length === 0) {
-      hist = JSON.parse(safeStorageGet('notepad_history_' + pdfId, '[]') || '[]');
+  // Render logs tab
+  function renderLogs() {
+    if (!diagList) return;
+    const logs = getNotepadDiagnostics(pdfId);
+    if (countSpan) countSpan.textContent = String(logs.length);
+
+    if (logs.length === 0) {
+      diagList.innerHTML = '<div class="nhm-empty">No sync or error events recorded for this PDF yet.<br>Saving or loading notes will automatically record detailed error codes here.</div>';
+      return;
     }
-    for (let i = hist.length - 1; i >= 0; i--) {
-      const snap = hist[i];
-      entries.push({
-        t:       snap.t,
-        content: snap.content || '',
-        digest:  snap.digest  || '',
-        badge:   i === hist.length - 1 ? 'current' : 'local',
-        label:   i === hist.length - 1 ? '📍 Latest local snapshot' : '📂 Local snapshot'
-      });
-    }
-  } catch {}
 
-  if (entries.length === 0) {
-    list.innerHTML = '<div class="nhm-empty">No history snapshots found for this PDF yet.<br>Snapshots are created automatically each time notes are saved.</div>';
-    return;
-  }
+    diagList.innerHTML = '';
+    logs.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'diag-entry';
 
-  list.innerHTML = '';
-  entries.forEach((entry, idx) => {
-    const div = document.createElement('div');
-    div.className = 'nhm-entry';
+      const badgeClass = item.status === 'OK' ? 'diag-badge-ok' :
+                         item.status === 'WARN' ? 'diag-badge-warn' :
+                         item.status === 'ERR' ? 'diag-badge-err' : 'diag-badge-info';
 
-    const tsStr = entry.t ? formatHistoryDate(entry.t) : '';
-    const badgeClass = entry.badge === 'cloud' ? 'nhm-badge-cloud' :
-                       entry.badge === 'current' ? 'nhm-badge-current' : 'nhm-badge-local';
+      const dStr = formatHistoryDate(item.ts);
+      let extraHtml = '';
+      if (item.extra && Object.keys(item.extra).length > 0) {
+        extraHtml = `<pre class="diag-extra">${JSON.stringify(item.extra, null, 2)}</pre>`;
+      }
 
-    const hd = document.createElement('div');
-    hd.className = 'nhm-entry-hd';
-    hd.innerHTML = `
-      <span class="nhm-ts">${entry.label}${tsStr ? ' — ' + tsStr : ''}</span>
-      <span class="nhm-badge ${badgeClass}">${entry.badge === 'cloud' ? 'CLOUD' : entry.badge === 'current' ? 'LATEST' : 'LOCAL'}</span>
-      <button class="nhm-restore-btn" data-idx="${idx}" title="Restore this version">Restore</button>
-    `;
-
-    const preview = document.createElement('div');
-    preview.className = 'nhm-preview';
-    const notesPreview = htmlToPlainPreview(entry.content);
-    const digestPreview = htmlToPlainPreview(entry.digest);
-    preview.textContent = notesPreview !== '(empty)'
-      ? notesPreview
-      : digestPreview !== '(empty)' ? '(Digest) ' + digestPreview : '(empty)';
-
-    div.appendChild(hd);
-    div.appendChild(preview);
-    list.appendChild(div);
-
-    hd.querySelector('.nhm-restore-btn').addEventListener('click', async () => {
-      const confirmRestore = confirm(
-        `Restore this version?\n\n"${notesPreview.slice(0, 120)}…"\n\nYour current notes will be snapshotted first so you can always revert again.`
-      );
-      if (!confirmRestore) return;
-
-      // Snapshot current before restoring
-      const before = $notesEditor()?.innerHTML ?? '';
-      const beforeD = $digestEditor()?.innerHTML ?? '';
-      saveHistorySnapshot(pdfId, before, beforeD);
-
-      // Apply restored content to editors
-      const notesEd = $notesEditor();
-      const digestEd = $digestEditor();
-      if (notesEd) notesEd.innerHTML = entry.content;
-      if (digestEd) digestEd.innerHTML = entry.digest;
-
-      // Update cache + mark dirty + write timestamps
-      _notepadCache.set(pdfId, {
-        content:   entry.content,
-        digest:    entry.digest,
-        dirty:     true,
-        timestamp: Date.now()
-      });
-      setWriteTs(pdfId);
-      safeStorageSet('local_notepad_' + pdfId, entry.content);
-      safeStorageSet('local_digest_' + pdfId, entry.digest);
-
-      // Push to Supabase immediately
-      modal.classList.remove('open');
-      toast('⏪ Notes restored — saving to cloud…');
-      await executeSaveForPdf(pdfId);
-      toast('✓ Restored version saved to cloud.');
+      div.innerHTML = `
+        <div class="diag-entry-hd">
+          <span class="diag-ts">${dStr}</span>
+          <span class="diag-action">[${item.action}]</span>
+          <span class="diag-badge ${badgeClass}">${item.code} (${item.status})</span>
+        </div>
+        <div class="diag-msg">${item.message}</div>
+        ${extraHtml}
+      `;
+      diagList.appendChild(div);
     });
-  });
+  }
+
+  // Render snapshots tab
+  async function renderSnapshots() {
+    if (!snapList) return;
+    snapList.innerHTML = '<div class="nhm-empty">Loading history…</div>';
+
+    // Snapshot current state
+    const curContent = $notesEditor()?.innerHTML ?? '';
+    const curDigest  = $digestEditor()?.innerHTML ?? '';
+    if (curContent || curDigest) {
+      await saveHistorySnapshot(pdfId, curContent, curDigest);
+    }
+
+    const entries = [];
+
+    try {
+      const { dbLoadNotepad: load } = await import('./db.js');
+      const cloudData = await load(pdfId);
+      if (cloudData.content || cloudData.digest) {
+        entries.push({
+          t: null,
+          content: cloudData.content || '',
+          digest:  cloudData.digest  || '',
+          badge:   'cloud',
+          label:   '☁️ Cloud (Supabase) — current saved version'
+        });
+      }
+    } catch (err) {
+      console.warn('[History] Cloud fetch error:', err);
+    }
+
+    try {
+      let hist = await getNotepadHistoryIDB(pdfId);
+      if (!Array.isArray(hist) || hist.length === 0) {
+        hist = JSON.parse(safeStorageGet('notepad_history_' + pdfId, '[]') || '[]');
+      }
+      for (let i = hist.length - 1; i >= 0; i--) {
+        const snap = hist[i];
+        entries.push({
+          t:       snap.t,
+          content: snap.content || '',
+          digest:  snap.digest  || '',
+          badge:   i === hist.length - 1 ? 'current' : 'local',
+          label:   i === hist.length - 1 ? '📍 Latest local snapshot' : '📂 Local snapshot'
+        });
+      }
+    } catch {}
+
+    if (entries.length === 0) {
+      snapList.innerHTML = '<div class="nhm-empty">No history snapshots found for this PDF yet.<br>Snapshots are created automatically each time notes are saved.</div>';
+      return;
+    }
+
+    snapList.innerHTML = '';
+    entries.forEach((entry, idx) => {
+      const div = document.createElement('div');
+      div.className = 'nhm-entry';
+
+      const tsStr = entry.t ? formatHistoryDate(entry.t) : '';
+      const badgeClass = entry.badge === 'cloud' ? 'nhm-badge-cloud' :
+                         entry.badge === 'current' ? 'nhm-badge-current' : 'nhm-badge-local';
+
+      const hd = document.createElement('div');
+      hd.className = 'nhm-entry-hd';
+      hd.innerHTML = `
+        <span class="nhm-ts">${entry.label}${tsStr ? ' — ' + tsStr : ''}</span>
+        <span class="nhm-badge ${badgeClass}">${entry.badge === 'cloud' ? 'CLOUD' : entry.badge === 'current' ? 'LATEST' : 'LOCAL'}</span>
+        <button class="nhm-restore-btn" data-idx="${idx}" title="Restore this version">Restore</button>
+      `;
+
+      const preview = document.createElement('div');
+      preview.className = 'nhm-preview';
+      const notesPreview = htmlToPlainPreview(entry.content);
+      const digestPreview = htmlToPlainPreview(entry.digest);
+      preview.textContent = notesPreview !== '(empty)'
+        ? notesPreview
+        : digestPreview !== '(empty)' ? '(Digest) ' + digestPreview : '(empty)';
+
+      div.appendChild(hd);
+      div.appendChild(preview);
+      snapList.appendChild(div);
+
+      hd.querySelector('.nhm-restore-btn').addEventListener('click', async () => {
+        const confirmRestore = confirm(
+          `Restore this version?\n\n"${notesPreview.slice(0, 120)}…"\n\nYour current notes will be snapshotted first so you can always revert again.`
+        );
+        if (!confirmRestore) return;
+
+        const before = $notesEditor()?.innerHTML ?? '';
+        const beforeD = $digestEditor()?.innerHTML ?? '';
+        saveHistorySnapshot(pdfId, before, beforeD);
+
+        const notesEd = $notesEditor();
+        const digestEd = $digestEditor();
+        if (notesEd) notesEd.innerHTML = entry.content;
+        if (digestEd) digestEd.innerHTML = entry.digest;
+
+        _notepadCache.set(pdfId, {
+          content:   entry.content,
+          digest:    entry.digest,
+          dirty:     true,
+          timestamp: Date.now()
+        });
+        setWriteTs(pdfId);
+        safeStorageSet('local_notepad_' + pdfId, entry.content);
+        safeStorageSet('local_digest_' + pdfId, entry.digest);
+
+        logNotepadDiagnostic(pdfId, 'RESTORE', 'INFO', 'INFO_USER_RESTORE', `User restored version from ${entry.label}`);
+
+        modal.classList.remove('open');
+        toast('⏪ Notes restored — saving to cloud…');
+        await executeSaveForPdf(pdfId);
+        toast('✓ Restored version saved to cloud.');
+      });
+    });
+  }
+
+  // Update diagnostic count badge
+  const allLogs = getNotepadDiagnostics(pdfId);
+  if (countSpan) countSpan.textContent = String(allLogs.length);
+
+  // Show requested initial tab
+  switchTab(initialTab);
 }
 
 export function getCachedNotepad(pdfId) {
@@ -593,9 +709,18 @@ export function initNotepad() {
 
   document.getElementById('np-close')?.addEventListener('click', closeNotepad);
 
+  // Clicking save status indicator opens the Error & Sync Log tab directly
+  const saveLbl = document.getElementById('np-save-lbl');
+  if (saveLbl) {
+    saveLbl.style.cursor = 'pointer';
+    saveLbl.addEventListener('click', () => {
+      openHistoryPanel('logs');
+    });
+  }
+
   // History button — opens the history/recovery panel
   document.getElementById('np-history-btn')?.addEventListener('click', () => {
-    openHistoryPanel();
+    openHistoryPanel('snapshots');
   });
   document.getElementById('np-history-close')?.addEventListener('click', () => {
     document.getElementById('np-history-modal')?.classList.remove('open');

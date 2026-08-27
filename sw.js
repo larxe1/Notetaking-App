@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v77';
+const CACHE_NAME = 'legal-annotator-shell-v78';
 
 const STATIC_ASSETS = [
   './',
@@ -41,6 +41,7 @@ const STATIC_ASSETS = [
   './src/notepad.js',
   './src/pdfcache.js',
   './src/outbox.js',
+  './src/diag.js',
   './src/diagram.js',
   './src/pdflink.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',

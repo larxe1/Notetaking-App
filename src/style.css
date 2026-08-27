@@ -736,17 +736,53 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--navy-b, #2a3554);
-  background: rgba(0,0,0,.22);
+  background: rgba(0,0,0,.28);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
-#np-history-box .nhm-header h3 {
-  margin: 0;
-  font-size: 15px;
-  color: var(--gold, #c9a84c);
-  font-family: 'Inter', sans-serif;
+.nhm-tabs {
+  display: flex;
+  gap: 6px;
   flex: 1;
+}
+.nhm-tab-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--navy-b, #2a3554);
+  color: #94a3b8;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+.nhm-tab-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #f1f5f9;
+}
+.nhm-tab-btn.active {
+  background: var(--navy, #1a2540);
+  border-color: var(--gold, #c9a84c);
+  color: var(--gold, #c9a84c);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.nhm-action-btn {
+  background: rgba(201, 168, 76, 0.12);
+  border: 1px solid var(--gold, #c9a84c);
+  color: var(--gold, #c9a84c);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+.nhm-action-btn:hover {
+  background: rgba(201, 168, 76, 0.28);
 }
 #np-history-box .nhm-header .nhm-close {
   background: none;
@@ -758,6 +794,14 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
   border-radius: 4px;
 }
 #np-history-box .nhm-header .nhm-close:hover { color: #fff; }
+
+.nhm-tab-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
 #np-history-warning {
   padding: 10px 16px;
   background: rgba(201, 168, 76, 0.12);
@@ -767,7 +811,16 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
   font-family: 'Inter', sans-serif;
   flex-shrink: 0;
 }
-#np-history-list {
+#np-diag-warning {
+  padding: 10px 16px;
+  background: rgba(56, 189, 248, 0.1);
+  border-bottom: 1px solid var(--navy-b, #2a3554);
+  font-size: 12px;
+  color: #38bdf8;
+  font-family: 'Inter', sans-serif;
+  flex-shrink: 0;
+}
+#np-history-list, #np-diag-list {
   flex: 1;
   overflow-y: auto;
   padding: 12px 16px;
@@ -828,6 +881,62 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
   white-space: pre-line;
   word-break: break-word;
 }
+
+/* Diagnostic Log Entries */
+.diag-entry {
+  border: 1px solid var(--navy-b, #2a3554);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.22);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.diag-entry-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.diag-ts {
+  color: #8899bb;
+  font-family: monospace;
+}
+.diag-action {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.diag-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  margin-left: auto;
+  font-family: monospace;
+}
+.diag-badge-ok { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+.diag-badge-warn { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+.diag-badge-err { background: rgba(248, 113, 113, 0.18); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.4); }
+.diag-badge-info { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+.diag-msg {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.diag-extra {
+  font-size: 11px;
+  font-family: monospace;
+  background: rgba(0,0,0,0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: #94a3b8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
 .nhm-empty {
   text-align: center;
   padding: 32px;

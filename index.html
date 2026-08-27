@@ -497,20 +497,39 @@
     </div>
   </div>
 
-  <!-- Notepad History Modal -->
-  <div id="np-history-modal" role="dialog" aria-modal="true" aria-label="Note History">
+  <!-- Notepad History & Diagnostics Modal -->
+  <div id="np-history-modal" role="dialog" aria-modal="true" aria-label="Note History and Sync Diagnostics">
     <div id="np-history-box">
       <div class="nhm-header">
-        <h3>🕐 Note History &amp; Recovery</h3>
+        <div class="nhm-tabs">
+          <button class="nhm-tab-btn active" id="nhm-tab-snapshots">⏱️ Version Snapshots</button>
+          <button class="nhm-tab-btn" id="nhm-tab-logs">🚨 Error &amp; Sync Log (<span id="nhm-log-count">0</span>)</button>
+        </div>
+        <button class="nhm-action-btn" id="nhm-copy-diag-btn" title="Copy full diagnostic report to clipboard">📋 Copy Diagnostics</button>
         <button class="nhm-close" id="np-history-close" title="Close">✕</button>
       </div>
-      <div id="np-history-warning">
-        ⚠️ Up to 20 local snapshots are kept per PDF. Restoring replaces your current notes — your current content is snapshotted first so you can always go back.
+      
+      <!-- Tab 1: Version Snapshots -->
+      <div id="np-history-view-snapshots" class="nhm-tab-view active">
+        <div id="np-history-warning">
+          ⚠️ Up to 20 local snapshots are kept per PDF. Restoring replaces your current notes — your current content is snapshotted first so you can always go back.
+        </div>
+        <div id="np-history-list">
+          <div class="nhm-empty">Loading history…</div>
+        </div>
+        <div class="nhm-footer">Local snapshots are stored on this device. The Supabase (cloud) version is shown at the top of the list for comparison.</div>
       </div>
-      <div id="np-history-list">
-        <div class="nhm-empty">Loading history…</div>
+
+      <!-- Tab 2: Error & Sync Diagnostics -->
+      <div id="np-history-view-logs" class="nhm-tab-view" style="display:none;">
+        <div id="np-diag-warning">
+          🔍 Real-time audit log of all Save, Load, and Sync actions for this PDF with exact Supabase HTTP codes, error messages, and payload sizes.
+        </div>
+        <div id="np-diag-list">
+          <div class="nhm-empty">Loading diagnostic logs…</div>
+        </div>
+        <div class="nhm-footer">Click "Copy Diagnostics" above to copy the full technical report to clipboard.</div>
       </div>
-      <div class="nhm-footer">Local snapshots are stored on this device. The Supabase (cloud) version is shown at the top of the list for comparison.</div>
     </div>
   </div>
 
