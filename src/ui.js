@@ -3,7 +3,7 @@
 //      modals, keyboard shortcuts, export
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { safeStorageSet, safeStorageRemove } from './storage.js';
+import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 import { handleEditorKeyDown } from './tablepicker.js';
 
 // ── Sync status ──
@@ -256,21 +256,123 @@ export function initModals() {
   });
 }
 
-// ── Sidebar (mobile) ──
-export function openSidebar()  {
-  document.getElementById('lib-side').classList.add('open');
-  document.getElementById('lib-backdrop').classList.add('open');
+// ── Sidebar (Auto-Hide, Hover-Peek & Mobile) ──
+let _hoverCloseTimer = null;
+
+export function isSidebarAutoHide() {
+  return safeStorageGet('sidebar_autohide', 'false') === 'true';
 }
+
+export function setSidebarAutoHide(enabled, showNotification = true) {
+  safeStorageSet('sidebar_autohide', String(enabled));
+  const app = document.getElementById('app');
+  const pinBtn = document.getElementById('btn-pin-sidebar');
+  if (app) app.classList.toggle('sidebar-autohide', enabled);
+
+  if (pinBtn) {
+    if (enabled) {
+      pinBtn.textContent = '⚡';
+      pinBtn.title = 'Sidebar: Auto-Hide Mode (Hover left edge to show) — Click to Pin';
+      pinBtn.style.color = 'var(--gold)';
+      pinBtn.style.borderColor = 'var(--gold)';
+    } else {
+      pinBtn.textContent = '📌';
+      pinBtn.title = 'Sidebar: Pinned (Always visible) — Click to Auto-Hide';
+      pinBtn.style.color = 'var(--muted)';
+      pinBtn.style.borderColor = 'var(--navy-b)';
+    }
+  }
+
+  if (enabled) {
+    closeSidebar();
+    if (showNotification) toast('⚡ Sidebar Auto-Hide active (hover left edge to reveal)');
+  } else {
+    document.getElementById('lib-side')?.classList.remove('hover-open');
+    if (showNotification) toast('📌 Sidebar pinned (always visible)');
+  }
+}
+
+export function openSidebar() {
+  document.getElementById('lib-side')?.classList.add('open');
+  document.getElementById('lib-backdrop')?.classList.add('open');
+}
+
 export function closeSidebar() {
-  document.getElementById('lib-side').classList.remove('open');
-  document.getElementById('lib-backdrop').classList.remove('open');
+  const side = document.getElementById('lib-side');
+  if (side) {
+    side.classList.remove('open');
+    side.classList.remove('hover-open');
+  }
+  document.getElementById('lib-backdrop')?.classList.remove('open');
 }
+
+export function toggleSidebar() {
+  const side = document.getElementById('lib-side');
+  if (side?.classList.contains('open') || side?.classList.contains('hover-open')) {
+    closeSidebar();
+  } else {
+    openSidebar();
+  }
+}
+
 export function initSidebar() {
-  document.getElementById('mob-menu-btn').addEventListener('click', openSidebar);
-  document.getElementById('lib-close').addEventListener('click', closeSidebar);
-  document.getElementById('lib-backdrop').addEventListener('click', closeSidebar);
+  // 1. Initialize auto-hide state from storage
+  const isAutoHide = isSidebarAutoHide();
+  setSidebarAutoHide(isAutoHide, false);
+
+  // 2. Pin / Auto-Hide toggle button
+  document.getElementById('btn-pin-sidebar')?.addEventListener('click', () => {
+    const current = isSidebarAutoHide();
+    setSidebarAutoHide(!current, true);
+  });
+
+  // 3. Mobile / Desktop hamburger toggle
+  document.getElementById('mob-menu-btn')?.addEventListener('click', toggleSidebar);
+  document.getElementById('lib-close')?.addEventListener('click', closeSidebar);
+  document.getElementById('lib-backdrop')?.addEventListener('click', closeSidebar);
+
+  // 4. Hover peek trigger zone on the far-left edge
+  const hoverZone = document.getElementById('lib-hover-zone');
+  const libSide = document.getElementById('lib-side');
+
+  function handleHoverEnter() {
+    if (!isSidebarAutoHide()) return;
+    if (_hoverCloseTimer) {
+      clearTimeout(_hoverCloseTimer);
+      _hoverCloseTimer = null;
+    }
+    libSide?.classList.add('hover-open');
+  }
+
+  function handleHoverLeave() {
+    if (!isSidebarAutoHide()) return;
+    if (_hoverCloseTimer) clearTimeout(_hoverCloseTimer);
+    _hoverCloseTimer = setTimeout(() => {
+      libSide?.classList.remove('hover-open');
+    }, 280);
+  }
+
+  if (hoverZone) {
+    hoverZone.addEventListener('mouseenter', handleHoverEnter);
+  }
+  if (libSide) {
+    libSide.addEventListener('mouseenter', handleHoverEnter);
+    libSide.addEventListener('mouseleave', handleHoverLeave);
+  }
+
+  // 5. Global mouse move near left edge (safety net for quick mouse motions)
+  window.addEventListener('mousemove', (e) => {
+    if (!isSidebarAutoHide()) return;
+    if (e.clientX <= 12) {
+      handleHoverEnter();
+    }
+  });
+
+  // 6. Close sidebar when clicking outside or resizing
   window.addEventListener('resize', () => {
-    if (window.innerWidth > 1024) closeSidebar();
+    if (window.innerWidth <= 1024) {
+      closeSidebar();
+    }
   });
 }
 
@@ -438,6 +540,13 @@ export function initKeyboard(deps) {
       deps.closeSearch();
       closeModal('mo-keys');
       document.getElementById('notepad-panel')?.classList.remove('open');
+    }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+      e.preventDefault();
+      toggleSidebar();
+    }
+    else if (e.key === '[') {
+      toggleSidebar();
     }
     else if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); deps.openSearch(); }
     else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'G' || e.key === 'g')) {

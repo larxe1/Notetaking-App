@@ -30,12 +30,58 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 /* ════════════════════════════════════════
    SIDEBAR — LIBRARY
 ════════════════════════════════════════ */
+/* Left edge hover trigger zone for auto-hide */
+#lib-hover-zone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 35;
+  pointer-events: auto;
+  display: none;
+}
+#app.sidebar-autohide #lib-hover-zone {
+  display: block;
+}
+
 #lib-side {
   width: var(--lib-w); min-width: var(--lib-w);
   display: flex; flex-direction: column;
   background: var(--navy); border-right: 1px solid var(--navy-b);
-  z-index: 20; transition: transform .25s ease; overflow: hidden;
+  z-index: 20; transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .25s ease; overflow: hidden;
 }
+
+/* Auto-Hide / Laptop Compact Mode */
+#app.sidebar-autohide #lib-side {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--lib-w);
+  min-width: var(--lib-w);
+  z-index: 40;
+  transform: translateX(-100%);
+  box-shadow: none;
+}
+#app.sidebar-autohide #lib-side.hover-open,
+#app.sidebar-autohide #lib-side.open {
+  transform: translateX(0);
+  box-shadow: 6px 0 32px rgba(0, 0, 0, 0.75);
+}
+
+#app.sidebar-autohide #viewer-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1 1 100% !important;
+}
+
+#app.sidebar-autohide #mob-menu-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
 .lib-hd { padding: 14px 14px 10px; border-bottom: 1px solid var(--navy-b); flex-shrink: 0; }
 .brand { font-family: 'Libre Baskerville', serif; font-size: 16px; color: var(--gold); display: flex; justify-content: space-between; align-items: center; }
 

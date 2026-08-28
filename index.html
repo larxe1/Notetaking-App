@@ -48,6 +48,7 @@
   <!-- ══════════════════════════════
        LIBRARY SIDEBAR
   ══════════════════════════════ -->
+  <div id="lib-hover-zone" title="Hover left edge to show Library"></div>
   <div id="lib-backdrop"></div>
   <div id="lib-side">
     <div class="lib-hd">
@@ -57,6 +58,7 @@
           <span id="app-title" style="cursor:pointer;transition:color .15s;" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color=''">Legal Annotator</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
+          <button id="btn-pin-sidebar" title="Toggle Auto-Hide (Hover) or Pin Sidebar" style="background:none;border:1px solid var(--navy-b);color:var(--muted);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--navy-b)';this.style.color='var(--muted)'">📌</button>
           <button id="btn-install-sidebar" title="Install App to Desktop" style="display:none;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;width:28px;height:28px;align-items:center;justify-content:center;cursor:pointer;font-size:13px;">📲</button>
           <button id="btn-settings" title="Settings & Tools" style="background:none;border:1px solid var(--navy-b);color:var(--muted);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--navy-b)';this.style.color='var(--muted)'">⚙️</button>
           <button id="lib-close" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer">✕</button>
@@ -1057,6 +1059,7 @@
       <div class="key-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd><span class="key-desc">Google Law Search</span></div>
       <div class="key-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span class="key-desc">Undo draw stroke</span></div>
       <div class="key-row"><kbd>Ctrl</kbd>+<kbd>↵</kbd><span class="key-desc">Add note (in editor)</span></div>
+      <div class="key-row"><kbd>[</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd><span class="key-desc">Toggle Library Sidebar</span></div>
       <div class="key-row"><kbd>Esc</kbd><span class="key-desc">Close panels/search</span></div>
     </div>
     <div class="modal-acts">
