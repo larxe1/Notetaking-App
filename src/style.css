@@ -46,10 +46,11 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 }
 
 #lib-side {
+  position: relative;
   width: var(--lib-w); min-width: var(--lib-w);
   display: flex; flex-direction: column;
   background: var(--navy); border-right: 1px solid var(--navy-b);
-  z-index: 20; transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .25s ease; overflow: hidden;
+  z-index: 20; transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .25s ease;
 }
 
 /* Auto-Hide / Laptop Compact Mode */
@@ -504,6 +505,33 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 }
 .panel-resizer-left:hover::after,
 .panel-resizer-left.resizing::after {
+  background: var(--gold);
+}
+
+/* Right border resize handle */
+.panel-resizer-right {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  bottom: 0;
+  cursor: ew-resize;
+  z-index: 50;
+  user-select: none;
+  touch-action: none;
+}
+.panel-resizer-right::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background .15s;
+}
+.panel-resizer-right:hover::after,
+.panel-resizer-right.resizing::after {
   background: var(--gold);
 }
 

@@ -374,6 +374,68 @@ export function initSidebar() {
       closeSidebar();
     }
   });
+
+  // 7. Drag resizer on right edge of sidebar
+  initSidebarResizer();
+}
+
+function initSidebarResizer() {
+  const libSide = document.getElementById('lib-side');
+  const handle = document.getElementById('lib-resize-handle');
+  if (!handle || !libSide) return;
+
+  // Restore saved width from localStorage
+  const savedWidth = safeStorageGet('lib_sidebar_width');
+  if (savedWidth) {
+    const w = parseInt(savedWidth);
+    if (w >= 200 && w <= window.innerWidth * 0.6) {
+      document.documentElement.style.setProperty('--lib-w', w + 'px');
+    }
+  }
+
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = libSide.offsetWidth;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('resizing');
+    libSide.style.transition = 'none';
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!isResizing) return;
+    const deltaX = e.clientX - startX;
+    const minW = 200;
+    const maxW = Math.max(minW, Math.floor(window.innerWidth * 0.6));
+    const newWidth = Math.max(minW, Math.min(maxW, startWidth + deltaX));
+    document.documentElement.style.setProperty('--lib-w', newWidth + 'px');
+  });
+
+  const stopResize = (e) => {
+    if (!isResizing) return;
+    isResizing = false;
+    handle.classList.remove('resizing');
+    libSide.style.transition = '';
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    try {
+      handle.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const curWidth = libSide.offsetWidth;
+    safeStorageSet('lib_sidebar_width', String(curWidth));
+  };
+
+  handle.addEventListener('pointerup', stopResize);
+  handle.addEventListener('pointercancel', stopResize);
 }
 
 // ── Zoom ──
