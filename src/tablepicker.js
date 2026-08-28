@@ -227,26 +227,49 @@ export function handlePaste(e) {
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
     
     // Skip any overlay or ghost element
-    if (node.matches && node.matches('.ann-ov, .hi-grp, .hr, .draw-canvas, canvas, .srch-ov, #sel-menu, #drag-ghost')) {
+    if (node.matches && node.matches('.ann-ov, .hi-grp, .hr, .draw-canvas, canvas, .srch-ov, #sel-menu, #drag-ghost, .pg-placeholder')) {
       return '';
     }
 
     let inner = '';
     node.childNodes.forEach(c => inner += cleanNode(c));
-    
+    if (!inner && !['br', 'hr', 'td', 'th', 'li'].includes(node.tagName.toLowerCase())) return '';
+
     const tag = node.tagName.toLowerCase();
+    const style = node.style || {};
+    const fontWeight = (style.fontWeight || '').toLowerCase();
+    const fontStyle = (style.fontStyle || '').toLowerCase();
+    const textDeco = (style.textDecoration || '').toLowerCase();
     
-    if (['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'sup', 'sub'].includes(tag)) {
-      return `<${tag}>${inner}</${tag}>`;
-    }
+    // Google Docs wraps all clipboard HTML in <b style="font-weight:normal;" id="docs-internal-guid-...">
+    const isGoogleDocsWrapper = node.id?.startsWith('docs-internal-guid') || (tag === 'b' && (fontWeight === 'normal' || fontWeight === '400' || fontWeight === 'lighter'));
+
+    // Determine semantic formatting
+    const isBold = (['b', 'strong'].includes(tag) && !isGoogleDocsWrapper && fontWeight !== 'normal' && fontWeight !== '400' && fontWeight !== 'lighter') ||
+                   (fontWeight === 'bold' || fontWeight === '700' || fontWeight === '800' || fontWeight === '900' || parseInt(fontWeight) >= 600);
+    const isItalic = (['i', 'em'].includes(tag) && fontStyle !== 'normal') || fontStyle === 'italic';
+    const isUnderline = (tag === 'u' && !textDeco.includes('none')) || textDeco.includes('underline');
+    const isStrike = ['s', 'strike'].includes(tag) || textDeco.includes('line-through');
+
+    // Apply inline formats in clean order
+    if (isStrike) inner = `<s>${inner}</s>`;
+    if (isUnderline) inner = `<u>${inner}</u>`;
+    if (isItalic) inner = `<i>${inner}</i>`;
+    if (isBold) inner = `<b>${inner}</b>`;
+
+    if (tag === 'sup') return `<sup>${inner}</sup>`;
+    if (tag === 'sub') return `<sub>${inner}</sub>`;
 
     if (tag === 'a') {
       const href = node.getAttribute('href') || '#';
-      return `<a href="${href}" target="_blank" rel="noopener">${inner}</a>`;
+      if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('#')) {
+        return `<a href="${href}" target="_blank" rel="noopener">${inner}</a>`;
+      }
+      return inner;
     }
 
     if (tag === 'span') {
-      return inner; // Unwrap span to prevent inline backgrounds / positions / styles from bleeding into the editor
+      return inner;
     }
     
     // Preserve lists
@@ -269,7 +292,7 @@ export function handlePaste(e) {
 
     // Preserve tables with strict containment
     if (tag === 'table') {
-      return `<br><table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;">${inner}</table><br>`;
+      return `<table class="note-table" style="width:100%; max-width:100%; border-collapse:collapse; margin:10px 0; table-layout:auto; word-break:break-word;">${inner}</table>`;
     }
     if (['tbody', 'thead', 'tfoot'].includes(tag)) {
       return `<${tag}>${inner}</${tag}>`;
@@ -289,14 +312,18 @@ export function handlePaste(e) {
     }
     
     // Convert block elements to line breaks
-    if (['p', 'div', 'br'].includes(tag)) {
+    if (['p', 'div'].includes(tag)) {
       return inner ? `${inner}<br>` : '<br>';
+    }
+    if (tag === 'br') {
+      return '<br>';
     }
     
     return inner;
   }
   
-  const cleanHtml = cleanNode(doc.body);
+  let cleanHtml = cleanNode(doc.body);
+  cleanHtml = cleanHtml.replace(/(?:<br\s*\/?>\s*)+$/i, '');
   document.execCommand('insertHTML', false, cleanHtml || text.replace(/\n/g, '<br>'));
 }
 
