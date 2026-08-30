@@ -262,8 +262,8 @@ async function init() {
         renderToc(outline);
 
       } else {
-        // ── 3. No native outline → heuristic heading detection ──
-        renderTocHeuristicSection(list);
+        // ── 3. No native outline → AI-only ToC reading ──
+        renderTocAiSection(list);
       }
 
     } catch (e) {
@@ -272,96 +272,28 @@ async function init() {
     }
   });
 
-  // ── Heuristic ToC detection + AI generation ──
-  function renderTocHeuristicSection(list) {
-    // Run heuristic scan across already-indexed text items (first 20 pages, free)
-    const detected = detectHeadingsHeuristic(20);
-
-    const detectedHeader = document.createElement('div');
-    detectedHeader.style.cssText = 'padding:16px 10px 4px; color:#888; font-size:11px; text-transform:uppercase; font-weight:bold;';
-    detectedHeader.textContent = detected.length >= 3 ? '📋 Detected Headings' : '📋 Auto-Detect';
-    list.appendChild(detectedHeader);
+  // ── AI-powered ToC (no heuristics — just a button + result area) ──
+  function renderTocAiSection(list) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'padding:12px 10px 4px; color:#888; font-size:13px;';
+    msg.textContent = 'No coded PDF outline found.';
+    list.appendChild(msg);
 
     const detectedContainer = document.createElement('div');
     detectedContainer.id = 'toc-detected-results';
-    list.appendChild(detectedContainer);
 
-    if (detected.length >= 3) {
-      renderDetectedEntries(detectedContainer, detected);
-    } else {
-      detectedContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:8px 10px;">No headings detected automatically.</div>';
-    }
-
-    // AI Generation button (always shown when no native outline)
     const aiRow = document.createElement('div');
-    aiRow.style.cssText = 'padding:12px 10px 4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
+    aiRow.style.cssText = 'padding:4px 10px 12px; display:flex; gap:8px; align-items:center;';
 
     const aiBtn = document.createElement('button');
     aiBtn.className = 'btn-gold';
     aiBtn.style.cssText = 'font-size:12px; padding:6px 12px;';
-    aiBtn.textContent = '✨ Generate with AI';
-    aiBtn.addEventListener('click', () => runAiTocGeneration(detectedContainer));
+    aiBtn.textContent = '✨ Read ToC with AI';
+    aiBtn.addEventListener('click', () => runAiTocGeneration(detectedContainer, aiRow));
 
     aiRow.appendChild(aiBtn);
     list.appendChild(aiRow);
-  }
-
-  function detectHeadingsHeuristic(maxPages) {
-    const entries = [];
-    const limit = Math.min(maxPages, S.totalPages);
-
-    // Collect all font heights across sampled pages to compute median body size
-    const allHeights = [];
-    for (let p = 1; p <= limit; p++) {
-      const items = S.pages[p]?.textItems || [];
-      for (const item of items) {
-        if (item.h > 2 && item.h < 200) allHeights.push(item.h);
-      }
-    }
-    if (allHeights.length === 0) return entries;
-    allHeights.sort((a, b) => a - b);
-    const medianH = allHeights[Math.floor(allHeights.length / 2)];
-    const headingThreshold = medianH * 1.35; // 35% bigger than body text = heading
-
-    const seenTitles = new Set();
-
-    for (let p = 1; p <= limit; p++) {
-      const items = S.pages[p]?.textItems || [];
-      for (const item of items) {
-        const text = item.str.trim();
-        if (!text || text.length < 3 || text.length > 120) continue;
-
-        // Heuristic checks:
-        // A) Font significantly larger than body text
-        const isBigFont = item.h >= headingThreshold;
-        // B) Looks like a numbered section: "Article 1", "Section 2", "Chapter III", "1.", "I."
-        const isNumbered = /^(article|section|chapter|part|title|rule|book)\s+\d+/i.test(text) ||
-                           /^(art\.|sec\.|ch\.)\s*\d+/i.test(text) ||
-                           /^\d+\.\s+[A-Z]/.test(text) ||
-                           /^[IVXLC]+\.\s+[A-Z]/.test(text);
-        // C) Short line ending with a page number (classic ToC row): "Introduction ......... 1"
-        const hasDotLeader = /\.{3,}\s*\d+\s*$/.test(text) || /\s{3,}\d+\s*$/.test(text);
-
-        if ((isBigFont || isNumbered || hasDotLeader) && !seenTitles.has(text.toLowerCase())) {
-          let title = text;
-          let page = p;
-
-          // For dot-leader rows, extract the page number from the text itself
-          if (hasDotLeader) {
-            const m = text.match(/(\d+)\s*$/);
-            if (m) {
-              page = parseInt(m[1]);
-              title = text.replace(/[\.\s]+\d+\s*$/, '').trim();
-              if (!title || page < 1 || page > S.totalPages) continue;
-            }
-          }
-
-          seenTitles.add(text.toLowerCase());
-          entries.push({ title, page });
-        }
-      }
-    }
-    return entries;
+    list.appendChild(detectedContainer);
   }
 
   function renderDetectedEntries(container, entries) {
@@ -402,7 +334,6 @@ async function init() {
         const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id;
         if (!trueId) return;
         for (const entry of entries) {
-          // Skip if already bookmarked on this page
           if (!S.bookmarks.some(b => b.page === entry.page && b.title === entry.title)) {
             await dbCreateBookmark(trueId, entry.page, entry.title);
           }
@@ -417,8 +348,8 @@ async function init() {
     container.appendChild(saveBtn);
   }
 
-  async function runAiTocGeneration(detectedContainer) {
-    // Resolve key: localStorage first, then Supabase
+  async function runAiTocGeneration(detectedContainer, aiRow) {
+    // Resolve Gemini key: localStorage cache first, then Supabase
     let key = safeStorageGet('gemini_api_key');
     if (!key) {
       try { key = await dbGetSetting('gemini_api_key'); } catch { /* ignore */ }
@@ -431,19 +362,23 @@ async function init() {
       return;
     }
 
-    detectedContainer.innerHTML = '<div style="color:var(--gold); padding:10px; font-size:13px;">✨ AI is reading the document… (first 25 pages)</div>';
+    // Hide the button while working
+    if (aiRow) aiRow.style.display = 'none';
+
+    // Scan first 40 pages — enough to cover any front matter + start of first chapter
+    const SCAN_PAGES = Math.min(40, S.totalPages);
+    detectedContainer.innerHTML = `<div style="color:var(--gold); padding:10px; font-size:13px;">✨ AI is reading the document… (first ${SCAN_PAGES} pages)</div>`;
 
     try {
-      // Extract text from first 25 pages
       const { extractPageText } = await import('./search.js');
-      let textChunks = [];
-      const limit = Math.min(25, S.totalPages);
-      for (let p = 1; p <= limit; p++) {
+      const textChunks = [];
+      for (let p = 1; p <= SCAN_PAGES; p++) {
         const items = await extractPageText(S.pdfDoc, p);
-        const pageText = items.map(i => i.str).join(' ');
-        textChunks.push(`--- Page ${p} ---\n${pageText}`);
+        // Label every page with its ACTUAL PDF page number so AI never confuses
+        // book page numbers (which reset to 1 after front matter) with PDF page numbers
+        textChunks.push(`--- PDF Page ${p} ---\n${items.map(i => i.str).join(' ')}`);
       }
-      const fullText = textChunks.join('\n').substring(0, 60000);
+      const fullText = textChunks.join('\n').substring(0, 80000);
 
       const { callGemini } = await import('./ai.js');
       const schema = {
@@ -451,31 +386,47 @@ async function init() {
         items: {
           type: 'OBJECT',
           properties: {
-            title: { type: 'STRING', description: 'Section or chapter heading title' },
-            page:  { type: 'INTEGER', description: 'Page number where this heading appears' }
+            title: { type: 'STRING', description: 'Section or chapter heading title (clean, no dot-leaders or page numbers)' },
+            page:  { type: 'INTEGER', description: 'Actual PDF page number (the number in the "--- PDF Page N ---" label, NOT the book\'s internal page number)' }
           },
           required: ['title', 'page']
         }
       };
-      const sys = `You are a legal document analyst. Extract the table of contents from the given text.
-Return ONLY the top-level and second-level sections/chapters/articles/parts as a JSON array.
-Each entry must have: title (the heading text, cleaned up) and page (integer page number).
-Do not include sub-sections deeper than level 2. Do not include front matter like cover pages.
-If a ToC page is present, use its page numbers. Otherwise infer from where headings appear in the text.`;
 
-      const result = await callGemini(key, sys, `DOCUMENT TEXT:\n${fullText}`, schema);
+      // The key insight in this prompt: each page is labeled with its real PDF page number.
+      // A legal textbook's ToC might say "Chapter 1 .... 1" meaning book-page 1,
+      // but that chapter could be on PDF page 18 because pages 1-17 are cover/preface/ToC.
+      // The AI must find the heading in the labeled text and return THAT PDF page number.
+      const sys = `You are a legal document analyst extracting a table of contents from a PDF.
 
-      // Filter to valid page numbers
-      const valid = (result || []).filter(e => e.title && e.page >= 1 && e.page <= S.totalPages);
+CRITICAL — PAGE NUMBERS:
+The text is labeled with real PDF page numbers like "--- PDF Page 12 ---".
+A book's internal page numbers (e.g. "Chapter 1 ..... 1" in the ToC) are DIFFERENT from PDF page numbers.
+The book resets to page 1 after cover, copyright, preface, and the ToC pages themselves.
+
+Your job:
+1. Find the Table of Contents page in the text.
+2. For each ToC entry, locate where that chapter/section heading actually appears in the labeled text.
+3. Return the PDF page number from the "--- PDF Page N ---" label where that heading appears — NOT the number printed in the ToC.
+4. Return only top-level and second-level entries (chapters, articles, sections). No sub-sections.
+5. Do not include the ToC page itself, cover, preface, or other front matter as entries.
+6. If no ToC page exists in this text, return an empty array [].`;
+
+      const result = await callGemini(key, sys, `DOCUMENT (first ${SCAN_PAGES} PDF pages):\n${fullText}`, schema);
+      const valid = (result || []).filter(e => e.title && Number.isInteger(e.page) && e.page >= 1 && e.page <= S.totalPages);
 
       if (valid.length === 0) {
-        detectedContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:10px;">AI could not find a clear table of contents in the first 25 pages.</div>';
+        detectedContainer.innerHTML = `<div style="color:#888; font-size:13px; padding:10px;">
+          No table of contents found in the first ${SCAN_PAGES} pages. Try adding bookmarks manually above.
+        </div>`;
+        if (aiRow) aiRow.style.display = 'flex';
       } else {
         renderDetectedEntries(detectedContainer, valid);
       }
     } catch (e) {
       console.error('[AI ToC]', e);
       detectedContainer.innerHTML = `<div style="color:#e44; font-size:13px; padding:10px;">AI Error: ${e.message}</div>`;
+      if (aiRow) aiRow.style.display = 'flex';
     }
   }
 
