@@ -387,33 +387,43 @@ async function init() {
           type: 'OBJECT',
           properties: {
             title: { type: 'STRING', description: 'Section or chapter heading title (clean, no dot-leaders or page numbers)' },
-            page:  { type: 'INTEGER', description: 'Actual PDF page number (the number in the "--- PDF Page N ---" label, NOT the book\'s internal page number)' }
+            page:  { type: 'INTEGER', description: 'Actual PDF page number (NOT the book\'s internal page number)' }
           },
           required: ['title', 'page']
         }
       };
 
-      // The key insight in this prompt: each page is labeled with its real PDF page number.
-      // A legal textbook's ToC might say "Chapter 1 .... 1" meaning book-page 1,
-      // but that chapter could be on PDF page 18 because pages 1-17 are cover/preface/ToC.
-      // The AI must find the heading in the labeled text and return THAT PDF page number.
+      // Strategy: we only scan the first SCAN_PAGES pages.
+      // That's always enough to find the ToC page + the start of the first 1-2 chapters.
+      // From those we calculate the "offset" = PDF page - book page, then apply it
+      // arithmetically to ALL entries, including chapters that start on PDF page 250+.
+      // This avoids needing to scan the entire 300-page document.
       const sys = `You are a legal document analyst extracting a table of contents from a PDF.
+The PDF has ${S.totalPages} pages total, but you are only shown the first ${SCAN_PAGES}.
 
-CRITICAL — PAGE NUMBERS:
-The text is labeled with real PDF page numbers like "--- PDF Page 12 ---".
-A book's internal page numbers (e.g. "Chapter 1 ..... 1" in the ToC) are DIFFERENT from PDF page numbers.
-The book resets to page 1 after cover, copyright, preface, and the ToC pages themselves.
+UNDERSTANDING PAGE NUMBERS — THIS IS CRITICAL:
+The text you receive is labeled with real PDF page numbers: "--- PDF Page N ---"
+A book's internal page numbers printed in the ToC (e.g. "Chapter 1 ..... 1") are DIFFERENT.
+Books reset their internal page counter to 1 after front matter (cover, copyright, preface, ToC pages).
+Example: A ToC says "Chapter 1 ... 1", but Chapter 1 actually starts at PDF page 14 → offset = 13.
 
-Your job:
-1. Find the Table of Contents page in the text.
-2. For each ToC entry, locate where that chapter/section heading actually appears in the labeled text.
-3. Return the PDF page number from the "--- PDF Page N ---" label where that heading appears — NOT the number printed in the ToC.
-4. Return only top-level and second-level entries (chapters, articles, sections). No sub-sections.
-5. Do not include the ToC page itself, cover, preface, or other front matter as entries.
-6. If no ToC page exists in this text, return an empty array [].`;
+YOUR METHOD (follow this exactly):
+STEP 1: Find the Table of Contents page in the text. Extract all entries as (title, book_page_number).
+STEP 2: Find where the FIRST chapter/section heading actually appears in the labeled text (look for it under "--- PDF Page N ---"). Calculate: offset = N - book_page_number_of_first_entry.
+STEP 3: For EVERY entry in the ToC (including chapters you cannot see because they are beyond the scanned pages): pdf_page = book_page_number + offset.
+STEP 4: Return all entries with the calculated pdf_page.
 
-      const result = await callGemini(key, sys, `DOCUMENT (first ${SCAN_PAGES} PDF pages):\n${fullText}`, schema);
-      const valid = (result || []).filter(e => e.title && Number.isInteger(e.page) && e.page >= 1 && e.page <= S.totalPages);
+RULES:
+- Return only top-level and second-level entries. No sub-sections deeper than level 2.
+- Do not include the ToC page itself, cover page, preface, or other front matter.
+- If you cannot find a ToC page, return an empty array [].
+- The "page" field in your response MUST be the calculated PDF page number, not the book page number.`;
+
+      const result = await callGemini(key, sys, `DOCUMENT (first ${SCAN_PAGES} of ${S.totalPages} PDF pages):\n${fullText}`, schema);
+      // Clamp to valid range — don't discard, since offset arithmetic may push a few entries slightly over
+      const valid = (result || [])
+        .filter(e => e.title && Number.isInteger(e.page))
+        .map(e => ({ ...e, page: Math.max(1, Math.min(S.totalPages, e.page)) }));
 
       if (valid.length === 0) {
         detectedContainer.innerHTML = `<div style="color:#888; font-size:13px; padding:10px;">
