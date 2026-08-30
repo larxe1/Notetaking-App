@@ -2,7 +2,7 @@
 // MAIN — entry point, wires everything together
 // ═══════════════════════════════════════════════
 import { S }                  from './state.js';
-import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks, dbGetSetting } from './db.js';
 import { initDriveBar }       from './drive.js';
 import { renderLibrary, initLibraryModals, initLibrarySelection, initContextMenu } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
@@ -171,106 +171,69 @@ async function init() {
     openModal('mo-toc');
     const list = document.getElementById('toc-list');
     list.innerHTML = '<div style="color:#888;font-style:italic;padding:10px">Loading contents...</div>';
-    
+
     try {
       const outline = await S.pdfDoc.getOutline();
       list.innerHTML = '';
-      
-      // 1. Render custom bookmarks
+
+      // ── 1. Custom bookmarks (always shown first) ──
       if (S.bookmarks && S.bookmarks.length > 0) {
         const custHeader = document.createElement('div');
-        custHeader.style.padding = '10px 10px 4px';
-        custHeader.style.color = 'var(--gold)';
-        custHeader.style.fontSize = '11px';
-        custHeader.style.textTransform = 'uppercase';
-        custHeader.style.fontWeight = 'bold';
+        custHeader.style.cssText = 'padding:10px 10px 4px; color:var(--gold); font-size:11px; text-transform:uppercase; font-weight:bold;';
         custHeader.textContent = 'Custom Bookmarks';
         list.appendChild(custHeader);
 
         S.bookmarks.forEach(bm => {
           const div = document.createElement('div');
-          div.style.display = 'flex';
-          div.style.justifyContent = 'space-between';
-          div.style.alignItems = 'center';
-          div.style.padding = '8px 10px';
-          div.style.cursor = 'pointer';
-          div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-          
+          div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 10px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05);';
+
           const label = document.createElement('div');
           label.textContent = `[Pg ${bm.page}] ${bm.title}`;
-          label.style.fontSize = '14px';
-          label.style.flex = '1';
+          label.style.cssText = 'font-size:14px; flex:1;';
           label.addEventListener('click', () => {
             closeModal('mo-toc');
             import('./ui.js').then(m => m.jumpToPage(bm.page));
           });
-          
+
           const del = document.createElement('div');
           del.textContent = '✕';
-          del.style.color = '#888';
-          del.style.fontSize = '12px';
-          del.style.padding = '0 4px';
+          del.style.cssText = 'color:#888; font-size:12px; padding:0 4px; cursor:pointer;';
           del.addEventListener('click', async (e) => {
             e.stopPropagation();
             await dbDelBookmark(bm.id);
             document.getElementById('btn-toc').click();
           });
-          
+
           div.appendChild(label);
           div.appendChild(del);
           list.appendChild(div);
         });
       }
 
-      // 2. Render built-in TOC
+      // ── 2. Native PDF outline (if present) ──
       if (outline && outline.length > 0) {
         const natHeader = document.createElement('div');
-        natHeader.style.padding = '16px 10px 4px';
-        natHeader.style.color = '#888';
-        natHeader.style.fontSize = '11px';
-        natHeader.style.textTransform = 'uppercase';
-        natHeader.style.fontWeight = 'bold';
+        natHeader.style.cssText = 'padding:16px 10px 4px; color:#888; font-size:11px; text-transform:uppercase; font-weight:bold;';
         natHeader.textContent = 'PDF Bookmarks';
         list.appendChild(natHeader);
 
         const renderToc = (items, depth = 0) => {
           items.forEach(item => {
             const div = document.createElement('div');
-            div.style.paddingLeft = (10 + depth * 16) + 'px';
-            div.style.paddingTop = '8px';
-            div.style.paddingBottom = '8px';
-            div.style.cursor = 'pointer';
-            div.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-            div.style.fontSize = '14px';
+            div.style.cssText = `padding-left:${10 + depth * 16}px; padding-top:8px; padding-bottom:8px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05); font-size:14px;`;
             div.textContent = item.title;
-            
+
             div.addEventListener('mouseover', () => div.style.color = 'var(--gold)');
             div.addEventListener('mouseout', () => div.style.color = '');
             div.addEventListener('click', async (e) => {
-              e.stopPropagation(); // prevent click leaking to elements beneath the modal
-              
-              // Capture pdfDoc NOW before any awaits — prevents race condition if
-              // another PDF is opened while this async handler is running
+              e.stopPropagation();
               const doc = S.pdfDoc;
               if (!doc) return;
-
               try {
-                // Resolve destination: item.dest can be a string (named dest),
-                // an array (explicit dest), or null (action-only item)
                 let dest = item.dest;
-
-                // Some PDFs store the destination inside an action object
                 if (!dest && item.action?.dest) dest = item.action.dest;
-
-                if (typeof dest === 'string') {
-                  dest = await doc.getDestination(dest);
-                }
-
-                if (!Array.isArray(dest)) {
-                  // No resolvable page destination — close and do nothing
-                  closeModal('mo-toc');
-                  return;
-                }
+                if (typeof dest === 'string') dest = await doc.getDestination(dest);
+                if (!Array.isArray(dest)) { closeModal('mo-toc'); return; }
 
                 let pageIdx = -1;
                 const ref = dest[0];
@@ -279,8 +242,6 @@ async function init() {
                 } else if (Number.isInteger(ref)) {
                   pageIdx = ref;
                 }
-
-                // Validate within bounds before navigating
                 const page = pageIdx + 1;
                 if (pageIdx >= 0 && page <= S.totalPages) {
                   closeModal('mo-toc');
@@ -293,22 +254,230 @@ async function init() {
                 closeModal('mo-toc');
               }
             });
-            
+
             list.appendChild(div);
-            if (item.items && item.items.length) {
-              renderToc(item.items, depth + 1);
-            }
+            if (item.items && item.items.length) renderToc(item.items, depth + 1);
           });
         };
         renderToc(outline);
-      } else if (!S.bookmarks || S.bookmarks.length === 0) {
-        list.innerHTML = '<div style="color:#888;padding:10px">No bookmarks yet. Add one above!</div>';
+
+      } else {
+        // ── 3. No native outline → heuristic heading detection ──
+        renderTocHeuristicSection(list);
       }
+
     } catch (e) {
       list.innerHTML = '<div style="color:red;padding:10px">Failed to load contents.</div>';
       console.error(e);
     }
   });
+
+  // ── Heuristic ToC detection + AI generation ──
+  function renderTocHeuristicSection(list) {
+    // Run heuristic scan across already-indexed text items (first 20 pages, free)
+    const detected = detectHeadingsHeuristic(20);
+
+    const detectedHeader = document.createElement('div');
+    detectedHeader.style.cssText = 'padding:16px 10px 4px; color:#888; font-size:11px; text-transform:uppercase; font-weight:bold;';
+    detectedHeader.textContent = detected.length >= 3 ? '📋 Detected Headings' : '📋 Auto-Detect';
+    list.appendChild(detectedHeader);
+
+    const detectedContainer = document.createElement('div');
+    detectedContainer.id = 'toc-detected-results';
+    list.appendChild(detectedContainer);
+
+    if (detected.length >= 3) {
+      renderDetectedEntries(detectedContainer, detected);
+    } else {
+      detectedContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:8px 10px;">No headings detected automatically.</div>';
+    }
+
+    // AI Generation button (always shown when no native outline)
+    const aiRow = document.createElement('div');
+    aiRow.style.cssText = 'padding:12px 10px 4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
+
+    const aiBtn = document.createElement('button');
+    aiBtn.className = 'btn-gold';
+    aiBtn.style.cssText = 'font-size:12px; padding:6px 12px;';
+    aiBtn.textContent = '✨ Generate with AI';
+    aiBtn.addEventListener('click', () => runAiTocGeneration(detectedContainer));
+
+    aiRow.appendChild(aiBtn);
+    list.appendChild(aiRow);
+  }
+
+  function detectHeadingsHeuristic(maxPages) {
+    const entries = [];
+    const limit = Math.min(maxPages, S.totalPages);
+
+    // Collect all font heights across sampled pages to compute median body size
+    const allHeights = [];
+    for (let p = 1; p <= limit; p++) {
+      const items = S.pages[p]?.textItems || [];
+      for (const item of items) {
+        if (item.h > 2 && item.h < 200) allHeights.push(item.h);
+      }
+    }
+    if (allHeights.length === 0) return entries;
+    allHeights.sort((a, b) => a - b);
+    const medianH = allHeights[Math.floor(allHeights.length / 2)];
+    const headingThreshold = medianH * 1.35; // 35% bigger than body text = heading
+
+    const seenTitles = new Set();
+
+    for (let p = 1; p <= limit; p++) {
+      const items = S.pages[p]?.textItems || [];
+      for (const item of items) {
+        const text = item.str.trim();
+        if (!text || text.length < 3 || text.length > 120) continue;
+
+        // Heuristic checks:
+        // A) Font significantly larger than body text
+        const isBigFont = item.h >= headingThreshold;
+        // B) Looks like a numbered section: "Article 1", "Section 2", "Chapter III", "1.", "I."
+        const isNumbered = /^(article|section|chapter|part|title|rule|book)\s+\d+/i.test(text) ||
+                           /^(art\.|sec\.|ch\.)\s*\d+/i.test(text) ||
+                           /^\d+\.\s+[A-Z]/.test(text) ||
+                           /^[IVXLC]+\.\s+[A-Z]/.test(text);
+        // C) Short line ending with a page number (classic ToC row): "Introduction ......... 1"
+        const hasDotLeader = /\.{3,}\s*\d+\s*$/.test(text) || /\s{3,}\d+\s*$/.test(text);
+
+        if ((isBigFont || isNumbered || hasDotLeader) && !seenTitles.has(text.toLowerCase())) {
+          let title = text;
+          let page = p;
+
+          // For dot-leader rows, extract the page number from the text itself
+          if (hasDotLeader) {
+            const m = text.match(/(\d+)\s*$/);
+            if (m) {
+              page = parseInt(m[1]);
+              title = text.replace(/[\.\s]+\d+\s*$/, '').trim();
+              if (!title || page < 1 || page > S.totalPages) continue;
+            }
+          }
+
+          seenTitles.add(text.toLowerCase());
+          entries.push({ title, page });
+        }
+      }
+    }
+    return entries;
+  }
+
+  function renderDetectedEntries(container, entries) {
+    container.innerHTML = '';
+
+    entries.forEach(entry => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:7px 10px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px;';
+
+      const lbl = document.createElement('span');
+      lbl.textContent = entry.title;
+      lbl.style.flex = '1';
+      lbl.addEventListener('click', () => {
+        closeModal('mo-toc');
+        import('./ui.js').then(m => m.jumpToPage(entry.page));
+      });
+      lbl.addEventListener('mouseover', () => lbl.style.color = 'var(--gold)');
+      lbl.addEventListener('mouseout', () => lbl.style.color = '');
+
+      const pg = document.createElement('span');
+      pg.textContent = `p.${entry.page}`;
+      pg.style.cssText = 'color:#888; font-size:11px; margin-left:8px; flex-shrink:0;';
+
+      row.appendChild(lbl);
+      row.appendChild(pg);
+      container.appendChild(row);
+    });
+
+    // Save as Bookmarks button
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn-sec';
+    saveBtn.style.cssText = 'margin:10px; font-size:12px; padding:6px 12px;';
+    saveBtn.textContent = '💾 Save all as Bookmarks';
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      try {
+        const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id;
+        if (!trueId) return;
+        for (const entry of entries) {
+          // Skip if already bookmarked on this page
+          if (!S.bookmarks.some(b => b.page === entry.page && b.title === entry.title)) {
+            await dbCreateBookmark(trueId, entry.page, entry.title);
+          }
+        }
+        saveBtn.textContent = '✓ Saved!';
+        setTimeout(() => document.getElementById('btn-toc').click(), 600);
+      } catch (e) {
+        saveBtn.textContent = '✗ Error';
+        console.error(e);
+      }
+    });
+    container.appendChild(saveBtn);
+  }
+
+  async function runAiTocGeneration(detectedContainer) {
+    // Resolve key: localStorage first, then Supabase
+    let key = safeStorageGet('gemini_api_key');
+    if (!key) {
+      try { key = await dbGetSetting('gemini_api_key'); } catch { /* ignore */ }
+      if (key) safeStorageSet('gemini_api_key', key);
+    }
+    if (!key) {
+      detectedContainer.innerHTML = `<div style="color:#888; font-size:13px; padding:10px;">
+        No Gemini API key found. Open <strong>✨ Quiz Me</strong> in the toolbar to enter your key — it will sync here automatically.
+      </div>`;
+      return;
+    }
+
+    detectedContainer.innerHTML = '<div style="color:var(--gold); padding:10px; font-size:13px;">✨ AI is reading the document… (first 25 pages)</div>';
+
+    try {
+      // Extract text from first 25 pages
+      const { extractPageText } = await import('./search.js');
+      let textChunks = [];
+      const limit = Math.min(25, S.totalPages);
+      for (let p = 1; p <= limit; p++) {
+        const items = await extractPageText(S.pdfDoc, p);
+        const pageText = items.map(i => i.str).join(' ');
+        textChunks.push(`--- Page ${p} ---\n${pageText}`);
+      }
+      const fullText = textChunks.join('\n').substring(0, 60000);
+
+      const { callGemini } = await import('./ai.js');
+      const schema = {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'Section or chapter heading title' },
+            page:  { type: 'INTEGER', description: 'Page number where this heading appears' }
+          },
+          required: ['title', 'page']
+        }
+      };
+      const sys = `You are a legal document analyst. Extract the table of contents from the given text.
+Return ONLY the top-level and second-level sections/chapters/articles/parts as a JSON array.
+Each entry must have: title (the heading text, cleaned up) and page (integer page number).
+Do not include sub-sections deeper than level 2. Do not include front matter like cover pages.
+If a ToC page is present, use its page numbers. Otherwise infer from where headings appear in the text.`;
+
+      const result = await callGemini(key, sys, `DOCUMENT TEXT:\n${fullText}`, schema);
+
+      // Filter to valid page numbers
+      const valid = (result || []).filter(e => e.title && e.page >= 1 && e.page <= S.totalPages);
+
+      if (valid.length === 0) {
+        detectedContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:10px;">AI could not find a clear table of contents in the first 25 pages.</div>';
+      } else {
+        renderDetectedEntries(detectedContainer, valid);
+      }
+    } catch (e) {
+      console.error('[AI ToC]', e);
+      detectedContainer.innerHTML = `<div style="color:#e44; font-size:13px; padding:10px;">AI Error: ${e.message}</div>`;
+    }
+  }
 
   // Settings & Storage Manager
   async function refreshCacheStats() {

@@ -668,3 +668,18 @@ export async function dbSaveLinks(links) {
   await safeDbWrite(db, 'dictionary', 'upsert', { word: '__sys_links', definition: JSON.stringify(links) });
   safeStorageSet('local_sys_links', JSON.stringify(links));
 }
+
+// ── App Settings (cloud-synced key-value store) ──
+// Used for Gemini API key and other cross-device settings.
+export async function dbGetSetting(key) {
+  try {
+    const { data } = await db.from('app_settings').select('value').eq('key', key).maybeSingle();
+    return data?.value || null;
+  } catch { return null; }
+}
+
+export async function dbSetSetting(key, value) {
+  try {
+    await safeDbWrite(db, 'app_settings', 'upsert', { key, value });
+  } catch { /* silently fail — localStorage is the fallback */ }
+}

@@ -2,6 +2,7 @@ import { S } from './state.js';
 import { openModal, toast } from './ui.js';
 import { generateMCQ, generateEssayQuestion, gradeEssay } from './ai.js';
 import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
+import { dbGetSetting, dbSetSetting } from './db.js';
 
 let currentPdfText = '';
 let currentMCQ = null;
@@ -87,10 +88,19 @@ document.getElementById('btn-quiz-pdf').addEventListener('click', async () => {
   
   panel.style.display = 'flex';
   
-  if (!safeStorageGet('gemini_api_key')) {
-    showState('setup');
-  } else {
+  // Check local cache first (instant), then try Supabase in background
+  if (safeStorageGet('gemini_api_key')) {
     showState('selectMode');
+  } else {
+    // Show setup while we check Supabase (non-blocking)
+    showState('setup');
+    try {
+      const cloudKey = await dbGetSetting('gemini_api_key');
+      if (cloudKey) {
+        safeStorageSet('gemini_api_key', cloudKey); // cache locally
+        showState('selectMode');
+      }
+    } catch { /* stay on setup */ }
   }
 });
 
@@ -98,17 +108,21 @@ document.getElementById('btn-close-quiz').addEventListener('click', () => {
   document.getElementById('quiz-panel').style.display = 'none';
 });
 
-document.getElementById('btn-save-key').addEventListener('click', () => {
+document.getElementById('btn-save-key').addEventListener('click', async () => {
   const key = document.getElementById('quiz-api-key').value.trim();
   if (!key) return toast('Please enter a valid key.');
   safeStorageSet('gemini_api_key', key);
   showState('selectMode');
+  // Silently persist to Supabase so key syncs to all devices
+  try { await dbSetSetting('gemini_api_key', key); } catch { /* localStorage is the fallback */ }
 });
 
-document.getElementById('btn-change-key').addEventListener('click', () => {
+document.getElementById('btn-change-key').addEventListener('click', async () => {
   safeStorageRemove('gemini_api_key');
   document.getElementById('quiz-api-key').value = '';
   showState('setup');
+  // Clear from Supabase too
+  try { await dbSetSetting('gemini_api_key', ''); } catch { /* ignore */ }
 });
 
 // MCQ Mode
