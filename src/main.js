@@ -2,7 +2,7 @@
 // MAIN — entry point, wires everything together
 // ═══════════════════════════════════════════════
 import { S }                  from './state.js';
-import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbLoadLinks, dbSaveLinks, dbGetSetting } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbClearAllBookmarks, dbLoadLinks, dbSaveLinks, dbGetSetting } from './db.js';
 import { initDriveBar }       from './drive.js';
 import { renderLibrary, initLibraryModals, initLibrarySelection, initContextMenu } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
@@ -179,33 +179,84 @@ async function init() {
       // ── 1. Custom bookmarks (always shown first) ──
       if (S.bookmarks && S.bookmarks.length > 0) {
         const custHeader = document.createElement('div');
-        custHeader.style.cssText = 'padding:10px 10px 4px; color:var(--gold); font-size:11px; text-transform:uppercase; font-weight:bold;';
-        custHeader.textContent = 'Custom Bookmarks';
+        custHeader.style.cssText = 'padding:10px 10px 4px; display:flex; justify-content:space-between; align-items:center;';
+
+        const custLabel = document.createElement('span');
+        custLabel.style.cssText = 'color:var(--gold); font-size:11px; text-transform:uppercase; font-weight:bold;';
+        custLabel.textContent = 'Saved Contents';
+
+        const clearAllBtn = document.createElement('button');
+        clearAllBtn.className = 'btn-sec';
+        clearAllBtn.style.cssText = 'font-size:10px; padding:2px 8px; color:#e44; border-color:#e44;';
+        clearAllBtn.textContent = '🗑️ Clear all';
+        clearAllBtn.title = 'Delete all saved bookmarks for this PDF';
+        clearAllBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm('Delete all saved bookmarks for this PDF?')) return;
+          const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id;
+          if (!trueId) return;
+          clearAllBtn.disabled = true;
+          clearAllBtn.textContent = 'Clearing…';
+          try {
+            await dbClearAllBookmarks(trueId);
+            document.getElementById('btn-toc').click(); // refresh
+          } catch (err) {
+            clearAllBtn.textContent = '✗ Error';
+            console.error(err);
+          }
+        });
+
+        custHeader.appendChild(custLabel);
+        custHeader.appendChild(clearAllBtn);
         list.appendChild(custHeader);
 
+        // Visual style per depth level
+        const levelStyles = [
+          // level 0: chapter — full width, normal weight
+          { paddingLeft: '10px', fontSize: '13px', fontWeight: '600', color: '' },
+          // level 1: section — indented, slightly smaller
+          { paddingLeft: '24px', fontSize: '12px', fontWeight: '400', color: 'rgba(232,228,219,0.8)' },
+          // level 2: subsection — more indented, muted
+          { paddingLeft: '38px', fontSize: '11px', fontWeight: '400', color: 'rgba(232,228,219,0.55)' },
+        ];
+
         S.bookmarks.forEach(bm => {
+          const lv = Math.min(bm.level || 0, 2);
+          const ls = levelStyles[lv];
+
           const div = document.createElement('div');
-          div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:8px 10px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05);';
+          div.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:7px ${ls.paddingLeft}; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.04);`;
 
           const label = document.createElement('div');
-          label.textContent = `[Pg ${bm.page}] ${bm.title}`;
-          label.style.cssText = 'font-size:14px; flex:1;';
+          label.textContent = `${bm.title}`;
+          label.style.cssText = `font-size:${ls.fontSize}; font-weight:${ls.fontWeight}; color:${ls.color}; flex:1;`;
           label.addEventListener('click', () => {
             closeModal('mo-toc');
             import('./ui.js').then(m => m.jumpToPage(bm.page));
           });
+          label.addEventListener('mouseover', () => label.style.color = 'var(--gold)');
+          label.addEventListener('mouseout', () => label.style.color = ls.color);
 
-          const del = document.createElement('div');
+          const right = document.createElement('div');
+          right.style.cssText = 'display:flex; align-items:center; gap:6px; flex-shrink:0;';
+
+          const pg = document.createElement('span');
+          pg.textContent = `p.${bm.page}`;
+          pg.style.cssText = 'color:#888; font-size:10px;';
+
+          const del = document.createElement('span');
           del.textContent = '✕';
-          del.style.cssText = 'color:#888; font-size:12px; padding:0 4px; cursor:pointer;';
+          del.style.cssText = 'color:#666; font-size:11px; cursor:pointer; padding:0 2px;';
           del.addEventListener('click', async (e) => {
             e.stopPropagation();
             await dbDelBookmark(bm.id);
             document.getElementById('btn-toc').click();
           });
 
+          right.appendChild(pg);
+          right.appendChild(del);
           div.appendChild(label);
-          div.appendChild(del);
+          div.appendChild(right);
           list.appendChild(div);
         });
       }
@@ -299,30 +350,39 @@ async function init() {
   function renderDetectedEntries(container, entries) {
     container.innerHTML = '';
 
+    const levelStyles = [
+      { paddingLeft: '10px', fontSize: '13px', fontWeight: '600', color: '' },
+      { paddingLeft: '24px', fontSize: '12px', fontWeight: '400', color: 'rgba(232,228,219,0.8)' },
+      { paddingLeft: '38px', fontSize: '11px', fontWeight: '400', color: 'rgba(232,228,219,0.55)' },
+    ];
+
     entries.forEach(entry => {
+      const lv = Math.min(entry.level || 0, 2);
+      const ls = levelStyles[lv];
+
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:7px 10px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px;';
+      row.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:7px ${ls.paddingLeft}; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.04);`;
 
       const lbl = document.createElement('span');
       lbl.textContent = entry.title;
-      lbl.style.flex = '1';
+      lbl.style.cssText = `flex:1; font-size:${ls.fontSize}; font-weight:${ls.fontWeight}; color:${ls.color};`;
       lbl.addEventListener('click', () => {
         closeModal('mo-toc');
         import('./ui.js').then(m => m.jumpToPage(entry.page));
       });
       lbl.addEventListener('mouseover', () => lbl.style.color = 'var(--gold)');
-      lbl.addEventListener('mouseout', () => lbl.style.color = '');
+      lbl.addEventListener('mouseout', () => lbl.style.color = ls.color);
 
       const pg = document.createElement('span');
       pg.textContent = `p.${entry.page}`;
-      pg.style.cssText = 'color:#888; font-size:11px; margin-left:8px; flex-shrink:0;';
+      pg.style.cssText = 'color:#888; font-size:10px; margin-left:8px; flex-shrink:0;';
 
       row.appendChild(lbl);
       row.appendChild(pg);
       container.appendChild(row);
     });
 
-    // Save as Bookmarks button
+    // Save as Bookmarks button — passes level so hierarchy is preserved
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn-sec';
     saveBtn.style.cssText = 'margin:10px; font-size:12px; padding:6px 12px;';
@@ -335,7 +395,7 @@ async function init() {
         if (!trueId) return;
         for (const entry of entries) {
           if (!S.bookmarks.some(b => b.page === entry.page && b.title === entry.title)) {
-            await dbCreateBookmark(trueId, entry.page, entry.title);
+            await dbCreateBookmark(trueId, entry.page, entry.title, entry.level || 0);
           }
         }
         saveBtn.textContent = '✓ Saved!';
@@ -347,6 +407,7 @@ async function init() {
     });
     container.appendChild(saveBtn);
   }
+
 
   async function runAiTocGeneration(detectedContainer, aiRow) {
     // Resolve Gemini key: localStorage cache first, then Supabase
@@ -386,19 +447,15 @@ async function init() {
         items: {
           type: 'OBJECT',
           properties: {
-            title: { type: 'STRING', description: 'Section or chapter heading title (clean, no dot-leaders or page numbers)' },
-            page:  { type: 'INTEGER', description: 'Actual PDF page number (NOT the book\'s internal page number)' }
+            title: { type: 'STRING', description: 'Heading title — clean text only, no page numbers or dot-leaders' },
+            page:  { type: 'INTEGER', description: 'Actual PDF page number (NOT the book\'s internal page number)' },
+            level: { type: 'INTEGER', description: '0 = chapter/main division, 1 = section within chapter, 2 = subsection' }
           },
-          required: ['title', 'page']
+          required: ['title', 'page', 'level']
         }
       };
 
-      // Strategy: we only scan the first SCAN_PAGES pages.
-      // That's always enough to find the ToC page + the start of the first 1-2 chapters.
-      // From those we calculate the "offset" = PDF page - book page, then apply it
-      // arithmetically to ALL entries, including chapters that start on PDF page 250+.
-      // This avoids needing to scan the entire 300-page document.
-      const sys = `You are a legal document analyst extracting a table of contents from a PDF.
+      const sys = `You are a legal document analyst extracting a hierarchical table of contents from a PDF.
 The PDF has ${S.totalPages} pages total, but you are only shown the first ${SCAN_PAGES}.
 
 UNDERSTANDING PAGE NUMBERS — THIS IS CRITICAL:
@@ -408,22 +465,33 @@ Books reset their internal page counter to 1 after front matter (cover, copyrigh
 Example: A ToC says "Chapter 1 ... 1", but Chapter 1 actually starts at PDF page 14 → offset = 13.
 
 YOUR METHOD (follow this exactly):
-STEP 1: Find the Table of Contents page in the text. Extract all entries as (title, book_page_number).
-STEP 2: Find where the FIRST chapter/section heading actually appears in the labeled text (look for it under "--- PDF Page N ---"). Calculate: offset = N - book_page_number_of_first_entry.
-STEP 3: For EVERY entry in the ToC (including chapters you cannot see because they are beyond the scanned pages): pdf_page = book_page_number + offset.
-STEP 4: Return all entries with the calculated pdf_page.
+STEP 1: Find the Table of Contents page in the text. Extract all entries with their titles, book page numbers, and depth/indentation level.
+STEP 2: Find where the FIRST chapter/section heading actually appears in the labeled text. Calculate: offset = PDF_page_of_first_heading - book_page_of_first_entry.
+STEP 3: For EVERY entry: pdf_page = book_page_number + offset. Apply this to ALL entries, including ones beyond the scanned pages.
+STEP 4: Return all entries with the calculated pdf_page and the correct level (0, 1, or 2).
+
+HIERARCHY LEVELS:
+- level 0: Top-level divisions — Chapters, Parts, Articles, Titles, Books (e.g. "Chapter 1", "Part II", "Article 1")
+- level 1: Sections within chapters (e.g. "Section 1.1", "A. Definitions", "I. Overview")
+- level 2: Subsections (e.g. "1.1.1", "(a) General Rule", sub-items with further indentation in the ToC)
+Assign the level based on the visual indentation or numbering hierarchy shown in the ToC page.
 
 RULES:
-- Return only top-level and second-level entries. No sub-sections deeper than level 2.
-- Do not include the ToC page itself, cover page, preface, or other front matter.
+- Include all levels 0, 1, and 2. Do not go deeper than level 2.
+- Do not include the ToC page itself, cover page, preface, or other front matter as entries.
 - If you cannot find a ToC page, return an empty array [].
-- The "page" field in your response MUST be the calculated PDF page number, not the book page number.`;
+- The "page" field MUST be the calculated PDF page number, not the book page number.
+- Strip any dot-leaders (....) and page numbers from the title field — title should be clean text only.`;
 
       const result = await callGemini(key, sys, `DOCUMENT (first ${SCAN_PAGES} of ${S.totalPages} PDF pages):\n${fullText}`, schema);
-      // Clamp to valid range — don't discard, since offset arithmetic may push a few entries slightly over
+      // Clamp page to valid range; ensure level is 0/1/2
       const valid = (result || [])
         .filter(e => e.title && Number.isInteger(e.page))
-        .map(e => ({ ...e, page: Math.max(1, Math.min(S.totalPages, e.page)) }));
+        .map(e => ({
+          ...e,
+          page:  Math.max(1, Math.min(S.totalPages, e.page)),
+          level: Math.min(Math.max(Number.isInteger(e.level) ? e.level : 0, 0), 2)
+        }));
 
       if (valid.length === 0) {
         detectedContainer.innerHTML = `<div style="color:#888; font-size:13px; padding:10px;">

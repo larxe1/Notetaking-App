@@ -410,9 +410,9 @@ export async function dbLoadBookmarks(pfid) {
   }
 }
 
-export async function dbCreateBookmark(pfid, page, title) {
+export async function dbCreateBookmark(pfid, page, title, level = 0) {
   const id = 'bm_' + Date.now();
-  const bm = { id, pdf_file_id: pfid, page, title };
+  const bm = { id, pdf_file_id: pfid, page, title, level };
   await safeDbWrite(db, 'pdf_bookmarks', 'upsert', bm);
   S.bookmarks.push(bm);
   S.bookmarks.sort((a, b) => a.page - b.page);
@@ -428,6 +428,17 @@ export async function dbDelBookmark(id) {
     safeStorageSet('local_bms_' + S.currentPdfId, JSON.stringify(S.bookmarks));
   }
   broadcastSync({ type: 'ANNOTATIONS_CHANGED' });
+}
+
+export async function dbClearAllBookmarks(pfid) {
+  // Delete all bookmarks for this PDF one-by-one (safeDbWrite handles offline queuing)
+  const toDelete = [...S.bookmarks];
+  for (const bm of toDelete) {
+    await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { id: bm.id });
+  }
+  S.bookmarks = [];
+  safeStorageSet('local_bms_' + pfid, '[]');
+  broadcastSync({ type: 'ANNOTATIONS_CHANGED', pdfId: pfid });
 }
 
 // ── Notes ──
