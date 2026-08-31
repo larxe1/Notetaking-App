@@ -441,7 +441,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
 
     syncOK('Ready');
   } catch (e) {
-    if (retries > 0) {
+    if (retries > 0 && !e.message?.includes('Not signed in') && !e.message?.includes('session expired') && !e.message?.includes('No Google Drive file')) {
       console.warn('PDF load failed, retrying...', e);
       await new Promise(r => setTimeout(r, 300));
       return openPDFFromLibrary(pdfFile, retries - 1);
@@ -451,8 +451,10 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     recordError(e, 'PDF Load');
     let errCode = e?.status || (e?.message?.includes('401') ? '401' : (e?.message?.includes('403') ? '403' : 'ERR'));
     let msg = 'Could not load PDF.';
-    if (e.message?.includes('Drive') || e.message?.includes('signed') || errCode === '401') {
+    if (e.message?.includes('session expired') || errCode === '401') {
       msg = 'Google Drive session expired [401]. Please click "Sign in" on the Drive bar in the sidebar.';
+    } else if (e.message?.includes('Not signed in')) {
+      msg = 'Not signed in to Google Drive. Please click "Sign in" on the Drive bar in the sidebar.';
     } else if (errCode === '403') {
       msg = 'Google Drive permission denied or quota exceeded [403].';
     } else if (e.message) {

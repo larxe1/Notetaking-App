@@ -89,17 +89,17 @@ function _stopHealthCheck() {
   }
 }
 
-// -- Ping Drive API to confirm token is actually valid --
+// -- Ping Google OAuth endpoint to confirm token is actually valid --
 async function _verifyToken() {
-  if (!S.driveToken) { _onSessionExpired(); return; }
+  if (!S.driveToken) return;
   try {
     const r = await fetch(
-      'https://www.googleapis.com/drive/v3/about?fields=user',
-      { headers: { Authorization: `Bearer ${S.driveToken}` } }
+      `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(S.driveToken)}`
     );
-    if (r.status === 401 || r.status === 403) {
+    if (r.status === 400 || r.status === 401) {
+      console.warn('[Drive] Token verification failed (expired or revoked):', r.status);
       _onSessionExpired();
-    } else {
+    } else if (r.ok) {
       hideDriveWarning();
     }
   } catch {
@@ -282,6 +282,10 @@ export async function driveUploadPDF(file, targetFolderId) {
 
 // ── Fetch PDF bytes from Drive (with RAM + IndexedDB disk cache) ──
 export async function driveFetchPDF(drive_file_id, onProgress = null, pdfName = '') {
+  if (!drive_file_id) {
+    throw new Error('No Google Drive file attached to this PDF entry.');
+  }
+
   // 1. Check in-memory RAM cache (instant 0ms)
   if (S.pdfCache[drive_file_id]) return S.pdfCache[drive_file_id];
 
@@ -294,22 +298,21 @@ export async function driveFetchPDF(drive_file_id, onProgress = null, pdfName = 
   }
 
   if (!S.driveToken) {
-    _onSessionExpired();
     throw new Error('Not signed in to Google Drive');
   }
   syncSpin('Downloading from Drive…');
 
   const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${drive_file_id}?alt=media`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(drive_file_id)}?alt=media`,
     { headers: { Authorization: `Bearer ${S.driveToken}` } }
   );
   if (!resp.ok) {
-    if (resp.status === 401 || resp.status === 403) {
+    if (resp.status === 401) {
       _onSessionExpired(); // update UI immediately, show banner
       throw new Error('Google Drive session expired. Please sign in again.');
     }
     syncErr('Download failed');
-    throw new Error('Drive download failed: ' + resp.status);
+    throw new Error(`Drive download failed (${resp.status}): ${resp.statusText || 'File inaccessible'}`);
   }
 
   // Stream chunks with live percentage & MB progress indicator
@@ -356,7 +359,7 @@ export async function driveDeleteFile(drive_file_id) {
   delete S.pdfCache[drive_file_id];
   deleteCachedPDF(drive_file_id);
   if (!S.driveToken) return;
-  await fetch(`https://www.googleapis.com/drive/v3/files/${drive_file_id}`, {
+  await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(drive_file_id)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${S.driveToken}` },
   }).catch(() => {}); // best-effort
@@ -365,7 +368,8 @@ export async function driveDeleteFile(drive_file_id) {
 // ── Helper: authenticated GET ──
 async function driveGet(url) {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${S.driveToken}` } });
-  if (r.status === 401 || r.status === 403) { _onSessionExpired(); throw new Error('Drive session expired'); }
+  if (r.status === 401) { _onSessionExpired(); throw new Error('Drive session expired'); }
+  if (!r.ok) throw new Error(`Drive request failed (${r.status})`);
   return r.json();
 }
 
@@ -379,7 +383,8 @@ async function drivePost(url, body) {
     },
     body: JSON.stringify(body),
   });
-  if (r.status === 401 || r.status === 403) { _onSessionExpired(); throw new Error('Drive session expired'); }
+  if (r.status === 401) { _onSessionExpired(); throw new Error('Drive session expired'); }
+  if (!r.ok) throw new Error(`Drive request failed (${r.status})`);
   return r.json();
 }
 
