@@ -128,6 +128,20 @@ async function init() {
   safeInit(initDiagramStudio, 'DiagramStudio');
   safeInit(initGlobalPdfLinks, 'GlobalPdfLinks');
 
+  // ── Save reading position on tab hide / close ──
+  // The scroll handler has a 60ms debounce — these cover the case where the user
+  // closes the tab or navigates away before that debounce fires.
+  const _saveReadingPos = () => {
+    if (S.curPDF && S.curPage) {
+      safeStorageSet('bookmark_' + S.curPDF.id, S.curPage);
+    }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') _saveReadingPos();
+  });
+  window.addEventListener('beforeunload', _saveReadingPos);
+  window.addEventListener('pagehide', _saveReadingPos); // iOS Safari
+
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn =>
     btn.addEventListener('click', () => setMode(btn.dataset.mode))

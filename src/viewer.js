@@ -412,10 +412,26 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
 
     S.curPage = startPage;
     document.getElementById('pg-input').value = startPage;
+    document.getElementById('pg-input').max = S.totalPages;
 
-    // Render starting page and accurately align via native scrollIntoView
-    const { jumpToPage } = await import('./ui.js');
-    await jumpToPage(startPage, false);
+    // ── INSTANT RESUME: jump to saved page before any rendering happens ──
+    // All placeholders are uniform height (vp1.height) so scrollTop can be calculated
+    // algebraically in 0ms — no page render required, no layout reflow needed.
+    if (startPage > 1) {
+      // Each page wrap is vp1.height tall; CSS gap between pages is handled by the
+      // .pg-wrap margin. Use the actual offsetTop of the target element to be layout-exact.
+      const targetWrap = S.pages[startPage]?.wrap;
+      if (targetWrap) {
+        // Force synchronous layout read then jump — this is instant (<1ms)
+        scroll.scrollTop = targetWrap.offsetTop;
+      }
+    }
+
+    // Let IntersectionObserver fire naturally for the now-visible pages (triggered by scrollTop above).
+    // Also eagerly render just the target page so it appears as fast as possible.
+    ensurePageRendered(startPage);
+    if (startPage > 1) ensurePageRendered(startPage - 1);
+    ensurePageRendered(startPage + 1);
 
     // Await parallel DB data queries
     await dbDataPromise;
