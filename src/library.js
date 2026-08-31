@@ -922,73 +922,148 @@ export function initLibraryModals() {
     try {
       const files = Array.from(this.files);
 
-      // ── Duplicate detection ──
-      const existingNames = S.pdfs.map(p => p.name.toLowerCase().trim());
-      const duplicates = files.filter(f => existingNames.includes(f.name.toLowerCase().trim()));
-      const newFiles   = files.filter(f => !existingNames.includes(f.name.toLowerCase().trim()));
+      // Helper to format folder path name for prompts
+      const getFolderLocationName = (folderId) => {
+        const folder = S.folders.find(f => f.id === folderId);
+        if (!folder) return 'Library';
+        const parts = [folder.name];
+        let curr = folder;
+        let depth = 0;
+        while (curr.parent_folder_id && depth < 10) {
+          const parent = S.folders.find(f => f.id === curr.parent_folder_id);
+          if (!parent) break;
+          parts.unshift(parent.name);
+          curr = parent;
+          depth++;
+        }
+        const subject = S.subjects.find(s => s.id === folder.subject_id);
+        if (subject) parts.unshift(subject.name);
+        return parts.join(' > ');
+      };
 
-      if (duplicates.length > 0 && newFiles.length === 0) {
-        // All files are duplicates — block entirely
-        const names = duplicates.map(f => `• ${f.name}`).join('\n');
-        toast(`Already in your library:\n${names}`);
+      // ── Duplicate detection & Shortcut conversion ──
+      const duplicatesInSameFolder = [];
+      const duplicatesInOtherFolders = [];
+      const newFiles = [];
+
+      for (const f of files) {
+        const cleanName = f.name.toLowerCase().trim();
+        const match = S.pdfs.find(p => p.name.toLowerCase().trim() === cleanName);
+        if (!match) {
+          newFiles.push(f);
+        } else if (match.folder_id === S.uploadFolderId) {
+          duplicatesInSameFolder.push({ file: f, match });
+        } else {
+          duplicatesInOtherFolders.push({ file: f, match });
+        }
+      }
+
+      // If everything selected is already in this exact folder
+      if (duplicatesInSameFolder.length > 0 && duplicatesInOtherFolders.length === 0 && newFiles.length === 0) {
+        const names = duplicatesInSameFolder.map(d => `• ${d.file.name}`).join('\n');
+        toast(`Already in this folder:\n${names}`);
         this.value = '';
         return;
       }
 
-      if (duplicates.length > 0) {
-        // Some are duplicates — ask whether to skip them
-        const names = duplicates.map(f => `• ${f.name}`).join('\n');
-        const proceed = confirm(
-          `The following file${duplicates.length > 1 ? 's are' : ' is'} already in your library:\n\n${names}\n\nSkip ${duplicates.length > 1 ? 'them' : 'it'} and upload only the new files?`
-        );
-        if (!proceed) { this.value = ''; return; }
-        // Proceed with only the new ones
-      }
+      const shortcutsToCreate = [];
 
-      const toUpload = newFiles.length > 0 ? newFiles : files;
-      toast(`Uploading ${toUpload.length} PDF${toUpload.length > 1 ? 's' : ''}…`);
-
-      // ── Resolve Drive folder path (Subject / Folder) ──
-      let driveFolderId = null;
-      try {
-        const appFolder = S.driveFolderId;
-        if (appFolder) {
-          const folder   = S.folders.find(f => f.id === S.uploadFolderId);
-          const subject  = folder ? S.subjects.find(s => s.id === folder.subject_id) : null;
-          if (subject && folder) {
-            const subjDriveId = await driveEnsureSubFolder(subject.name, appFolder);
-            // If nested subfolder, build full path
-            if (folder.parent_folder_id) {
-              const parentFold = S.folders.find(f => f.id === folder.parent_folder_id);
-              if (parentFold) {
-                const parentDriveId = await driveEnsureSubFolder(parentFold.name, subjDriveId);
-                driveFolderId = await driveEnsureSubFolder(folder.name, parentDriveId);
-              } else {
-                driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
-              }
-            } else {
-              driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
-            }
+      // If files exist in another folder in the library, offer to create shortcuts
+      if (duplicatesInOtherFolders.length > 0) {
+        if (files.length === 1 && duplicatesInOtherFolders.length === 1 && newFiles.length === 0) {
+          const item = duplicatesInOtherFolders[0];
+          const loc = getFolderLocationName(item.match.folder_id);
+          const createShortcut = confirm(
+            `"${item.file.name}" is already in your library (in ${loc}).\n\nWould you like to create a shortcut to it in this folder?`
+          );
+          if (createShortcut) {
+            shortcutsToCreate.push(item);
+          } else {
+            this.value = '';
+            return;
+          }
+        } else {
+          const list = duplicatesInOtherFolders.map(d => `• ${d.file.name} (in ${getFolderLocationName(d.match.folder_id)})`).join('\n');
+          const promptMsg = newFiles.length > 0
+            ? `The following file${duplicatesInOtherFolders.length > 1 ? 's are' : ' is'} already in your library:\n\n${list}\n\nCreate shortcut${duplicatesInOtherFolders.length > 1 ? 's' : ''} in this folder and upload the new file${newFiles.length > 1 ? 's' : ''}?`
+            : `The following file${duplicatesInOtherFolders.length > 1 ? 's are' : ' is'} already in your library:\n\n${list}\n\nCreate shortcut${duplicatesInOtherFolders.length > 1 ? 's' : ''} in this folder?`;
+          const createShortcuts = confirm(promptMsg);
+          if (createShortcuts) {
+            shortcutsToCreate.push(...duplicatesInOtherFolders);
+          } else if (newFiles.length === 0) {
+            this.value = '';
+            return;
           }
         }
-      } catch (e) {
-        console.warn('Could not create Drive subfolder, uploading to root:', e);
       }
 
       let lastRec = null;
-      for (const file of toUpload) {
-        // Upload to Drive (inside the resolved subject/folder path)
-        const driveFile = await driveUploadPDF(file, driveFolderId);
-        // Register in Supabase
-        lastRec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
-        S.annCounts[lastRec.id] = 0;
+      let shortcutCount = 0;
+      let uploadCount = 0;
+
+      // 1. Create shortcuts (instant, 0 extra Google Drive storage used)
+      for (const item of shortcutsToCreate) {
+        const trueId = item.match.linked_pdf_id || item.match.id;
+        const driveId = item.match.drive_file_id || (S.pdfs.find(p => p.id === trueId)?.drive_file_id);
+        lastRec = await dbRegisterPDF(S.uploadFolderId, item.match.name, driveId, trueId);
+        S.annCounts[lastRec.id] = S.annCounts[trueId] || 0;
+        shortcutCount++;
+      }
+
+      // 2. Upload any brand new files
+      if (newFiles.length > 0) {
+        toast(`Uploading ${newFiles.length} new PDF${newFiles.length > 1 ? 's' : ''}…`);
+
+        // ── Resolve Drive folder path (Subject / Folder) ──
+        let driveFolderId = null;
+        try {
+          const appFolder = S.driveFolderId;
+          if (appFolder) {
+            const folder   = S.folders.find(f => f.id === S.uploadFolderId);
+            const subject  = folder ? S.subjects.find(s => s.id === folder.subject_id) : null;
+            if (subject && folder) {
+              const subjDriveId = await driveEnsureSubFolder(subject.name, appFolder);
+              // If nested subfolder, build full path
+              if (folder.parent_folder_id) {
+                const parentFold = S.folders.find(f => f.id === folder.parent_folder_id);
+                if (parentFold) {
+                  const parentDriveId = await driveEnsureSubFolder(parentFold.name, subjDriveId);
+                  driveFolderId = await driveEnsureSubFolder(folder.name, parentDriveId);
+                } else {
+                  driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
+                }
+              } else {
+                driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Could not create Drive subfolder, uploading to root:', e);
+        }
+
+        for (const file of newFiles) {
+          // Upload to Drive (inside the resolved subject/folder path)
+          const driveFile = await driveUploadPDF(file, driveFolderId);
+          // Register in Supabase
+          lastRec = await dbRegisterPDF(S.uploadFolderId, file.name, driveFile.id);
+          S.annCounts[lastRec.id] = 0;
+          uploadCount++;
+        }
       }
 
       renderLibrary();
-      toast('Upload complete!');
 
-      // If they only uploaded one file, open it automatically
-      if (toUpload.length === 1 && lastRec) {
+      // Feedback toast
+      if (shortcutCount > 0 && uploadCount > 0) {
+        toast(`✓ Uploaded ${uploadCount} PDF${uploadCount > 1 ? 's' : ''} and created ${shortcutCount} shortcut${shortcutCount > 1 ? 's' : ''}!`);
+      } else if (shortcutCount > 0) {
+        toast(`🔗 Created ${shortcutCount} shortcut${shortcutCount > 1 ? 's' : ''}!`);
+      } else if (uploadCount > 0) {
+        toast('Upload complete!');
+      }
+
+      // If user uploaded or shortcutted a single file, open it automatically
+      if ((shortcutCount + uploadCount === 1) && lastRec) {
         await openPDFFromLibrary(lastRec);
       }
     } catch (e) {
