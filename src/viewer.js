@@ -467,16 +467,24 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     recordError(e, 'PDF Load');
     let errCode = e?.status || (e?.message?.includes('401') ? '401' : (e?.message?.includes('403') ? '403' : 'ERR'));
     let msg = 'Could not load PDF.';
-    if (e.message?.includes('session expired') || errCode === '401') {
-      msg = 'Google Drive session expired [401]. Please click "Sign in" on the Drive bar in the sidebar.';
-    } else if (e.message?.includes('Not signed in')) {
-      msg = 'Not signed in to Google Drive. Please click "Sign in" on the Drive bar in the sidebar.';
+    const isAuthErr = e.message?.includes('session expired') || e.message?.includes('Not signed in') || errCode === '401';
+    if (isAuthErr) {
+      msg = 'Google Drive sign-in required. Use the orange banner at the top of the page to sign back in, then click "Try again" below.';
     } else if (errCode === '403') {
       msg = 'Google Drive permission denied or quota exceeded [403].';
     } else if (e.message) {
       msg = `Could not load PDF [${errCode}]: ${e.message}`;
     }
-    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:380px;line-height:1.6"><strong>⚠️ Error loading PDF</strong><br>${msg}<br><br><button onclick="window.location.reload()" style="padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer">Reload App</button></div>`;
+    // Capture pdfFile reference for retry button (closures work fine here)
+    const _pdfRef = pdfFile;
+    scroll.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px;max-width:400px;line-height:1.7"><strong>⚠️ Error loading PDF</strong><br>${msg}<br><br>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btn-retry-load" style="padding:6px 14px;background:var(--accent,#3b82f6);border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:12px">↺ Try again</button>
+        <button onclick="window.location.reload()" style="padding:6px 12px;background:var(--navy-l);border:1px solid var(--navy-b);color:var(--text);border-radius:6px;cursor:pointer;font-size:12px">Reload App</button>
+      </div></div>`;
+    document.getElementById('btn-retry-load')?.addEventListener('click', () => {
+      openPDFFromLibrary(_pdfRef, 2);
+    });
     const { syncErr } = await import('./ui.js');
     syncErr(`Load failed [${errCode}]`);
   }

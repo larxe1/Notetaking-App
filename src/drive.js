@@ -300,15 +300,34 @@ export async function driveFetchPDF(drive_file_id, onProgress = null, pdfName = 
   if (!S.driveToken) {
     throw new Error('Not signed in to Google Drive');
   }
-  syncSpin('Downloading from Drive…');
 
-  const resp = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(drive_file_id)}?alt=media`,
-    { headers: { Authorization: `Bearer ${S.driveToken}` } }
-  );
+  // ── Inner helper: attempt one fetch with the current token ──
+  async function _doFetch(token) {
+    return fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(drive_file_id)}?alt=media`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+  }
+
+  syncSpin('Downloading from Drive…');
+  let resp = await _doFetch(S.driveToken);
+
+  // ── On 401: try one silent token refresh before giving up ──
+  if (resp.status === 401) {
+    try {
+      await _requestToken(true); // silent refresh — no popup, fast if Google session is active
+      resp = await _doFetch(S.driveToken); // retry with the fresh token
+    } catch {
+      // Silent refresh failed — must show login prompt
+      _onSessionExpired();
+      throw new Error('Google Drive session expired. Please sign in again.');
+    }
+    // If the retry also fails with 401, fall through to the error handler below
+  }
+
   if (!resp.ok) {
     if (resp.status === 401) {
-      _onSessionExpired(); // update UI immediately, show banner
+      _onSessionExpired();
       throw new Error('Google Drive session expired. Please sign in again.');
     }
     syncErr('Download failed');
