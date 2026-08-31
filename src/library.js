@@ -917,31 +917,89 @@ export function initLibraryModals() {
   });
 
   // PDF upload via Drive
+// ── Prompt for Duplicate PDF Resolution (Shortcut vs Independent Copy vs Cancel) ──
+function promptDuplicateResolution(duplicateItems) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('mo-dup-upload');
+    const desc = document.getElementById('dup-upload-desc');
+    const list = document.getElementById('dup-upload-list');
+    const btnShortcut = document.getElementById('dup-btn-shortcut');
+    const btnCopy = document.getElementById('dup-btn-copy');
+    const btnCancel = document.getElementById('dup-btn-cancel');
+
+    if (!modal || !btnShortcut || !btnCopy) {
+      const ans = confirm('This file is already in your library.\n\nClick OK to create a linked shortcut, or Cancel to skip.');
+      return resolve(ans ? 'SHORTCUT' : 'CANCEL');
+    }
+
+    const formatLoc = (folderId) => {
+      const folder = S.folders.find(f => f.id === folderId);
+      if (!folder) return 'Library';
+      const parts = [folder.name];
+      let curr = folder;
+      let depth = 0;
+      while (curr.parent_folder_id && depth < 10) {
+        const parent = S.folders.find(f => f.id === curr.parent_folder_id);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        curr = parent;
+        depth++;
+      }
+      const subject = S.subjects.find(s => s.id === folder.subject_id);
+      if (subject) parts.unshift(subject.name);
+      return parts.join(' > ');
+    };
+
+    if (duplicateItems.length === 1) {
+      const item = duplicateItems[0];
+      const loc = formatLoc(item.match.folder_id);
+      desc.innerHTML = `The file <b>"${item.file.name}"</b> already exists in your library under <b>${loc}</b>.`;
+      list.style.display = 'none';
+    } else {
+      desc.textContent = `${duplicateItems.length} files you selected already exist in your library:`;
+      list.style.display = 'block';
+      list.innerHTML = duplicateItems.map(d => `• <b>${d.file.name}</b> (in ${formatLoc(d.match.folder_id)})`).join('<br>');
+    }
+
+    openModal('mo-dup-upload');
+
+    function cleanup() {
+      btnShortcut.removeEventListener('click', onShortcut);
+      btnCopy.removeEventListener('click', onCopy);
+      btnCancel?.removeEventListener('click', onCancel);
+    }
+
+    function onShortcut() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('SHORTCUT');
+    }
+
+    function onCopy() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('COPY');
+    }
+
+    function onCancel() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('CANCEL');
+    }
+
+    btnShortcut.addEventListener('click', onShortcut, { once: true });
+    btnCopy.addEventListener('click', onCopy, { once: true });
+    btnCancel?.addEventListener('click', onCancel, { once: true });
+  });
+}
+
+  // PDF upload via Drive
   document.getElementById('pdf-file-in').addEventListener('change', async function () {
     if (!this.files || this.files.length === 0 || !S.uploadFolderId) return;
     try {
       const files = Array.from(this.files);
 
-      // Helper to format folder path name for prompts
-      const getFolderLocationName = (folderId) => {
-        const folder = S.folders.find(f => f.id === folderId);
-        if (!folder) return 'Library';
-        const parts = [folder.name];
-        let curr = folder;
-        let depth = 0;
-        while (curr.parent_folder_id && depth < 10) {
-          const parent = S.folders.find(f => f.id === curr.parent_folder_id);
-          if (!parent) break;
-          parts.unshift(parent.name);
-          curr = parent;
-          depth++;
-        }
-        const subject = S.subjects.find(s => s.id === folder.subject_id);
-        if (subject) parts.unshift(subject.name);
-        return parts.join(' > ');
-      };
-
-      // ── Duplicate detection & Shortcut conversion ──
+      // ── Duplicate detection ──
       const duplicatesInSameFolder = [];
       const duplicatesInOtherFolders = [];
       const newFiles = [];
@@ -958,7 +1016,7 @@ export function initLibraryModals() {
         }
       }
 
-      // If everything selected is already in this exact folder
+      // If all selected files are already in this exact folder
       if (duplicatesInSameFolder.length > 0 && duplicatesInOtherFolders.length === 0 && newFiles.length === 0) {
         const names = duplicatesInSameFolder.map(d => `• ${d.file.name}`).join('\n');
         toast(`Already in this folder:\n${names}`);
@@ -967,30 +1025,20 @@ export function initLibraryModals() {
       }
 
       const shortcutsToCreate = [];
+      const filesToUpload = [...newFiles];
 
-      // If files exist in another folder in the library, offer to create shortcuts
+      // If files exist in another folder in the library
       if (duplicatesInOtherFolders.length > 0) {
-        if (files.length === 1 && duplicatesInOtherFolders.length === 1 && newFiles.length === 0) {
-          const item = duplicatesInOtherFolders[0];
-          const loc = getFolderLocationName(item.match.folder_id);
-          const createShortcut = confirm(
-            `"${item.file.name}" is already in your library (in ${loc}).\n\nWould you like to create a shortcut to it in this folder?`
-          );
-          if (createShortcut) {
-            shortcutsToCreate.push(item);
-          } else {
-            this.value = '';
-            return;
+        const choice = await promptDuplicateResolution(duplicatesInOtherFolders);
+        if (choice === 'SHORTCUT') {
+          shortcutsToCreate.push(...duplicatesInOtherFolders);
+        } else if (choice === 'COPY') {
+          for (const d of duplicatesInOtherFolders) {
+            filesToUpload.push(d.file);
           }
         } else {
-          const list = duplicatesInOtherFolders.map(d => `• ${d.file.name} (in ${getFolderLocationName(d.match.folder_id)})`).join('\n');
-          const promptMsg = newFiles.length > 0
-            ? `The following file${duplicatesInOtherFolders.length > 1 ? 's are' : ' is'} already in your library:\n\n${list}\n\nCreate shortcut${duplicatesInOtherFolders.length > 1 ? 's' : ''} in this folder and upload the new file${newFiles.length > 1 ? 's' : ''}?`
-            : `The following file${duplicatesInOtherFolders.length > 1 ? 's are' : ' is'} already in your library:\n\n${list}\n\nCreate shortcut${duplicatesInOtherFolders.length > 1 ? 's' : ''} in this folder?`;
-          const createShortcuts = confirm(promptMsg);
-          if (createShortcuts) {
-            shortcutsToCreate.push(...duplicatesInOtherFolders);
-          } else if (newFiles.length === 0) {
+          // User chose Cancel
+          if (newFiles.length === 0) {
             this.value = '';
             return;
           }
@@ -1010,9 +1058,9 @@ export function initLibraryModals() {
         shortcutCount++;
       }
 
-      // 2. Upload any brand new files
-      if (newFiles.length > 0) {
-        toast(`Uploading ${newFiles.length} new PDF${newFiles.length > 1 ? 's' : ''}…`);
+      // 2. Upload any brand new files or independent duplicate copies
+      if (filesToUpload.length > 0) {
+        toast(`Uploading ${filesToUpload.length} PDF${filesToUpload.length > 1 ? 's' : ''}…`);
 
         // ── Resolve Drive folder path (Subject / Folder) ──
         let driveFolderId = null;
@@ -1041,7 +1089,7 @@ export function initLibraryModals() {
           console.warn('Could not create Drive subfolder, uploading to root:', e);
         }
 
-        for (const file of newFiles) {
+        for (const file of filesToUpload) {
           // Upload to Drive (inside the resolved subject/folder path)
           const driveFile = await driveUploadPDF(file, driveFolderId);
           // Register in Supabase
