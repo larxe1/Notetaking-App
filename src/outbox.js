@@ -66,6 +66,14 @@ function getUpsertOptions(table) {
   return undefined;
 }
 
+// ── Safety Guard: Ensure delete/update queries always have valid, non-empty criteria ──
+function isValidMatchQuery(matchQuery) {
+  if (!matchQuery || typeof matchQuery !== 'object') return false;
+  const entries = Object.entries(matchQuery);
+  if (entries.length === 0) return false;
+  return entries.every(([_, v]) => v !== undefined && v !== null && v !== '');
+}
+
 // ── Replay all queued actions to Supabase ──
 export async function replayOutbox(dbClient) {
   if (_isReplaying) return;
@@ -91,18 +99,23 @@ export async function replayOutbox(dbClient) {
         if (error) throw error;
       } else if (item.action === 'update') {
         let q = dbClient.from(item.table).update(item.data);
-        if (item.matchQuery) {
+        if (item.matchQuery && isValidMatchQuery(item.matchQuery)) {
           q = q.match(item.matchQuery);
         } else if (item.data?.id) {
           q = q.eq('id', item.data.id);
+        } else {
+          console.warn(`[Outbox] Dropping unsafe update without criteria on ${item.table}`);
+          continue;
         }
         const { error } = await q;
         if (error) throw error;
       } else if (item.action === 'delete') {
-        if (item.matchQuery) {
-          const { error } = await dbClient.from(item.table).delete().match(item.matchQuery);
-          if (error) throw error;
+        if (!isValidMatchQuery(item.matchQuery)) {
+          console.warn(`[Outbox] Dropping unsafe delete with invalid criteria on ${item.table}:`, item.matchQuery);
+          continue;
         }
+        const { error } = await dbClient.from(item.table).delete().match(item.matchQuery);
+        if (error) throw error;
       }
       console.log(`[Outbox] Successfully synced: ${item.action} on ${item.table}`);
     } catch (err) {
@@ -138,6 +151,12 @@ export async function replayOutbox(dbClient) {
 
 // ── Wrapper: Execute Supabase write or safely enqueue if offline ──
 export async function safeDbWrite(dbClient, table, action, data, matchQuery = null) {
+  // Safety check on delete operations: ensure strict criteria
+  if (action === 'delete' && !isValidMatchQuery(matchQuery)) {
+    console.error(`[Outbox] Blocked unsafe delete on "${table}" — matchQuery is missing or contains invalid keys:`, matchQuery);
+    return;
+  }
+
   // If we know we are offline, enqueue immediately
   if (!navigator.onLine) {
     enqueueAction(table, action, data, matchQuery);
@@ -150,18 +169,19 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
       if (error) throw error;
     } else if (action === 'update') {
       let q = dbClient.from(table).update(data);
-      if (matchQuery) {
+      if (matchQuery && isValidMatchQuery(matchQuery)) {
         q = q.match(matchQuery);
       } else if (data?.id) {
         q = q.eq('id', data.id);
+      } else {
+        console.error(`[Outbox] Blocked unsafe update on "${table}" — no valid matchQuery or id provided:`, data);
+        return;
       }
       const { error } = await q;
       if (error) throw error;
     } else if (action === 'delete') {
-      if (matchQuery) {
-        const { error } = await dbClient.from(table).delete().match(matchQuery);
-        if (error) throw error;
-      }
+      const { error } = await dbClient.from(table).delete().match(matchQuery);
+      if (error) throw error;
     }
   } catch (err) {
     const errMsg = (err?.message || err?.details || String(err)).toLowerCase();

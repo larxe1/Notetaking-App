@@ -141,49 +141,74 @@ export async function dbRenameSubject(id, name) {
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
+// ── Modular Helper: Safely purge a single PDF and its related records ──
+export async function purgePdfData(pdfId, driveFileId = null) {
+  if (!pdfId || typeof pdfId !== 'string' || !pdfId.trim()) {
+    console.warn('[DB] purgePdfData: Skipped invalid or empty pdfId');
+    return;
+  }
+
+  const cleanId = pdfId.trim();
+
+  // 1. Delete annotation notes specifically attached to this PDF's annotations
+  try {
+    const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', cleanId);
+    const annIds = (anns || []).map(a => a.id).filter(Boolean);
+    for (const aId of annIds) {
+      await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: aId });
+    }
+  } catch (err) {
+    console.warn(`[DB] Error fetching annotations during purge for ${cleanId}:`, err);
+  }
+
+  // 2. Delete all records strictly matching this specific PDF ID
+  await safeDbWrite(db, 'annotations', 'delete', null, { pdf_file_id: cleanId });
+  await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: cleanId });
+  await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { pdf_file_id: cleanId });
+  await safeDbWrite(db, 'pdf_notes', 'delete', null, { pdf_id: cleanId });
+  await safeDbWrite(db, 'pdf_files', 'delete', null, { id: cleanId });
+
+  // 3. Clear local storage cache keys for this PDF
+  safeStorageRemove('local_anns_' + cleanId);
+  safeStorageRemove('local_bms_' + cleanId);
+  safeStorageRemove('local_drawings_' + cleanId);
+  safeStorageRemove('local_notepad_' + cleanId);
+  safeStorageRemove('local_digest_' + cleanId);
+
+  // 4. If Google Drive file ID is provided, clean up Drive & local PDF file cache
+  if (driveFileId) {
+    try {
+      await driveDeleteFile(driveFileId);
+    } catch (e) {
+      console.error(`[DB] Drive deletion error for ${cleanId}:`, e);
+    }
+  }
+}
+
 export async function dbDelSubject(id) {
+  if (!id || typeof id !== 'string') return;
+  const cleanId = id.trim();
+
   // Get all folder IDs under this subject
-  const fids = S.folders.filter(f => f.subject_id === id).map(f => f.id);
+  const fids = S.folders.filter(f => f.subject_id === cleanId).map(f => f.id);
   // Get all PDF IDs under those folders
   const pdfsToDelete = S.pdfs.filter(p => fids.includes(p.folder_id));
+
+  // Purge each child PDF modularly
+  for (const pdf of pdfsToDelete) {
+    await purgePdfData(pdf.id, pdf.drive_file_id);
+  }
+
+  // Delete child folders and the subject itself
+  for (const fid of fids) {
+    await safeDbWrite(db, 'folders', 'delete', null, { id: fid });
+  }
+  await safeDbWrite(db, 'subjects', 'delete', null, { id: cleanId });
+
   const pids = pdfsToDelete.map(p => p.id);
-
-  // Delete annotations + notes + bookmarks for all PDFs (fix bug #6)
-  if (pids.length) {
-    for (const pid of pids) {
-      const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', pid);
-      const annIds = (anns || []).map(a => a.id);
-      for (const aId of annIds) {
-        await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: aId });
-        await safeDbWrite(db, 'annotations', 'delete', null, { id: aId });
-      }
-      await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: pid });
-      await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { pdf_file_id: pid });
-      await safeDbWrite(db, 'pdf_notes', 'delete', null, { pdf_id: pid });
-      await safeDbWrite(db, 'pdf_files', 'delete', null, { id: pid });
-
-      safeStorageRemove('local_anns_' + pid);
-      safeStorageRemove('local_bms_' + pid);
-      safeStorageRemove('local_drawings_' + pid);
-      safeStorageRemove('local_notepad_' + pid);
-      safeStorageRemove('local_digest_' + pid);
-    }
-    
-    // Also remove from Google Drive
-    for (const p of pdfsToDelete) {
-      if (p.drive_file_id) {
-        try { await driveDeleteFile(p.drive_file_id); } catch (e) { console.error('Drive delete error', e); }
-      }
-    }
-  }
-  if (fids.length) {
-    for (const fid of fids) await safeDbWrite(db, 'folders', 'delete', null, { id: fid });
-  }
-  await safeDbWrite(db, 'subjects', 'delete', null, { id });
-
   S.pdfs     = S.pdfs.filter(p => !pids.includes(p.id));
-  S.folders  = S.folders.filter(f => f.subject_id !== id);
-  S.subjects = S.subjects.filter(x => x.id !== id);
+  S.folders  = S.folders.filter(f => f.subject_id !== cleanId);
+  S.subjects = S.subjects.filter(x => x.id !== cleanId);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
@@ -246,45 +271,26 @@ export async function dbUpdateFolderNotes(id, notes) {
 }
 
 export async function dbDelFolder(id) {
+  if (!id || typeof id !== 'string') return;
+  const cleanId = id.trim();
+
   // Recursively collect all descendant folder IDs
   function collectFolderIds(foldId) {
     const children = S.folders.filter(f => f.parent_folder_id === foldId).map(f => f.id);
     return [foldId, ...children.flatMap(collectFolderIds)];
   }
-  const allFoldIds = collectFolderIds(id);
+  const allFoldIds = collectFolderIds(cleanId);
   const pdfsToDelete = S.pdfs.filter(p => allFoldIds.includes(p.folder_id));
-  const pids = pdfsToDelete.map(p => p.id);
 
-  // Delete annotations + notes + bookmarks for all PDFs
-  if (pids.length) {
-    for (const pid of pids) {
-      const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', pid);
-      const annIds = (anns || []).map(a => a.id);
-      for (const aId of annIds) {
-        await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: aId });
-        await safeDbWrite(db, 'annotations', 'delete', null, { id: aId });
-      }
-      await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: pid });
-      await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { pdf_file_id: pid });
-      await safeDbWrite(db, 'pdf_notes', 'delete', null, { pdf_id: pid });
-      await safeDbWrite(db, 'pdf_files', 'delete', null, { id: pid });
-
-      safeStorageRemove('local_anns_' + pid);
-      safeStorageRemove('local_bms_' + pid);
-      safeStorageRemove('local_drawings_' + pid);
-      safeStorageRemove('local_notepad_' + pid);
-      safeStorageRemove('local_digest_' + pid);
-    }
-    
-    // Also remove from Google Drive
-    for (const p of pdfsToDelete) {
-      if (p.drive_file_id) {
-        try { await driveDeleteFile(p.drive_file_id); } catch (e) { console.error('Drive delete error', e); }
-      }
-    }
+  // Purge each child PDF modularly
+  for (const pdf of pdfsToDelete) {
+    await purgePdfData(pdf.id, pdf.drive_file_id);
   }
+
   // Delete all descendant folders (deepest first) + self
-  await db.from('folders').delete().in('id', allFoldIds);
+  for (const fid of allFoldIds) {
+    await safeDbWrite(db, 'folders', 'delete', null, { id: fid });
+  }
 
   S.pdfs    = S.pdfs.filter(p => !allFoldIds.includes(p.folder_id));
   S.folders = S.folders.filter(f => !allFoldIds.includes(f.id));
@@ -342,33 +348,13 @@ export async function dbReorderPDF(id, sort_order) {
 }
 
 export async function dbDelPDF(id) {
-  // 1. Delete annotations + annotation notes
-  const { data: anns } = await db.from('annotations').select('id').eq('pdf_file_id', id);
-  const annIds = (anns || []).map(a => a.id);
-  if (annIds.length) {
-    for (const aId of annIds) {
-      await safeDbWrite(db, 'annotation_notes', 'delete', null, { annotation_id: aId });
-    }
-    for (const aId of annIds) {
-      await safeDbWrite(db, 'annotations', 'delete', null, { id: aId });
-    }
-  }
+  if (!id || typeof id !== 'string') return;
+  const cleanId = id.trim();
 
-  // 2. Delete drawings, bookmarks, notepad notes, and the PDF record
-  await safeDbWrite(db, 'drawings', 'delete', null, { pdf_file_id: id });
-  await safeDbWrite(db, 'pdf_bookmarks', 'delete', null, { pdf_file_id: id });
-  await safeDbWrite(db, 'pdf_notes', 'delete', null, { pdf_id: id });
-  await safeDbWrite(db, 'pdf_files', 'delete', null, { id });
+  await purgePdfData(cleanId);
 
-  // 3. Clean up local storage keys for this PDF
-  safeStorageRemove('local_anns_' + id);
-  safeStorageRemove('local_bms_' + id);
-  safeStorageRemove('local_drawings_' + id);
-  safeStorageRemove('local_notepad_' + id);
-  safeStorageRemove('local_digest_' + id);
-
-  // 4. Remove from memory (including shortcuts pointing to this master PDF)
-  S.pdfs = S.pdfs.filter(p => p.id !== id && p.linked_pdf_id !== id);
+  // Also remove from memory any shortcuts that point to this PDF
+  S.pdfs = S.pdfs.filter(p => p.id !== cleanId && p.linked_pdf_id !== cleanId);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
