@@ -104,8 +104,12 @@ async function executeSaveForPdf(targetPdfId) {
 
   const lbl = $saveLbl();
   try {
+    const savedWriteTs = getWriteTs(targetPdfId);
     const res = await dbSaveNotepad(targetPdfId, content, digest);
-    setSyncTs(targetPdfId); // mark as successfully synced to Supabase
+    // Only mark synced if Supabase confirmed AND no new writes arrived during the save
+    if (res?.saved && getWriteTs(targetPdfId) === savedWriteTs) {
+      setSyncTs(targetPdfId);
+    }
     saveHistorySnapshot(targetPdfId, content, digest);
 
     if (_activePdfId === targetPdfId && lbl) {
@@ -214,8 +218,8 @@ export async function flushNotepadSave() {
 
     saveHistorySnapshot(targetPdfId, content, digest);
     try {
-      await dbSaveNotepad(targetPdfId, content, digest);
-      setSyncTs(targetPdfId);
+      const res = await dbSaveNotepad(targetPdfId, content, digest);
+      if (res?.saved) setSyncTs(targetPdfId);
     } catch {}
   }
 }
@@ -301,8 +305,10 @@ export async function openNotepad(pdfId) {
 
     const contentDiffers  = localContent !== remC || localDigest !== remD;
 
-    let finalContent = remC || localContent;
-    let finalDigest  = remD || localDigest;
+    // Use remote if it returned a real value (even empty string = intentional deletion);
+    // only fall back to local when remote is null/undefined (no row in Supabase)
+    let finalContent = remC !== null && remC !== undefined ? remC : localContent;
+    let finalDigest  = remD !== null && remD !== undefined ? remD : localDigest;
     let didMerge = false;
 
     if ((hasLocalUnsaved || hasLegacyLocal) && contentDiffers) {
@@ -921,17 +927,5 @@ function initNotepadResizer() {
   handle.addEventListener('pointercancel', stopResize);
 }
 
-// ── Global lifecycle safeguards: Flush on tab close, hide, or reload ──
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    flushNotepadSave();
-  });
-  window.addEventListener('pagehide', () => {
-    flushNotepadSave();
-  });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      flushNotepadSave();
-    }
-  });
-}
+// NOTE: beforeunload, pagehide, and visibilitychange listeners are registered
+// inside initNotepad() — do NOT duplicate them here at module level.

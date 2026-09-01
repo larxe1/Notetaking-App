@@ -575,15 +575,22 @@ export async function dbLoadNotepad(pdf_id) {
   const localC = safeStorageGet('local_notepad_' + truePdfId, '') || '';
   const localD = safeStorageGet('local_digest_' + truePdfId, '') || '';
 
-  if (!content && localC) {
-    content = localC;
-    if (source === 'none') source = 'local';
-    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_NOTES', `Restored notes from local storage (${content.length} chars)`);
+  // Fallback to local storage only if cloud returned null/undefined (no row);
+  // empty string '' means intentional deletion — don't overwrite with stale cache
+  if ((content === null || content === undefined || content === '') && localC) {
+    // Only restore local if cloud had no row at all (not an intentional deletion)
+    if (source === 'none') {
+      content = localC;
+      source = 'local';
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_NOTES', `Restored notes from local storage (${content.length} chars)`);
+    }
   }
-  if (!digest && localD) {
-    digest = localD;
-    if (source === 'none') source = 'local';
-    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_DIGEST', `Restored digest from local storage (${digest.length} chars)`);
+  if ((digest === null || digest === undefined || digest === '') && localD) {
+    if (source === 'none' || (source === 'local' && !content)) {
+      digest = localD;
+      if (source === 'none') source = 'local';
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_DIGEST', `Restored digest from local storage (${digest.length} chars)`);
+    }
   }
 
   // Fallback to history snapshot if still empty

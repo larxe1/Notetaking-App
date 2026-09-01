@@ -125,10 +125,10 @@ export async function replayOutbox(dbClient) {
       const errMsg = (err?.message || err?.details || String(err)).toLowerCase();
       const isFatal = errMsg.includes('syntax') || errMsg.includes('constraint') || 
                       errMsg.includes('violates') || errMsg.includes('column') || 
-                      errMsg.includes('relation') || errMsg.includes('42703') ||
+                      errMsg.includes('relation') || errMsg.includes('42703') || 
                       errMsg.includes('23502') || errMsg.includes('23503') || errMsg.includes('22p02') || 
                       errMsg.includes('23505') || errMsg.includes('foreign key') || item.retries >= 2 || 
-                      (Date.now() - (item.created_at || 0) > 120000);
+                      (Date.now() - (item.created_at || 0) > 86400000);
       
       if (isFatal) {
         console.warn(`[Outbox] Dropping unrecoverable outbox action:`, item, err);

@@ -2,11 +2,12 @@
 // SYNC — Real-time synchronization across tabs & devices
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { db, dbLoad, dbLoadAnnCounts, dbLoadAnnotations, dbLoadDrawings } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbLoadAnnotations, dbLoadDrawings, dbLoadNotepad } from './db.js';
 
 let _channel = null;
 let _refreshTimer = null;
 let _annTimer = null;
+let _notepadTimer = null;
 
 export function broadcastSync(msg) {
   try {
@@ -55,6 +56,34 @@ async function handleAnnotationsRefresh(pdfId) {
   }, 150);
 }
 
+async function handleNotepadRefresh(pdfId) {
+  if (!S.curPDF) return;
+  const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
+  if (pdfId && pdfId !== trueId) return;
+
+  // Don't overwrite if notepad panel is not open
+  const panel = document.getElementById('notepad-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+
+  clearTimeout(_notepadTimer);
+  _notepadTimer = setTimeout(async () => {
+    try {
+      const { content, digest } = await dbLoadNotepad(trueId);
+      const editor = document.getElementById('np-editor');
+      const digestEditor = document.getElementById('np-digest-editor');
+      // Don't overwrite if user is actively typing in the editor
+      if (editor && document.activeElement !== editor && content !== undefined) {
+        editor.innerHTML = content || '';
+      }
+      if (digestEditor && document.activeElement !== digestEditor && digest !== undefined) {
+        digestEditor.innerHTML = digest || '';
+      }
+    } catch (err) {
+      console.error('[Sync] Notepad refresh error', err);
+    }
+  }, 200);
+}
+
 export function initRealtimeSync() {
   // 1. Cross-Tab Broadcast Channel (instant 0ms sync on same browser)
   if (typeof BroadcastChannel !== 'undefined') {
@@ -99,6 +128,10 @@ export function initRealtimeSync() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'drawings' }, (payload) => {
           const pdfId = payload.new?.pdf_file_id || payload.old?.pdf_file_id;
           handleAnnotationsRefresh(pdfId);
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pdf_notes' }, (payload) => {
+          const pdfId = payload.new?.pdf_id || payload.old?.pdf_id;
+          handleNotepadRefresh(pdfId);
         })
         .subscribe();
     }
