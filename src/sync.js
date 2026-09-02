@@ -2,7 +2,7 @@
 // SYNC — Real-time synchronization across tabs & devices
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { db, dbLoad, dbLoadAnnCounts, dbLoadAnnotations, dbLoadDrawings, dbLoadNotepad } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbLoadAnnotations, dbLoadDrawings } from './db.js';
 
 let _channel = null;
 let _refreshTimer = null;
@@ -68,6 +68,7 @@ async function handleNotepadRefresh(pdfId) {
   clearTimeout(_notepadTimer);
   _notepadTimer = setTimeout(async () => {
     try {
+      const { dbLoadNotepad } = await import('./db.js');
       const { content, digest } = await dbLoadNotepad(trueId);
       const editor = document.getElementById('np-editor');
       const digestEditor = document.getElementById('np-digest-editor');
