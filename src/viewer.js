@@ -296,6 +296,13 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     await flushNotepadSave();
   } catch {}
   await flushFolderDoc();
+
+  // Destroy previous PDF.js document immediately to free RAM/GPU memory
+  if (S.pdfDoc) {
+    try { S.pdfDoc.destroy(); } catch {}
+    S.pdfDoc = null;
+  }
+
   S.curPDF = pdfFile;
   updateActivePDF();
 
@@ -304,10 +311,12 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
 
   const { clearSearchHighlights } = await import('./search.js');
   clearSearchHighlights();
-  
+
   const trueId = pdfFile.linked_pdf_id || pdfFile.id;
-  const { notepadOnPDFChange } = await import('./notepad.js');
-  await notepadOnPDFChange(trueId);
+
+  // Fire notepadOnPDFChange without blocking — it just flushes local state
+  // and loads notes from Supabase in the background; the PDF fetch can start immediately
+  import('./notepad.js').then(m => m.notepadOnPDFChange(trueId)).catch(() => {});
 
   // Instantly clear memory of previous PDF's data so ghost highlights never bleed over
   S.annotations = [];
