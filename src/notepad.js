@@ -88,18 +88,33 @@ async function executeSaveForPdf(targetPdfId) {
 
   let content = '';
   let digest = '';
+  let wasDirty = false;
 
   if (_notepadCache.has(targetPdfId)) {
     const entry = _notepadCache.get(targetPdfId);
     content = entry.content;
     digest = entry.digest;
+    wasDirty = !!entry.dirty;
     entry.dirty = false;
-  } else if (_activePdfId === targetPdfId) {
+  } else if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
     content = $notesEditor()?.innerHTML ?? '';
     digest = $digestEditor()?.innerHTML ?? '';
+    wasDirty = true;
   } else {
     content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
     digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
+  }
+
+  // ANTI-WIPE SAFETY GUARD:
+  // If attempting to save empty notes + digest without an active user edit,
+  // and local storage has existing content, ABORT to prevent wiping!
+  if (!content && !digest && !wasDirty) {
+    const existingC = safeStorageGet('local_notepad_' + targetPdfId, '');
+    const existingD = safeStorageGet('local_digest_' + targetPdfId, '');
+    if (existingC || existingD) {
+      console.warn(`[Notepad Safety] Blocked accidental wipe in executeSaveForPdf for ${targetPdfId}`);
+      return;
+    }
   }
 
   const lbl = $saveLbl();
@@ -184,6 +199,7 @@ function scheduleSaveForPdf(pdfId) {
 // ── Immediately flush pending save for the active PDF ──
 export async function flushNotepadSave() {
   const targetPdfId = _timerPdfId || _activePdfId;
+  const hadTimer = !!_saveTimer;
   if (_saveTimer) {
     clearTimeout(_saveTimer);
     _saveTimer = null;
@@ -191,19 +207,39 @@ export async function flushNotepadSave() {
   }
 
   if (targetPdfId) {
+    const entry = _notepadCache.get(targetPdfId);
+    // If not dirty and no save timer was active, nothing was changed — skip saving!
+    if (entry && !entry.dirty && !hadTimer) {
+      return;
+    }
+
     let content = '';
     let digest = '';
+    let wasDirty = false;
 
-    if (_activePdfId === targetPdfId) {
-      content = $notesEditor()?.innerHTML ?? '';
-      digest = $digestEditor()?.innerHTML ?? '';
-    } else if (_notepadCache.has(targetPdfId)) {
-      const entry = _notepadCache.get(targetPdfId);
+    if (_notepadCache.has(targetPdfId)) {
       content = entry.content;
       digest = entry.digest;
+      wasDirty = !!entry.dirty;
+      entry.dirty = false;
+    } else if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
+      content = $notesEditor()?.innerHTML ?? '';
+      digest = $digestEditor()?.innerHTML ?? '';
+      wasDirty = true;
     } else {
       content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
       digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
+    }
+
+    // ANTI-WIPE SAFETY GUARD:
+    // Do not save 0 chars if not dirty and local storage already has notes!
+    if (!content && !digest && !wasDirty) {
+      const existingC = safeStorageGet('local_notepad_' + targetPdfId, '');
+      const existingD = safeStorageGet('local_digest_' + targetPdfId, '');
+      if (existingC || existingD) {
+        console.warn(`[Notepad Safety] Blocked accidental wipe in flushNotepadSave for ${targetPdfId}`);
+        return;
+      }
     }
 
     _notepadCache.set(targetPdfId, {
@@ -305,13 +341,18 @@ export async function openNotepad(pdfId) {
 
     const contentDiffers  = localContent !== remC || localDigest !== remD;
 
-    // Use remote if it returned a real value (even empty string = intentional deletion);
-    // only fall back to local when remote is null/undefined (no row in Supabase)
-    let finalContent = remC !== null && remC !== undefined ? remC : localContent;
-    let finalDigest  = remD !== null && remD !== undefined ? remD : localDigest;
+    let finalContent = remC;
+    let finalDigest  = remD;
     let didMerge = false;
+    let pushLocal = false;
 
-    if ((hasLocalUnsaved || hasLegacyLocal) && contentDiffers) {
+    if (!remC && !remD && (localContent || localDigest)) {
+      // Remote is completely blank (0 chars), but local device has saved notes!
+      // NEVER wipe local notes with an empty cloud response — restore local notes and push to cloud!
+      finalContent = localContent;
+      finalDigest  = localDigest;
+      pushLocal = true;
+    } else if ((hasLocalUnsaved || hasLegacyLocal) && contentDiffers) {
       if ((localContent || localDigest) && (remC || remD)) {
         // Both devices have content — MERGE so nothing is lost
         finalContent = mergeNoteHtml(localContent, remC);
@@ -321,29 +362,34 @@ export async function openNotepad(pdfId) {
         // Only local has content — push local up to Supabase
         finalContent = localContent;
         finalDigest  = localDigest;
+        pushLocal = true;
+      } else {
+        finalContent = remC;
+        finalDigest  = remD;
       }
-      // If only remote has content (local empty): use remote (handled by finalContent = remC above)
+    } else if (remC || remD) {
+      finalContent = remC;
+      finalDigest  = remD;
+    } else {
+      finalContent = '';
+      finalDigest  = '';
     }
-
 
     _notepadCache.set(pdfId, {
       content:   finalContent,
       digest:    finalDigest,
-      dirty:     didMerge, // merged content needs to be pushed
+      dirty:     didMerge || pushLocal,
       timestamp: Date.now()
     });
 
     if (notesEd) notesEd.innerHTML = finalContent;
     if (digestEd) digestEd.innerHTML = finalDigest;
 
-    if (didMerge) {
-      // Push the merged version to Supabase immediately so all devices get it
-      // (immediate, not debounced — user typing within 1s must not discard remote half)
+    if (didMerge || pushLocal) {
+      // Push the merged/recovered version to Supabase immediately
       executeSaveForPdf(pdfId);
-      toast('⚠️ Notes from two devices were merged — please review and clean up.');
-    } else if ((hasLocalUnsaved || hasLegacyLocal) && (localContent || localDigest) && !(remC || remD)) {
-      // Local-only content — push to Supabase now
-      executeSaveForPdf(pdfId);
+      if (didMerge) toast('⚠️ Notes from two devices were merged — please review and clean up.');
+      else if (pushLocal) toast('☁️ Recovered notes synced to cloud.');
     }
   } catch (e) {
     console.error('[Notepad load error]', e);
@@ -396,30 +442,18 @@ export function switchNotepadTab(tab) {
 export async function notepadOnPDFChange(newPdfId) {
   const oldPdfId = _activePdfId;
 
-  // 1. Immediately flush old PDF data so it never bleeds into new PDF
+  // 1. Immediately flush old PDF data ONLY if it has dirty changes
   if (oldPdfId && oldPdfId !== newPdfId) {
-    const oldContent = $notesEditor()?.innerHTML ?? '';
-    const oldDigest = $digestEditor()?.innerHTML ?? '';
-
     if (_saveTimer) {
       clearTimeout(_saveTimer);
       _saveTimer = null;
       _timerPdfId = null;
     }
 
-    _notepadCache.set(oldPdfId, {
-      content: oldContent,
-      digest: oldDigest,
-      dirty: false,
-      timestamp: Date.now()
-    });
-
-    safeStorageSet('local_notepad_' + oldPdfId, oldContent);
-    safeStorageSet('local_digest_' + oldPdfId, oldDigest);
-
-    saveHistorySnapshot(oldPdfId, oldContent, oldDigest);
-    // NOTE: actual Supabase save is handled by the awaited flushNotepadSave()
-    // that every caller runs BEFORE calling notepadOnPDFChange. No fire-and-forget here.
+    const oldEntry = _notepadCache.get(oldPdfId);
+    if (oldEntry?.dirty) {
+      await flushNotepadSave();
+    }
   }
 
   // 2. Clear editor DOM immediately

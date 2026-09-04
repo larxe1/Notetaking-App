@@ -102,9 +102,6 @@ export function closeOtherPanels(exceptId = null) {
   });
 
   // These modules may have internal cleanup state beyond just the CSS class
-  if (exceptId !== 'notepad-panel') {
-    import('./notepad.js').then(m => m.closeNotepad?.()).catch(() => {});
-  }
   if (exceptId !== 'ann-panel') {
     import('./annotate.js').then(m => m.closeAnnPanel?.()).catch(() => {});
   }

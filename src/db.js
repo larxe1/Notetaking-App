@@ -571,48 +571,53 @@ export async function dbLoadNotepad(pdf_id) {
     logNotepadDiagnostic(truePdfId, 'LOAD', 'ERR', diagCode, `Exception during Supabase load: ${err?.message || String(err)}`, { error: String(err) });
   }
 
-  // Fallback to local storage if offline or not returned
+  // Fallback to local storage if cloud returned empty or missing
   const localC = safeStorageGet('local_notepad_' + truePdfId, '') || '';
   const localD = safeStorageGet('local_digest_' + truePdfId, '') || '';
 
-  // Fallback to local storage only if cloud returned null/undefined (no row);
-  // empty string '' means intentional deletion — don't overwrite with stale cache
-  if ((content === null || content === undefined || content === '') && localC) {
-    // Only restore local if cloud had no row at all (not an intentional deletion)
-    if (source === 'none') {
-      content = localC;
-      source = 'local';
-      logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_NOTES', `Restored notes from local storage (${content.length} chars)`);
-    }
+  // If cloud returned empty or errored, check if local storage has valid notes
+  if (!content && localC) {
+    content = localC;
+    source = (source === 'none' || source === 'cloud') ? 'local' : source;
+    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_NOTES', `Restored notes from local storage (${content.length} chars)`);
   }
-  if ((digest === null || digest === undefined || digest === '') && localD) {
-    if (source === 'none' || (source === 'local' && !content)) {
-      digest = localD;
-      if (source === 'none') source = 'local';
-      logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_DIGEST', `Restored digest from local storage (${digest.length} chars)`);
-    }
+  if (!digest && localD) {
+    digest = localD;
+    source = (source === 'none' || source === 'cloud') ? 'local' : source;
+    logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_LOCAL_DIGEST', `Restored digest from local storage (${digest.length} chars)`);
   }
 
-  // Fallback to history snapshot if still empty
+  // Fallback to history snapshot (both IndexedDB and localStorage) if still empty
   if (!content && !digest) {
     try {
-      const hist = JSON.parse(safeStorageGet('notepad_history_' + truePdfId, '[]') || '[]');
-      if (hist.length > 0) {
-        const last = hist[hist.length - 1];
-        if (last) {
-          content = last.content || '';
-          digest = last.digest || '';
-          if (content || digest) {
+      const { getNotepadHistoryIDB } = await import('./pdfcache.js');
+      let hist = await getNotepadHistoryIDB(truePdfId);
+      if (!Array.isArray(hist) || hist.length === 0) {
+        hist = JSON.parse(safeStorageGet('notepad_history_' + truePdfId, '[]') || '[]');
+      }
+      if (Array.isArray(hist) && hist.length > 0) {
+        // Find latest snapshot with actual content
+        for (let i = hist.length - 1; i >= 0; i--) {
+          const snap = hist[i];
+          if (snap && (snap.content || snap.digest)) {
+            content = snap.content || '';
+            digest = snap.digest || '';
             source = 'snapshot';
-            logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_SNAPSHOT_RESTORE', `Restored from snapshot history (Notes: ${content.length} chars, Digest: ${digest.length} chars)`);
+            logNotepadDiagnostic(truePdfId, 'LOAD', 'INFO', 'INFO_SNAPSHOT_RESTORE', `Automatically recovered from snapshot history (Notes: ${content.length} chars, Digest: ${digest.length} chars)`);
+            break;
           }
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[dbLoadNotepad] Snapshot recovery error:', e);
+    }
   }
 
-  safeStorageSet('local_notepad_' + truePdfId, content);
-  safeStorageSet('local_digest_' + truePdfId, digest);
+  // Only update local cache if we have content or if local was already empty
+  if (content || digest || (!localC && !localD)) {
+    safeStorageSet('local_notepad_' + truePdfId, content);
+    safeStorageSet('local_digest_' + truePdfId, digest);
+  }
 
   return { content, digest, code: diagCode, status: diagStatus, source };
 }
