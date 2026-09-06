@@ -1010,6 +1010,23 @@
         <button class="btn-sec" id="btn-clear-cache" style="width:100%; padding:6px 8px; font-size:11px; color:var(--red);" onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor=''">🗑 Clear Offline PDF Cache</button>
       </div>
 
+      <!-- Download Folder Setting -->
+      <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:13px; font-weight:600; color:#e8e4db;">⬇ Download Folder</div>
+        </div>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">When set, "Download to PC" saves PDFs directly to this folder — no dialog needed. Chrome/Edge only.</div>
+        <div style="background:rgba(0,0,0,0.3); border:1px solid var(--navy-b); border-radius:4px; padding:6px 8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:11px; color:#e8e4db; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">
+            📁 <span id="dl-folder-name">None set — uses Downloads folder</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-sec" id="btn-choose-dl-folder" style="flex:1; padding:6px 8px; font-size:11px;" title="Select a folder where PDFs will be saved when you click Download to PC">📁 Choose Folder…</button>
+          <button class="btn-sec" id="btn-clear-dl-folder" style="display:none; padding:6px 8px; font-size:11px; color:var(--muted);" title="Reset back to browser Downloads folder">✕ Clear</button>
+        </div>
+      </div>
+
       <!-- System Diagnostics & Error Logs -->
       <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
         <div style="font-size:13px; font-weight:600; color:#e8e4db; margin-bottom:4px;">🛠 System & Sync Diagnostics</div>
@@ -1198,6 +1215,7 @@
   <div class="ctx-item" id="lib-ctx-open">📖 Open</div>
   <div class="ctx-item" id="lib-ctx-reference">📑 Open as Reference</div>
   <div class="ctx-item" id="lib-ctx-offline">💾 Save for Offline</div>
+  <div class="ctx-item" id="lib-ctx-download">⬇ Download to PC</div>
   <div class="ctx-item" id="lib-ctx-export-pdf" style="display:none">📥 Export Notes to PDF</div>
   <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
   <div class="ctx-item" id="lib-ctx-gdrive">☁ Open in Google Drive</div>

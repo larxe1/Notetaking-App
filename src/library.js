@@ -35,6 +35,7 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   document.getElementById('lib-ctx-reference').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-offline').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-download').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-export-pdf').style.display = isFolder ? 'block' : 'none';
 
   menu.classList.add('open');
@@ -42,7 +43,7 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   // Position menu, keeping it on-screen
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const mw = 200, mh = 125;
+  const mw = 200, mh = 155;
   menu.style.left = (x + mw > vw ? vw - mw - 4 : x) + 'px';
   menu.style.top  = (y + mh > vh ? vh - mh - 4 : y) + 'px';
 }
@@ -108,6 +109,51 @@ export function initContextMenu() {
     hideLibCtxMenu();
     const { preCachePDF } = await import('./pdfcache.js');
     await preCachePDF(pdf);
+  });
+
+  // "Download to PC" — save PDF file to local PC folder or browser Downloads
+  document.getElementById('lib-ctx-download')?.addEventListener('click', async () => {
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
+    hideLibCtxMenu();
+
+    const { S } = await import('./state.js');
+    const { toast } = await import('./ui.js');
+    const { downloadPDFToPC } = await import('./pdfcache.js');
+
+    const driveId = pdf.drive_file_id || S.pdfs.find(p => p.id === pdf.linked_pdf_id)?.drive_file_id;
+    if (!driveId) {
+      toast('❌ No Google Drive file linked to this PDF.');
+      return;
+    }
+
+    if (!S.driveToken) {
+      // Fallback: open Drive download URL directly
+      const dlUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveId)}`;
+      window.open(dlUrl, '_blank', 'noopener,noreferrer');
+      toast('Opening Google Drive download link…');
+      return;
+    }
+
+    toast(`⬇ Downloading "${pdf.name}"…`);
+    try {
+      // Fetch PDF bytes via Drive API (reuses cached blob if already in IndexedDB)
+      const { driveFetchPDF } = await import('./drive.js');
+      const blob = await driveFetchPDF(driveId, (pct, loadedMB, totalMB) => {
+        if (pct !== null) toast(`⬇ Downloading: ${pct}% (${loadedMB}/${totalMB} MB)`);
+        else toast(`⬇ Downloading: ${loadedMB} MB…`);
+      }, pdf.name);
+
+      const result = await downloadPDFToPC(blob, pdf.name);
+      if (result.folder) {
+        toast(`✅ Saved "${pdf.name}" to folder: ${result.folder}`);
+      } else {
+        toast(`✅ "${pdf.name}" downloading to your Downloads folder.`);
+      }
+    } catch (err) {
+      console.error('[Download to PC] Failed:', err);
+      toast(`❌ Download failed: ${err.message || 'Unknown error'}`);
+    }
   });
 
   // "Export Notes to PDF"

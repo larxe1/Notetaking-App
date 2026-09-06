@@ -525,7 +525,7 @@ RULES:
   // Settings & Storage Manager
   async function refreshCacheStats() {
     try {
-      const { getCacheStorageStats } = await import('./pdfcache.js');
+      const { getCacheStorageStats, getDownloadFolderName } = await import('./pdfcache.js');
       const stats = await getCacheStorageStats();
       const lbl = document.getElementById('cache-stats-lbl');
       if (lbl) {
@@ -546,6 +546,22 @@ RULES:
       } else {
         if (dirNameEl) dirNameEl.textContent = 'Default Browser Storage';
         if (resetBtn) resetBtn.style.display = 'none';
+      }
+
+      // Update download folder display
+      const dlFolderName = getDownloadFolderName();
+      const dlFolderNameEl = document.getElementById('dl-folder-name');
+      const dlClearBtn = document.getElementById('btn-clear-dl-folder');
+      const dlChooseBtn = document.getElementById('btn-choose-dl-folder');
+      if (dlFolderNameEl) {
+        dlFolderNameEl.textContent = dlFolderName || 'None set — uses Downloads folder';
+        dlFolderNameEl.style.color = dlFolderName ? 'var(--gold)' : '';
+      }
+      if (dlClearBtn) dlClearBtn.style.display = dlFolderName ? 'inline-block' : 'none';
+      // Hide choose button on unsupported browsers (Firefox, Safari)
+      if (dlChooseBtn && !('showDirectoryPicker' in window)) {
+        dlChooseBtn.textContent = '⚠ Not supported in this browser';
+        dlChooseBtn.disabled = true;
       }
     } catch {}
   }
@@ -603,6 +619,37 @@ RULES:
       toast('Failed to clear cache.');
     }
   });
+
+  // Download Folder Picker (File System Access API)
+  document.getElementById('btn-choose-dl-folder')?.addEventListener('click', async () => {
+    try {
+      const { chooseDownloadFolder } = await import('./pdfcache.js');
+      const folderName = await chooseDownloadFolder();
+      if (folderName) {
+        await refreshCacheStats();
+        toast(`📁 Download folder set to: ${folderName}`);
+      } else if ('showDirectoryPicker' in window) {
+        // Picker was dismissed (no error), do nothing
+      } else {
+        toast('⚠ Custom folder not supported in this browser. Downloads go to your Downloads folder.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast('Failed to set download folder.');
+    }
+  });
+
+  document.getElementById('btn-clear-dl-folder')?.addEventListener('click', async () => {
+    try {
+      const { clearDownloadFolderHandle } = await import('./pdfcache.js');
+      await clearDownloadFolderHandle();
+      await refreshCacheStats();
+      toast('Download folder cleared — will use Downloads folder.');
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
   document.getElementById('btn-export')?.addEventListener('click', exportAnnotations);
 
   // Request persistent storage in background so OS never purges our PDF cache

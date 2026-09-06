@@ -398,3 +398,107 @@ export async function preCachePDF(pdf) {
     toast('❌ Failed to download PDF for offline use.');
   }
 }
+
+// ── Download Folder Handle (separate from the offline cache folder) ──
+const DL_FOLDER_KEY = 'download_folder_handle';
+
+export async function getDownloadFolderHandle() {
+  try {
+    const db = await getDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(CONFIG_STORE, 'readonly');
+      const store = tx.objectStore(CONFIG_STORE);
+      const req = store.get(DL_FOLDER_KEY);
+      req.onsuccess = () => resolve(req.result ? req.result.handle : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function setDownloadFolderHandle(handle) {
+  try {
+    const db = await getDB();
+    if (!db) return;
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    const store = tx.objectStore(CONFIG_STORE);
+    store.put({ key: DL_FOLDER_KEY, handle, name: handle.name, saved_at: Date.now() });
+    safeStorageSet('download_folder_name', handle.name);
+  } catch (e) {
+    console.warn('[PDFCache] Failed to store download folder handle:', e);
+  }
+}
+
+export async function clearDownloadFolderHandle() {
+  try {
+    const db = await getDB();
+    if (!db) return;
+    const tx = db.transaction(CONFIG_STORE, 'readwrite');
+    const store = tx.objectStore(CONFIG_STORE);
+    store.delete(DL_FOLDER_KEY);
+    safeStorageRemove('download_folder_name');
+  } catch (e) {
+    console.warn('[PDFCache] Failed to clear download folder handle:', e);
+  }
+}
+
+export function getDownloadFolderName() {
+  return safeStorageGet('download_folder_name', null);
+}
+
+// ── Pick a new download folder ──
+export async function chooseDownloadFolder() {
+  if (!('showDirectoryPicker' in window)) {
+    return null; // caller should show fallback message
+  }
+  try {
+    const handle = await window.showDirectoryPicker({
+      id: 'legal_annotator_download',
+      mode: 'readwrite',
+      startIn: 'downloads'
+    });
+    const ok = await verifyPermission(handle, true);
+    if (!ok) return null;
+    await setDownloadFolderHandle(handle);
+    return handle.name;
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error('[PDFCache] Download folder picker error:', e);
+    return null;
+  }
+}
+
+// ── Download a PDF blob to PC (via folder or browser download dialog) ──
+export async function downloadPDFToPC(blob, filename) {
+  const safeName = (filename || 'document').replace(/[/\\?%*:|"<>]/g, '_').trim();
+  const finalName = safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;
+
+  // Try configured download folder first (File System Access API)
+  try {
+    const dirHandle = await getDownloadFolderHandle();
+    if (dirHandle) {
+      const hasPerm = await verifyPermission(dirHandle, true);
+      if (hasPerm) {
+        const fileHandle = await dirHandle.getFileHandle(finalName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return { saved: true, folder: dirHandle.name };
+      }
+    }
+  } catch (e) {
+    console.warn('[PDFCache] Could not save to download folder, falling back to dialog:', e);
+  }
+
+  // Fallback: browser download dialog
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = finalName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return { saved: true, folder: null };
+}
