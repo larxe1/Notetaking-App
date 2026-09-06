@@ -962,6 +962,20 @@ export function initLibraryModals() {
     }
   });
 
+  // Fallback PDF upload listener for static input (set up once during init)
+  const staticPdfIn = document.getElementById('pdf-file-in');
+  if (staticPdfIn) {
+    staticPdfIn.addEventListener('change', async function () {
+      const targetFolderId = S.uploadFolderId;
+      const files = Array.from(this.files || []);
+      this.value = '';
+      if (files.length > 0 && targetFolderId) {
+        await processPDFUpload(files, targetFolderId);
+      }
+    });
+  }
+} // ← end of initLibraryModals
+
 // ── Prompt for Duplicate PDF Resolution (Shortcut vs Independent Copy vs Cancel) ──
 function promptDuplicateResolution(duplicateItems) {
   return new Promise((resolve) => {
@@ -1179,19 +1193,6 @@ export async function processPDFUpload(files, targetFolderId) {
       toastError(e, 'Upload failed');
     }
   }
-}
-
-  // Fallback PDF upload listener for static input
-  const staticPdfIn = document.getElementById('pdf-file-in');
-  if (staticPdfIn) {
-    staticPdfIn.addEventListener('change', async function () {
-      const targetFolderId = S.uploadFolderId;
-      const files = Array.from(this.files || []);
-      this.value = '';
-      if (files.length > 0 && targetFolderId) {
-        await processPDFUpload(files, targetFolderId);
-      }
-    });
   }
 }
 
