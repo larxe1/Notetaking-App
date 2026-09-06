@@ -13,48 +13,129 @@ const FOLDER_NAME = 'Legal Annotator';
 let _tokenRefreshTimer = null;
 let _healthCheckInterval = null;
 
-// ── Internal: request/refresh an access token ──
-// silent=true → no popup (works if user already granted + has active Google session)
-function _requestToken(silent = false) {
-  return new Promise((resolve, reject) => {
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPE,
-      callback: async (resp) => {
-        if (resp.error) { reject(resp); return; }
-        S.driveToken = resp.access_token;
-        safeStorageSet('driveToken', S.driveToken);
-        safeStorageSet('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
-        // Get user info (only needed on first sign-in)
-        if (!S.driveUser) {
-          try {
-            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${S.driveToken}` }
-            });
-            const info = await r.json();
-            S.driveUser = info.email || 'Connected';
-            safeStorageSet('driveUser', S.driveUser);
-          } catch {
-            S.driveUser = 'Connected';
-            safeStorageSet('driveUser', S.driveUser);
-          }
-        }
-        // Ensure our app folder exists
-        S.driveFolderId = await ensureAppFolder();
-        safeStorageSet('driveFolderId', S.driveFolderId);
-        updateDriveBar();
-        _scheduleRefresh();   // schedule the next silent refresh
-        _startHealthCheck(); // begin periodic token health checks
-        resolve();
-      },
-    });
-    // prompt: '' = silent (no UI shown if already authorised)
-    // prompt: 'select_account' = show picker (used for explicit sign-in)
-    client.requestAccessToken({ prompt: silent ? '' : 'select_account' });
-  });
+function getClientId() {
+  return window.APP_CONFIG?.GOOGLE_CLIENT_ID || CLIENT_ID || '';
 }
 
-let _isAutoPrompting = false;
+async function ensureGoogleScript() {
+  if (typeof google !== 'undefined' && google.accounts?.oauth2) {
+    return true;
+  }
+  // Wait up to 3 seconds for script if it is currently loading
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (typeof google !== 'undefined' && google.accounts?.oauth2) {
+      return true;
+    }
+  }
+  // Dynamically inject script tag if missing
+  if (!document.querySelector('script[src*="accounts.google.com/gsi/client"]')) {
+    console.log('[Drive Auth] Injecting Google Identity Services script tag');
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.defer = true;
+    document.head.appendChild(s);
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (typeof google !== 'undefined' && google.accounts?.oauth2) {
+        return true;
+      }
+    }
+  }
+  return typeof google !== 'undefined' && !!google.accounts?.oauth2;
+}
+
+// ── Internal: request/refresh an access token ──
+// silent=true → no popup (works if user already granted + has active Google session)
+async function _requestToken(silent = false) {
+  const isLoaded = await ensureGoogleScript();
+  if (!isLoaded) {
+    throw new Error('Google Identity Services failed to load. Please check your internet connection or ad-blocker.');
+  }
+
+  const clientId = getClientId();
+  if (!clientId) {
+    throw new Error('Google Client ID is not configured.');
+  }
+
+  return new Promise((resolve, reject) => {
+    let resolvedOrRejected = false;
+
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPE,
+      error_callback: (err) => {
+        if (resolvedOrRejected) return;
+        resolvedOrRejected = true;
+        console.error('[Drive Auth] Google token client error:', err);
+        const errMsg = err?.message || err?.type || 'OAuth window closed or blocked';
+        reject(new Error(errMsg));
+      },
+      callback: async (resp) => {
+        if (resolvedOrRejected) return;
+        if (resp.error) {
+          resolvedOrRejected = true;
+          console.error('[Drive Auth] Google response error:', resp);
+          reject(new Error(resp.error_description || resp.error || 'Authentication error'));
+          return;
+        }
+
+        try {
+          S.driveToken = resp.access_token;
+          safeStorageSet('driveToken', S.driveToken);
+          safeStorageSet('driveTokenExpiry', Date.now() + 3500000); // ~58 mins
+
+          // Get user info (only needed on first sign-in)
+          if (!S.driveUser) {
+            try {
+              const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${S.driveToken}` }
+              });
+              if (r.ok) {
+                const info = await r.json();
+                S.driveUser = info.email || 'Connected';
+              } else {
+                S.driveUser = 'Connected';
+              }
+            } catch {
+              S.driveUser = 'Connected';
+            }
+            safeStorageSet('driveUser', S.driveUser);
+          }
+
+          // Ensure our app folder exists (non-blocking if temporary Drive API issue)
+          try {
+            S.driveFolderId = await ensureAppFolder();
+            safeStorageSet('driveFolderId', S.driveFolderId);
+          } catch (fErr) {
+            console.warn('[Drive Auth] App folder could not be verified on login (will retry on upload):', fErr);
+          }
+
+          hideDriveWarning();
+          updateDriveBar();
+          _scheduleRefresh();   // schedule the next silent refresh
+          _startHealthCheck(); // begin periodic token health checks
+
+          resolvedOrRejected = true;
+          resolve();
+        } catch (procErr) {
+          resolvedOrRejected = true;
+          console.error('[Drive Auth] Error during post-auth processing:', procErr);
+          reject(procErr);
+        }
+      },
+    });
+
+    try {
+      client.requestAccessToken({ prompt: silent ? '' : 'select_account' });
+    } catch (reqErr) {
+      resolvedOrRejected = true;
+      console.error('[Drive Auth] requestAccessToken threw:', reqErr);
+      reject(reqErr);
+    }
+  });
+}
 
 // -- Schedule a silent token refresh ~50 mins from now --
 function _scheduleRefresh() {
@@ -64,7 +145,6 @@ function _scheduleRefresh() {
       await _requestToken(true); // silent
       await _verifyToken();      // confirm it actually works
     } catch {
-      // Silent refresh failed — automatically trigger account picker prompt
       _onSessionExpired();
     }
   }, 50 * 60 * 1000); // 50 minutes
@@ -74,7 +154,6 @@ function _scheduleRefresh() {
 function _startHealthCheck() {
   _stopHealthCheck(); // clear any existing interval first
   _healthCheckInterval = setInterval(async () => {
-    // Only check if we think we're signed in
     if (S.driveToken) {
       await _verifyToken();
     }
@@ -121,24 +200,8 @@ export function _onSessionExpired() {
   safeStorageRemove('driveFolderId');
   updateDriveBar();
 
-  // Automatically trigger the Google Account Picker prompt so user just clicks their email
-  if (!_isAutoPrompting && typeof google !== 'undefined' && google.accounts?.oauth2) {
-    _isAutoPrompting = true;
-    showDriveWarning('Google Drive session expired. Opening sign-in prompt...');
-    _requestToken(false)
-      .then(() => {
-        _isAutoPrompting = false;
-        hideDriveWarning();
-        toast('Google Drive reconnected!');
-      })
-      .catch(err => {
-        _isAutoPrompting = false;
-        console.warn('Auto-login prompt cancelled or blocked:', err);
-        showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
-      });
-  } else {
-    showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
-  }
+  // Show warning banner with explicit user action button (never open unprompted popups)
+  showDriveWarning('Google Drive session expired. Click "Sign in again" to reconnect.');
 }
 
 // -- Show / hide the Drive warning banner --
@@ -183,22 +246,53 @@ export function hideDriveWarning() {
   document.getElementById('drive-warn-banner')?.remove();
 }
 
+let _signInInProgress = false;
+
 // ── Sign in (user-initiated, shows account picker) ──
 export async function driveSignIn() {
-  return _requestToken(false);
+  if (_signInInProgress) {
+    console.warn('[Drive Auth] Sign-in already in progress, ignoring duplicate trigger');
+    return;
+  }
+  _signInInProgress = true;
+  try {
+    await _requestToken(false);
+    toast('Google Drive connected!');
+  } catch (err) {
+    console.error('[Drive Auth] Sign-in failed:', err);
+    const msg = (err?.message || err?.type || String(err || '')).toLowerCase();
+    if (msg.includes('popup_closed') || msg.includes('user_cancel') || msg.includes('cancel')) {
+      toast('Sign-in cancelled.');
+    } else if (msg.includes('popup_blocked') || msg.includes('blocked')) {
+      toast('⚠️ Pop-up was blocked by browser. Please click the pop-up icon in your address bar to allow pop-ups.');
+    } else if (msg.includes('access_denied')) {
+      toast('⚠️ Google Drive permission was denied.');
+    } else if (msg.includes('identity services') || msg.includes('script')) {
+      toast('⚠️ Google sign-in script could not load. Check your internet connection or ad-blocker.');
+    } else if (!navigator.onLine || msg.includes('network') || msg.includes('offline')) {
+      toast('⚠️ Offline: check your internet connection.');
+    } else {
+      toast(`Drive sign-in failed: ${err?.message || 'Check browser console'}`);
+    }
+    throw err;
+  } finally {
+    _signInInProgress = false;
+  }
 }
 
 export function driveSignOut() {
-  if (S.driveToken) google.accounts.oauth2.revoke(S.driveToken);
+  if (S.driveToken && typeof google !== 'undefined' && google.accounts?.oauth2) {
+    try { google.accounts.oauth2.revoke(S.driveToken); } catch {}
+  }
   if (_tokenRefreshTimer) clearTimeout(_tokenRefreshTimer);
   _stopHealthCheck();
   S.driveToken = null;
   S.driveUser  = null;
   S.driveFolderId = null;
-  localStorage.removeItem('driveToken');
-  localStorage.removeItem('driveUser');
-  localStorage.removeItem('driveTokenExpiry');
-  localStorage.removeItem('driveFolderId');
+  safeStorageRemove('driveToken');
+  safeStorageRemove('driveUser');
+  safeStorageRemove('driveTokenExpiry');
+  safeStorageRemove('driveFolderId');
   hideDriveWarning();
   updateDriveBar();
 }
@@ -206,17 +300,16 @@ export function driveSignOut() {
 function updateDriveBar() {
   const userEl = document.getElementById('drive-user');
   const btnEl  = document.getElementById('drive-sign-btn');
+  if (!userEl || !btnEl) return;
+
   if (S.driveUser) {
     userEl.textContent = S.driveUser;
     btnEl.textContent  = 'Sign out';
-    btnEl.onclick = driveSignOut;
+    btnEl.title        = 'Sign out of Google Drive';
   } else {
     userEl.textContent = 'Not connected';
     btnEl.textContent  = 'Sign in';
-    btnEl.onclick = async () => {
-      try { await driveSignIn(); toast('Google Drive connected!'); }
-      catch { toast('Drive sign-in failed'); }
-    };
+    btnEl.title        = 'Sign in to Google Drive';
   }
 }
 
@@ -446,13 +539,17 @@ export function initDriveBar() {
     updateDriveBar();
   }
 
-  document.getElementById('drive-sign-btn').addEventListener('click', async () => {
-    if (S.driveUser) {
-      driveSignOut();
-      toast('Signed out of Google Drive');
-    } else {
-      try { await driveSignIn(); toast('Google Drive connected!'); }
-      catch { toast('Drive sign-in failed'); }
-    }
-  });
+  const signBtn = document.getElementById('drive-sign-btn');
+  if (signBtn) {
+    signBtn.onclick = async () => {
+      if (S.driveUser) {
+        driveSignOut();
+        toast('Signed out of Google Drive');
+      } else {
+        try {
+          await driveSignIn();
+        } catch {}
+      }
+    };
+  }
 }
