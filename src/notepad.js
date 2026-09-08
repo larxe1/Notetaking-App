@@ -76,9 +76,15 @@ async function saveHistorySnapshot(pdfId, content, digest) {
       // 2. Keep only top 3 in localStorage so quota is never exceeded
       const top3 = history.slice(-3);
       safeStorageSet(histKey, JSON.stringify(top3));
+      // 3. Log the snapshot creation so it appears in the Error & Sync Log tab
+      logNotepadDiagnostic(pdfId, 'SNAPSHOT', 'OK', 'SNAPSHOT_SAVED',
+        `History snapshot saved (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars). Total snapshots: ${history.length}.`,
+        { contentLen: (content||'').length, digestLen: (digest||'').length, totalSnapshots: history.length });
     }
   } catch (e) {
     console.warn('[Notepad] saveHistorySnapshot error:', e);
+    logNotepadDiagnostic(pdfId, 'SNAPSHOT', 'ERR', 'ERR_SNAPSHOT_FAIL',
+      `Failed to save history snapshot: ${e?.message || String(e)}`, { error: String(e) });
   }
 }
 
@@ -120,12 +126,14 @@ async function executeSaveForPdf(targetPdfId) {
   const lbl = $saveLbl();
   try {
     const savedWriteTs = getWriteTs(targetPdfId);
+    // ── Snapshot BEFORE the cloud save: if DB throws or tab closes mid-flight,
+    //    the content is already preserved in IndexedDB and localStorage history. ──
+    await saveHistorySnapshot(targetPdfId, content, digest);
     const res = await dbSaveNotepad(targetPdfId, content, digest);
     // Only mark synced if Supabase confirmed AND no new writes arrived during the save
     if (res?.saved && getWriteTs(targetPdfId) === savedWriteTs) {
       setSyncTs(targetPdfId);
     }
-    saveHistorySnapshot(targetPdfId, content, digest);
 
     if (_activePdfId === targetPdfId && lbl) {
       if (res?.saved && res?.code === '200_OK') {
@@ -252,11 +260,41 @@ export async function flushNotepadSave() {
     safeStorageSet('local_notepad_' + targetPdfId, content);
     safeStorageSet('local_digest_' + targetPdfId, digest);
 
-    saveHistorySnapshot(targetPdfId, content, digest);
+    // ── Snapshot BEFORE cloud save: data is preserved even if DB throws ──
+    await saveHistorySnapshot(targetPdfId, content, digest);
+
     try {
       const res = await dbSaveNotepad(targetPdfId, content, digest);
       if (res?.saved) setSyncTs(targetPdfId);
-    } catch {}
+      // Surface queued/error state in the save label if the panel is open
+      if (_activePdfId === targetPdfId) {
+        const lbl = $saveLbl();
+        if (lbl) {
+          if (res?.queued) {
+            lbl.textContent = '⏳ Queued Offline';
+            lbl.className = 'saving';
+            lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
+          } else if (res?.error && !res?.saved) {
+            lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
+            lbl.className = 'err';
+            lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
+          }
+        }
+      }
+    } catch (err) {
+      // Flush errors must NEVER be silent — log to diag and show in UI
+      logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'ERR_FLUSH',
+        `flushNotepadSave exception: ${err?.message || String(err)}. Data is safe in localStorage + history.`,
+        { error: String(err) });
+      if (_activePdfId === targetPdfId) {
+        const lbl = $saveLbl();
+        if (lbl) {
+          lbl.textContent = '✗ Flush Err';
+          lbl.className = 'err';
+          lbl.title = `Flush save failed: ${err?.message || err}. Click to open Error Log.`;
+        }
+      }
+    }
   }
 }
 
@@ -728,6 +766,25 @@ export function getCachedNotepad(pdfId) {
     };
   }
   return null;
+}
+
+// ── Called by sync.js after a realtime notepad refresh so in-memory cache stays fresh ──
+export function updateNotepadCacheFromRemote(pdfId, content, digest) {
+  if (!pdfId) return;
+  const existing = _notepadCache.get(pdfId);
+  // Don't overwrite if the user has unsaved (dirty) local changes
+  if (existing?.dirty) return;
+  _notepadCache.set(pdfId, {
+    content: content || '',
+    digest: digest || '',
+    dirty: false,
+    timestamp: Date.now()
+  });
+  // Keep localStorage in sync too
+  safeStorageSet('local_notepad_' + pdfId, content || '');
+  safeStorageSet('local_digest_' + pdfId, digest || '');
+  logNotepadDiagnostic(pdfId, 'SYNC', 'OK', 'SYNC_CACHE_UPDATED',
+    `In-memory cache updated from realtime sync (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars)`);
 }
 
 export function initNotepad() {

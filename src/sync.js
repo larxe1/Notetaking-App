@@ -69,6 +69,7 @@ async function handleNotepadRefresh(pdfId) {
   _notepadTimer = setTimeout(async () => {
     try {
       const { dbLoadNotepad } = await import('./db.js');
+      const { updateNotepadCacheFromRemote } = await import('./notepad.js');
       const { content, digest } = await dbLoadNotepad(trueId);
       const editor = document.getElementById('np-editor');
       const digestEditor = document.getElementById('np-digest-editor');
@@ -79,6 +80,8 @@ async function handleNotepadRefresh(pdfId) {
       if (digestEditor && document.activeElement !== digestEditor && digest !== undefined) {
         digestEditor.innerHTML = digest || '';
       }
+      // Keep in-memory notepad cache fresh so PDF switching doesn't restore stale data
+      updateNotepadCacheFromRemote(trueId, content, digest);
     } catch (err) {
       console.error('[Sync] Notepad refresh error', err);
     }

@@ -4,7 +4,7 @@
 import { S } from './state.js';
 import { driveDeleteFile } from './drive.js';
 import { broadcastSync } from './sync.js';
-import { safeDbWrite } from './outbox.js';
+import { safeDbWrite, enqueueAction } from './outbox.js';
 import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 import { logNotepadDiagnostic } from './diag.js';
 
@@ -671,7 +671,6 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
 
       // 3. Other Supabase error: queue to outbox
       logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', errCode, `Supabase upsert failed: ${errMsg}. Queuing to offline outbox.`, { error, payloadLength: { content: cLen, digest: dLen } });
-      const { enqueueAction } = await import('./outbox.js');
       enqueueAction('pdf_notes', 'upsert', payload);
       return { error: errMsg, code: errCode, queued: true, saved: false };
     }
@@ -684,7 +683,6 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     const errCode = !navigator.onLine ? 'ERR_OFFLINE' : (err?.code || 'ERR_NETWORK');
     const errMsg = err?.message || String(err);
     logNotepadDiagnostic(truePdfId, 'SAVE', 'ERR', errCode, `Network/system exception during save: ${errMsg}. Queuing to outbox.`, { error: String(err), payloadLength: { content: cLen, digest: dLen } });
-    const { enqueueAction } = await import('./outbox.js');
     enqueueAction('pdf_notes', 'upsert', payload);
     return { error: errMsg, code: errCode, queued: true, saved: false };
   }
