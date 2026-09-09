@@ -33,9 +33,10 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   // Toggle visibility of context items
   document.getElementById('lib-ctx-open').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-reference').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-link').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-offline').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-download').style.display = isFolder ? 'none' : 'block';
+  document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-export-pdf').style.display = isFolder ? 'block' : 'none';
 
   menu.classList.add('open');
@@ -43,7 +44,7 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   // Position menu, keeping it on-screen
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const mw = 200, mh = 155;
+  const mw = 200, mh = 185;
   menu.style.left = (x + mw > vw ? vw - mw - 4 : x) + 'px';
   menu.style.top  = (y + mh > vh ? vh - mh - 4 : y) + 'px';
 }
@@ -84,6 +85,14 @@ export function initContextMenu() {
     const { openPDFInPaneB } = await import('./dualview.js');
     openPDFInPaneB(pdf);
     closeSidebar();
+  });
+
+  // "Create Shortcut"
+  document.getElementById('lib-ctx-link')?.addEventListener('click', () => {
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
+    hideLibCtxMenu();
+    openLinkPdfModal(pdf);
   });
 
   // "Open in Google Drive" — opens file directly in Google Drive in new tab
@@ -712,50 +721,7 @@ function buildPdfEl(pdf) {
 
   el.querySelector('[data-act="link"]').addEventListener('click', e => {
     e.stopPropagation();
-    _pdfToLink = pdf;
-    
-    // Populate dropdown with proper hierarchical folder structure EXCEPT the current folder
-    const sel = document.getElementById('link-target-folder');
-    sel.innerHTML = '';
-    
-    // Group by subject and render proper hierarchical folder tree
-    S.subjects.forEach(subj => {
-      const optGroup = document.createElement('optgroup');
-      optGroup.label = subj.name;
-
-      // 1. Only get top-level folders (parent_id is null/undefined)
-      const rootFolds = S.folders
-        .filter(f => f.subject_id === subj.id && !f.parent_id)
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-
-      function addFolderOptions(folder, depth = 0) {
-        if (folder.id !== pdf.folder_id) {
-          const opt = document.createElement('option');
-          opt.value = folder.id;
-          const indent = depth > 0 ? '\u00A0\u00A0\u00A0\u00A0'.repeat(depth) + '↳ ' : '';
-          opt.textContent = `${indent}${folder.name}`;
-          optGroup.appendChild(opt);
-        }
-
-        // Find child subfolders belonging to this folder
-        const childFolds = S.folders
-          .filter(f => f.parent_id === folder.id)
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-
-        childFolds.forEach(child => addFolderOptions(child, depth + 1));
-      }
-
-      rootFolds.forEach(rf => addFolderOptions(rf, 0));
-
-      if (optGroup.children.length > 0) sel.appendChild(optGroup);
-    });
-    
-    if (sel.options.length === 0) {
-      toast('No other folders available to link to!');
-      return;
-    }
-    
-    import('./ui.js').then(m => m.openModal('mo-link-pdf'));
+    openLinkPdfModal(pdf);
   });
 
   el.querySelector('[data-act="rename"]').addEventListener('click', e => {
@@ -881,19 +847,48 @@ export function initLibraryModals() {
   // ── Link PDF Shortcut Modal ──
   document.getElementById('confirm-link-pdf')?.addEventListener('click', async () => {
     if (!_pdfToLink) return;
-    const targetFolderId = document.getElementById('link-target-folder').value;
-    if (!targetFolderId) return;
+    const targetFolderId = document.getElementById('link-target-folder')?.value;
+    if (!targetFolderId) {
+      toast('Please select a target folder.');
+      return;
+    }
+
+    if (targetFolderId === _pdfToLink.folder_id) {
+      toast('This PDF is already in this folder.');
+      return;
+    }
     
     // The true master ID is the original linked_pdf_id (if it's already a shortcut) or the id itself
     const trueId = _pdfToLink.linked_pdf_id || _pdfToLink.id;
+    const driveId = _pdfToLink.drive_file_id || (S.pdfs.find(p => p.id === trueId)?.drive_file_id) || '';
+
+    // Check if target folder already contains this PDF or a shortcut to it
+    const alreadyExists = S.pdfs.some(p => p.folder_id === targetFolderId && (p.id === trueId || p.linked_pdf_id === trueId));
+    if (alreadyExists) {
+      toast('A copy or shortcut of this PDF is already in the selected folder!');
+      return;
+    }
     
     try {
       import('./ui.js').then(m => m.autosave('saving'));
-      await dbRegisterPDF(targetFolderId, _pdfToLink.name, _pdfToLink.drive_file_id, trueId);
+      const newRec = await dbRegisterPDF(targetFolderId, _pdfToLink.name, driveId, trueId);
+      S.annCounts[newRec.id] = S.annCounts[trueId] || 0;
+
+      // Auto-expand destination folder and ancestors so user immediately sees the new shortcut
+      S.expandedFold[targetFolderId] = true;
+      let currF = S.folders.find(f => f.id === targetFolderId);
+      while (currF && currF.parent_folder_id) {
+        S.expandedFold[currF.parent_folder_id] = true;
+        currF = S.folders.find(f => f.id === currF.parent_folder_id);
+      }
+      if (currF?.subject_id) {
+        S.collapsedSubj[currF.subject_id] = false;
+      }
+
       renderLibrary();
       import('./ui.js').then(m => {
         m.closeModal('mo-link-pdf');
-        m.toast('Shortcut created!');
+        m.toast('✓ Shortcut created!');
         m.autosave('saved');
       });
     } catch (e) {
@@ -1186,6 +1181,286 @@ function promptDuplicateResolution(duplicateItems) {
     }
     this.value = '';
   });
+}
+
+// ── Open Link PDF (Create Shortcut) Modal with structured folder tree ──
+export function openLinkPdfModal(pdf) {
+  if (!pdf) return;
+  _pdfToLink = pdf;
+
+  const modal = document.getElementById('mo-link-pdf');
+  const srcNameEl = document.getElementById('link-pdf-source-name');
+  const searchInput = document.getElementById('link-folder-search');
+  const treeContainer = document.getElementById('link-folder-tree');
+  const previewEl = document.getElementById('link-target-path-preview');
+  const hiddenInput = document.getElementById('link-target-folder');
+  const confirmBtn = document.getElementById('confirm-link-pdf');
+
+  if (!modal || !treeContainer) return;
+
+  // Display source PDF name
+  if (srcNameEl) srcNameEl.textContent = pdf.name;
+
+  // Reset selection and inputs
+  if (searchInput) searchInput.value = '';
+  if (hiddenInput) hiddenInput.value = '';
+  if (previewEl) {
+    previewEl.textContent = 'Select a folder above…';
+    previewEl.style.color = 'var(--gold)';
+  }
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.45';
+    confirmBtn.style.cursor = 'not-allowed';
+  }
+
+  const icons = { codal: '📜', cases: '⚖', laws: '📋', others: '📁', custom: '📂' };
+
+  if (!S.folders.length) {
+    treeContainer.innerHTML = '<div class="lft-empty">No folders found in your library.<br>Create a folder first before creating shortcuts.</div>';
+    import('./ui.js').then(m => m.openModal('mo-link-pdf'));
+    return;
+  }
+
+  treeContainer.innerHTML = '';
+
+  // Breadcrumb path helper
+  function getFolderPath(folder) {
+    const parts = [folder.name];
+    let curr = folder;
+    let depth = 0;
+    while (curr.parent_folder_id && depth < 10) {
+      const parent = S.folders.find(f => f.id === curr.parent_folder_id);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      curr = parent;
+      depth++;
+    }
+    const subject = S.subjects.find(s => s.id === folder.subject_id);
+    if (subject) parts.unshift(subject.name);
+    return parts.join(' > ');
+  }
+
+  let selectedRowEl = null;
+
+  function selectFolder(folder, rowEl) {
+    if (folder.id === pdf.folder_id) {
+      import('./ui.js').then(m => m.toast('This file is already in this folder.'));
+      return;
+    }
+
+    if (selectedRowEl) selectedRowEl.classList.remove('selected');
+    selectedRowEl = rowEl;
+    rowEl.classList.add('selected');
+
+    if (hiddenInput) hiddenInput.value = folder.id;
+    if (previewEl) {
+      previewEl.textContent = getFolderPath(folder);
+      previewEl.style.color = '#fff';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.style.opacity = '1';
+      confirmBtn.style.cursor = 'pointer';
+    }
+  }
+
+  let totalSelectable = 0;
+
+  // Build tree matching left sidebar
+  S.subjects.forEach(subj => {
+    const subjFolders = S.folders.filter(f => f.subject_id === subj.id);
+    if (!subjFolders.length) return;
+
+    const subjEl = document.createElement('div');
+    subjEl.className = 'lft-subj';
+
+    const subjHd = document.createElement('div');
+    subjHd.className = 'lft-subj-hd';
+    subjHd.innerHTML = `
+      <span class="lft-chev">▼</span>
+      <span class="lft-dot" style="background:${subj.hex_color || '#c9a84c'}"></span>
+      <span class="lft-subj-name" title="${subj.name.replace(/"/g, '&quot;')}">${subj.name}</span>
+      <span class="lft-count">${subjFolders.length} folder${subjFolders.length === 1 ? '' : 's'}</span>
+    `;
+
+    const subjCh = document.createElement('div');
+    subjCh.className = 'lft-subj-ch';
+
+    subjHd.addEventListener('click', () => {
+      const chev = subjHd.querySelector('.lft-chev');
+      const isClosed = chev.classList.toggle('closed');
+      subjCh.style.display = isClosed ? 'none' : 'flex';
+    });
+
+    subjEl.appendChild(subjHd);
+    subjEl.appendChild(subjCh);
+
+    // Root folders for this subject
+    const rootFolds = subjFolders
+      .filter(f => !f.parent_folder_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name));
+
+    function buildFolderNode(folder) {
+      const foldEl = document.createElement('div');
+      foldEl.className = 'lft-fold';
+      foldEl.dataset.folderId = folder.id;
+      foldEl.dataset.folderName = folder.name.toLowerCase();
+
+      const childFolds = S.folders
+        .filter(f => f.parent_folder_id === folder.id)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name));
+
+      const hasChildren = childFolds.length > 0;
+      const isCurrent = folder.id === pdf.folder_id;
+      if (!isCurrent) totalSelectable++;
+
+      const row = document.createElement('div');
+      row.className = 'lft-fold-row' + (isCurrent ? ' current' : '');
+      row.title = isCurrent ? 'Current location of this PDF' : `Place shortcut in: ${getFolderPath(folder)}`;
+
+      row.innerHTML = `
+        <span class="lft-chev" style="${hasChildren ? '' : 'visibility:hidden; width:12px'}">▼</span>
+        <span class="lft-fold-icon">${icons[folder.folder_type] || '📁'}</span>
+        <span class="lft-fold-name">${folder.name}</span>
+        ${isCurrent ? '<span class="lft-badge-current">Current</span>' : ''}
+      `;
+
+      let childContainer = null;
+      if (hasChildren) {
+        childContainer = document.createElement('div');
+        childContainer.className = 'lft-fold-ch';
+
+        childFolds.forEach(cf => {
+          childContainer.appendChild(buildFolderNode(cf));
+        });
+      }
+
+      // Chevron click toggles child subfolders
+      const chevEl = row.querySelector('.lft-chev');
+      if (hasChildren && chevEl) {
+        chevEl.addEventListener('click', e => {
+          e.stopPropagation();
+          const closed = chevEl.classList.toggle('closed');
+          childContainer.style.display = closed ? 'none' : 'flex';
+        });
+      }
+
+      // Click selects folder
+      row.addEventListener('click', e => {
+        if (e.target === chevEl && hasChildren) return;
+        selectFolder(folder, row);
+      });
+
+      // Double-click selects and immediately submits
+      row.addEventListener('dblclick', e => {
+        if (isCurrent) return;
+        selectFolder(folder, row);
+        confirmBtn?.click();
+      });
+
+      foldEl.appendChild(row);
+      if (childContainer) foldEl.appendChild(childContainer);
+
+      return foldEl;
+    }
+
+    rootFolds.forEach(rf => {
+      subjCh.appendChild(buildFolderNode(rf));
+    });
+
+    treeContainer.appendChild(subjEl);
+  });
+
+  if (totalSelectable === 0) {
+    treeContainer.innerHTML = '<div class="lft-empty">No other folders available to place a shortcut into.<br>Create another folder first.</div>';
+  }
+
+  // Filter search handling
+  if (searchInput) {
+    searchInput.oninput = () => {
+      const q = searchInput.value.toLowerCase().trim();
+      const allSubjs = treeContainer.querySelectorAll('.lft-subj');
+
+      if (!q) {
+        // Reset view
+        allSubjs.forEach(s => {
+          s.style.display = 'block';
+          s.querySelector('.lft-subj-ch').style.display = 'flex';
+          s.querySelector('.lft-chev')?.classList.remove('closed');
+          s.querySelectorAll('.lft-fold').forEach(f => {
+            f.style.display = 'flex';
+            const ch = f.querySelector('.lft-fold-ch');
+            if (ch) ch.style.display = 'flex';
+            f.querySelector('.lft-chev')?.classList.remove('closed');
+          });
+        });
+        return;
+      }
+
+      // Match folders against query
+      allSubjs.forEach(s => {
+        const foldNodes = s.querySelectorAll('.lft-fold');
+        let subjHasMatch = false;
+
+        foldNodes.forEach(fn => {
+          const name = fn.dataset.folderName || '';
+          const matches = name.includes(q);
+
+          if (matches) {
+            subjHasMatch = true;
+            fn.style.display = 'flex';
+            let parent = fn.parentElement;
+            while (parent && parent !== s) {
+              if (parent.classList.contains('lft-fold') || parent.classList.contains('lft-fold-ch') || parent.classList.contains('lft-subj-ch')) {
+                parent.style.display = 'flex';
+              }
+              parent = parent.parentElement;
+            }
+          } else {
+            const hasMatchingChild = Array.from(fn.querySelectorAll('.lft-fold')).some(child =>
+              (child.dataset.folderName || '').includes(q)
+            );
+            if (hasMatchingChild) {
+              subjHasMatch = true;
+              fn.style.display = 'flex';
+              const ch = fn.querySelector('.lft-fold-ch');
+              if (ch) ch.style.display = 'flex';
+            } else {
+              fn.style.display = 'none';
+            }
+          }
+        });
+
+        s.style.display = subjHasMatch ? 'block' : 'none';
+        if (subjHasMatch) {
+          s.querySelector('.lft-subj-ch').style.display = 'flex';
+          s.querySelector('.lft-chev')?.classList.remove('closed');
+        }
+      });
+    };
+
+    // Press Enter to submit if a folder is selected or single folder matches
+    searchInput.onkeydown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (confirmBtn && !confirmBtn.disabled) {
+          confirmBtn.click();
+        } else {
+          // If 1 visible non-current folder matches, auto-select it
+          const visibleRows = Array.from(treeContainer.querySelectorAll('.lft-fold-row:not(.current)'))
+            .filter(r => r.offsetParent !== null);
+          if (visibleRows.length === 1) {
+            visibleRows[0].click();
+            confirmBtn?.click();
+          }
+        }
+      }
+    };
+  }
+
+  import('./ui.js').then(m => m.openModal('mo-link-pdf'));
+  setTimeout(() => searchInput?.focus(), 80);
 }
 
 export function openNewFolderModal(id) {

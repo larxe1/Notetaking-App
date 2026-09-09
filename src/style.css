@@ -1027,3 +1027,159 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
   text-align: center;
   flex-shrink: 0;
 }
+
+/* ═══════════════════════════════════════════════
+   SHORTCUT DESTINATION PICKER (MODAL)
+   ═══════════════════════════════════════════════ */
+.lft-container {
+  flex: 1;
+  min-height: 220px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--navy);
+  border: 1px solid var(--navy-b);
+  border-radius: 6px;
+  padding: 6px 8px;
+  user-select: none;
+}
+
+.lft-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 36px 16px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.lft-subj {
+  margin-bottom: 6px;
+}
+
+.lft-subj-hd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.lft-subj-hd:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lft-chev {
+  font-size: 9px;
+  color: var(--muted);
+  transition: transform .18s;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.lft-chev.closed {
+  transform: rotate(-90deg);
+}
+
+.lft-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lft-subj-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e8e4db;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lft-count {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+  padding-left: 6px;
+}
+
+.lft-subj-ch {
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.lft-fold {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1px;
+}
+
+.lft-fold-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all .12s;
+  font-size: 12px;
+  color: #c5beba;
+  border: 1px solid transparent;
+}
+
+.lft-fold-row:hover:not(.current) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.lft-fold-row.selected {
+  background: rgba(201, 168, 76, 0.2) !important;
+  border-color: var(--gold) !important;
+  color: #fff !important;
+  font-weight: 500;
+}
+
+.lft-fold-row.current {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.lft-fold-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.lft-fold-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lft-badge-current {
+  font-size: 10px;
+  color: var(--gold);
+  background: rgba(201, 168, 76, 0.15);
+  border: 1px solid rgba(201, 168, 76, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.lft-fold-ch {
+  padding-left: 12px;
+  margin-left: 6px;
+  border-left: 2px solid rgba(201, 168, 76, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
