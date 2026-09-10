@@ -579,25 +579,32 @@ export async function ensurePageRendered(pageNum) {
     // Render PDF page canvas
     await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
-    // Build text layer
+    // Build text layer using PDF.js renderTextLayer for pixel-accurate baseline alignment.
+    // The old hand-rolled approach used `top: tx[5] - fh` where fh is the em-size from the
+    // transform matrix, but CSS font baselines sit at ~0.8×em (not 1.0×em), causing every
+    // span to render ~15-20% of its font-size too high relative to the canvas pixels.
     const tc = await page.getTextContent();
+    await pdfjsLib.renderTextLayer({
+      textContentSource: tc,
+      container: txtLayer,
+      viewport: vp,
+      textDivs: [],
+    }).promise;
+
+    // Build textItems for hit-testing (search, box-select). These use raw PDF coordinates
+    // and are independent of the CSS span positioning above.
     const textItems = [];
     for (const item of tc.items) {
       if (!item.str || !item.transform) continue;
-      const span = document.createElement('span');
-      const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
-      const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-      const angle = Math.atan2(tx[1], tx[0]);
-      span.textContent = item.str;
-      span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
-      if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
-      txtLayer.appendChild(span);
+      const fh = Math.sqrt(
+        item.transform[2] * item.transform[2] + item.transform[3] * item.transform[3]
+      ) * S.scale;
       textItems.push({
         str: item.str,
         x: item.transform[4] * S.scale,
         y: vp.height - item.transform[5] * S.scale,
         w: (item.width  || 0) * S.scale,
-        h: (item.height || fh) * S.scale,
+        h: (item.height || fh),
       });
     }
 
@@ -685,19 +692,14 @@ export async function renderPageInto(pageNum, container, pdfDocObj, paneState) {
 
   await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
-  // Build text items for display only
+  // Build text layer using PDF.js renderTextLayer (same fix as main viewer)
   const tc = await page.getTextContent();
-  for (const item of tc.items) {
-    if (!item.str || !item.transform) continue;
-    const span = document.createElement('span');
-    const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
-    const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-    const angle = Math.atan2(tx[1], tx[0]);
-    span.textContent = item.str;
-    span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
-    if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
-    txtLayer.appendChild(span);
-  }
+  await pdfjsLib.renderTextLayer({
+    textContentSource: tc,
+    container: txtLayer,
+    viewport: vp,
+    textDivs: [],
+  }).promise;
 
   if (!paneState.pages) paneState.pages = {};
   paneState.pages[pageNum] = { wrap, pdfCanvas, drawCanvas, txtLayer, annOv, viewport: vp };
