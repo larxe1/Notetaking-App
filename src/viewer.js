@@ -580,14 +580,10 @@ export async function ensurePageRendered(pageNum) {
     await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
     // Build text layer.
-    // We use a full CSS matrix() transform so the PDF glyph baseline maps directly
-    // to screen coordinates without approximating the font-ascender fraction.
-    //
-    // Key insight: with transform-origin:0% 0% and left:0;top:0, the span origin
-    // is the page's top-left. The matrix translates it to (tx[4], tx[5]) — the PDF
-    // baseline position — and scales by fh. The browser then renders the transparent
-    // text inside that box, and getClientRects() on the selection returns correct
-    // screen coordinates for the highlight overlay. No tx[5]-fh approximation needed.
+    // tx[5] is the PDF baseline in CSS pixel coordinates (Y already flipped by vp.transform).
+    // CSS renders font baselines at ~0.8× the em-size from the span's top edge, so:
+    //   top = tx[5] - fh * 0.8   (places the span so its internal baseline == tx[5])
+    // The old code used tx[5] - fh (1.0×), which sat ~15-20% of fh too high vs the canvas.
     const tc = await page.getTextContent();
     const textItems = [];
     for (const item of tc.items) {
@@ -595,14 +591,10 @@ export async function ensurePageRendered(pageNum) {
       const span = document.createElement('span');
       const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
       const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+      const angle = Math.atan2(tx[1], tx[0]);
       span.textContent = item.str;
-      // Encode full position+scale into the CSS matrix; normalise columns by fh so
-      // font-size handles the visual scale while the matrix handles position+rotation.
-      const a = tx[0] / fh, b = tx[1] / fh, c = tx[2] / fh, d = tx[3] / fh;
-      span.style.cssText =
-        `left:0;top:0;font-size:${fh}px;` +
-        `transform:matrix(${a},${b},${c},${d},${tx[4]},${tx[5]});` +
-        `font-family:${item.fontName || 'sans-serif'}`;
+      span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh * 0.8}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
+      if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
       txtLayer.appendChild(span);
       textItems.push({
         str: item.str,
@@ -697,19 +689,17 @@ export async function renderPageInto(pageNum, container, pdfDocObj, paneState) {
 
   await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
-  // Build text layer using CSS matrix transform (same approach as main viewer)
+  // Build text layer (same corrected ascender math as main viewer)
   const tc = await page.getTextContent();
   for (const item of tc.items) {
     if (!item.str || !item.transform) continue;
     const span = document.createElement('span');
     const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
     const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-    const a = tx[0] / fh, b = tx[1] / fh, c = tx[2] / fh, d = tx[3] / fh;
+    const angle = Math.atan2(tx[1], tx[0]);
     span.textContent = item.str;
-    span.style.cssText =
-      `left:0;top:0;font-size:${fh}px;` +
-      `transform:matrix(${a},${b},${c},${d},${tx[4]},${tx[5]});` +
-      `font-family:${item.fontName || 'sans-serif'}`;
+    span.style.cssText = `left:${tx[4]}px;top:${tx[5] - fh * 0.8}px;font-size:${fh}px;font-family:${item.fontName || 'sans-serif'}`;
+    if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
     txtLayer.appendChild(span);
   }
 
