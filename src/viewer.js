@@ -579,32 +579,37 @@ export async function ensurePageRendered(pageNum) {
     // Render PDF page canvas
     await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
-    // Build text layer using PDF.js renderTextLayer for pixel-accurate baseline alignment.
-    // The old hand-rolled approach used `top: tx[5] - fh` where fh is the em-size from the
-    // transform matrix, but CSS font baselines sit at ~0.8×em (not 1.0×em), causing every
-    // span to render ~15-20% of its font-size too high relative to the canvas pixels.
+    // Build text layer.
+    // We use a full CSS matrix() transform so the PDF glyph baseline maps directly
+    // to screen coordinates without approximating the font-ascender fraction.
+    //
+    // Key insight: with transform-origin:0% 0% and left:0;top:0, the span origin
+    // is the page's top-left. The matrix translates it to (tx[4], tx[5]) — the PDF
+    // baseline position — and scales by fh. The browser then renders the transparent
+    // text inside that box, and getClientRects() on the selection returns correct
+    // screen coordinates for the highlight overlay. No tx[5]-fh approximation needed.
     const tc = await page.getTextContent();
-    await pdfjsLib.renderTextLayer({
-      textContentSource: tc,
-      container: txtLayer,
-      viewport: vp,
-      textDivs: [],
-    }).promise;
-
-    // Build textItems for hit-testing (search, box-select). These use raw PDF coordinates
-    // and are independent of the CSS span positioning above.
     const textItems = [];
     for (const item of tc.items) {
       if (!item.str || !item.transform) continue;
-      const fh = Math.sqrt(
-        item.transform[2] * item.transform[2] + item.transform[3] * item.transform[3]
-      ) * S.scale;
+      const span = document.createElement('span');
+      const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
+      const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+      span.textContent = item.str;
+      // Encode full position+scale into the CSS matrix; normalise columns by fh so
+      // font-size handles the visual scale while the matrix handles position+rotation.
+      const a = tx[0] / fh, b = tx[1] / fh, c = tx[2] / fh, d = tx[3] / fh;
+      span.style.cssText =
+        `left:0;top:0;font-size:${fh}px;` +
+        `transform:matrix(${a},${b},${c},${d},${tx[4]},${tx[5]});` +
+        `font-family:${item.fontName || 'sans-serif'}`;
+      txtLayer.appendChild(span);
       textItems.push({
         str: item.str,
         x: item.transform[4] * S.scale,
         y: vp.height - item.transform[5] * S.scale,
         w: (item.width  || 0) * S.scale,
-        h: (item.height || fh),
+        h: (item.height || fh) * S.scale,
       });
     }
 
@@ -692,14 +697,21 @@ export async function renderPageInto(pageNum, container, pdfDocObj, paneState) {
 
   await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
 
-  // Build text layer using PDF.js renderTextLayer (same fix as main viewer)
+  // Build text layer using CSS matrix transform (same approach as main viewer)
   const tc = await page.getTextContent();
-  await pdfjsLib.renderTextLayer({
-    textContentSource: tc,
-    container: txtLayer,
-    viewport: vp,
-    textDivs: [],
-  }).promise;
+  for (const item of tc.items) {
+    if (!item.str || !item.transform) continue;
+    const span = document.createElement('span');
+    const tx   = pdfjsLib.Util.transform(vp.transform, item.transform);
+    const fh   = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+    const a = tx[0] / fh, b = tx[1] / fh, c = tx[2] / fh, d = tx[3] / fh;
+    span.textContent = item.str;
+    span.style.cssText =
+      `left:0;top:0;font-size:${fh}px;` +
+      `transform:matrix(${a},${b},${c},${d},${tx[4]},${tx[5]});` +
+      `font-family:${item.fontName || 'sans-serif'}`;
+    txtLayer.appendChild(span);
+  }
 
   if (!paneState.pages) paneState.pages = {};
   paneState.pages[pageNum] = { wrap, pdfCanvas, drawCanvas, txtLayer, annOv, viewport: vp };
