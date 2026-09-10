@@ -40,6 +40,7 @@ export const S = {
 
   // Pending text selection before confirm
   pendingSel:  null,
+  pendingEditorSel: null,
 
   // Upload / folder target
   uploadFolderId:      null,

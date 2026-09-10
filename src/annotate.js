@@ -7,7 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine } from './tablepicker.js';
+import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, applyEditorHighlight } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
 
@@ -457,9 +457,17 @@ export function initAnnPanel() {
     handleEditorKeyDown(e, document.getElementById('edit-note-ed'));
   });
 
-  // Selection confirm/cancel (fixes bug #1 — was cut off in original)
+  // Selection confirm/cancel (works for both PDF text and folder/notepad editors)
   document.getElementById('sel-confirm').addEventListener('mousedown', e => e.preventDefault());
   document.getElementById('sel-confirm').addEventListener('click', () => {
+    if (S.pendingEditorSel) {
+      const { editor, range } = S.pendingEditorSel;
+      document.getElementById('sel-menu').classList.remove('open');
+      applyEditorHighlight(editor, range, S.activeColor || '#c9a84c');
+      S.pendingEditorSel = null;
+      window.getSelection()?.removeAllRanges();
+      return;
+    }
     if (!S.pendingSel) return;
     window.getSelection()?.removeAllRanges();
     document.getElementById('sel-menu').classList.remove('open');
@@ -470,16 +478,17 @@ export function initAnnPanel() {
     window.getSelection()?.removeAllRanges();
     document.getElementById('sel-menu').classList.remove('open');
     S.pendingSel = null;
+    S.pendingEditorSel = null;
   });
 
   // Auto-close selection menu when clicking outside
   document.addEventListener('mousedown', e => {
     const selMenu = document.getElementById('sel-menu');
-    if (S.pendingSel && selMenu.classList.contains('open')) {
+    if ((S.pendingSel || S.pendingEditorSel) && selMenu.classList.contains('open')) {
       if (!selMenu.contains(e.target)) {
-        window.getSelection()?.removeAllRanges();
         selMenu.classList.remove('open');
         S.pendingSel = null;
+        S.pendingEditorSel = null;
       }
     }
   });

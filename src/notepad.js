@@ -924,6 +924,37 @@ export function initNotepad() {
     });
     
     ed.addEventListener('paste', handlePaste);
+
+    // Floating highlight menu on text selection (identical to PDF reader highlight popup)
+    const onSelect = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+      const text = sel.toString().trim();
+      const range = sel.getRangeAt(0);
+      if (!ed.contains(range.commonAncestorContainer)) return;
+
+      const rects = range.getClientRects();
+      if (!rects.length) return;
+      const last = rects[rects.length - 1];
+
+      S.pendingEditorSel = { editor: ed, range: range.cloneRange(), text };
+      S.pendingSel = null;
+
+      const m = document.getElementById('sel-menu');
+      if (m) {
+        const mx = Math.min(Math.max(10, last.right), window.innerWidth - 170);
+        const my = Math.min(last.bottom + 6, window.innerHeight - 60);
+        m.style.left = mx + 'px';
+        m.style.top  = my + 'px';
+        m.classList.add('open');
+      }
+    };
+
+    ed.addEventListener('mouseup', onSelect);
+    ed.addEventListener('touchend', () => setTimeout(onSelect, 60));
+    ed.addEventListener('keyup', (e) => {
+      if (e.shiftKey) onSelect();
+    });
   });
 
   // Close on Esc

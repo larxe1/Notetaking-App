@@ -887,7 +887,43 @@ export function handleEditorKeyDown(e, editorElement) {
 // ── Highlight colour dropdown for contenteditable editors ──
 // Creates (or reuses) a floating colour picker anchored to `anchorBtn`.
 // Clicking a colour calls execCommand('hiliteColor') on the active selection.
-// Exported so viewer.js and notepad.js can both call it.
+// ── Highlight colour applicator & dropdown for contenteditable editors ──
+
+export function applyEditorHighlight(editorEl, range, color) {
+  if (!editorEl) return;
+  if (range) {
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+  editorEl.focus();
+  try {
+    document.execCommand('styleWithCSS', false, true);
+  } catch {}
+
+  const c = color || S.activeColor || '#c9a84c';
+  if (c === 'transparent' || c === 'rgba(0,0,0,0)') {
+    const ok = document.execCommand('hiliteColor', false, 'rgba(0, 0, 0, 0)');
+    if (!ok) document.execCommand('backColor', false, 'transparent');
+  } else {
+    const ok = document.execCommand('hiliteColor', false, c);
+    if (!ok) document.execCommand('backColor', false, c);
+  }
+
+  // Also update activeColor so next highlight uses this color
+  if (c !== 'transparent' && c !== 'rgba(0,0,0,0)') {
+    S.activeColor = c;
+    // Reflect in color dots if visible
+    document.querySelectorAll('.cdot').forEach(x => {
+      x.classList.toggle('sel', x.style.background === c || x.getAttribute('data-color') === c);
+    });
+  }
+
+  editorEl.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 export function buildHighlightDropdown(anchorBtn, editorEl) {
   const DROPDOWN_ID = 'editor-hi-dropdown';
   let dropdown = document.getElementById(DROPDOWN_ID);
@@ -896,6 +932,13 @@ export function buildHighlightDropdown(anchorBtn, editorEl) {
   if (dropdown) {
     dropdown.remove();
     return;
+  }
+
+  // Preserve current selection range before opening dropdown
+  const sel = window.getSelection();
+  let savedRange = null;
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    savedRange = sel.getRangeAt(0).cloneRange();
   }
 
   dropdown = document.createElement('div');
@@ -925,25 +968,34 @@ export function buildHighlightDropdown(anchorBtn, editorEl) {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;gap:7px;align-items:center';
 
-  const cats = S.colorCats || [];
+  const DEFAULT_COLORS = [
+    { name: 'Gold', hex_color: '#c9a84c' },
+    { name: 'Yellow', hex_color: '#eab308' },
+    { name: 'Green', hex_color: '#4ade80' },
+    { name: 'Blue', hex_color: '#60a5fa' },
+    { name: 'Pink', hex_color: '#f472b6' },
+    { name: 'Orange', hex_color: '#fb923c' },
+  ];
+  const cats = (S.colorCats && S.colorCats.length) ? S.colorCats : DEFAULT_COLORS;
+
   for (const cat of cats) {
     const dot = document.createElement('button');
     dot.title = cat.name;
+    const isCur = S.activeColor === cat.hex_color;
     dot.style.cssText = [
       `background:${cat.hex_color}`,
       'width:22px',
       'height:22px',
       'border-radius:50%',
-      'border:2px solid transparent',
+      `border:2px solid ${isCur ? '#fff' : 'transparent'}`,
       'cursor:pointer',
       'transition:transform .12s,border-color .12s',
       'flex-shrink:0',
     ].join(';');
-    dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.2)'; dot.style.borderColor = '#fff'; });
-    dot.addEventListener('mouseleave', () => { dot.style.transform = ''; dot.style.borderColor = 'transparent'; });
+    dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.2)'; });
+    dot.addEventListener('mouseleave', () => { dot.style.transform = ''; });
     dot.addEventListener('click', () => {
-      editorEl.focus();
-      document.execCommand('hiliteColor', false, cat.hex_color);
+      applyEditorHighlight(editorEl, savedRange, cat.hex_color);
       dropdown.remove();
     });
     row.appendChild(dot);
@@ -967,8 +1019,7 @@ export function buildHighlightDropdown(anchorBtn, editorEl) {
   remove.addEventListener('mouseenter', () => { remove.style.borderColor = 'var(--red)'; remove.style.color = 'var(--red)'; });
   remove.addEventListener('mouseleave', () => { remove.style.borderColor = 'var(--navy-b)'; remove.style.color = 'var(--muted)'; });
   remove.addEventListener('click', () => {
-    editorEl.focus();
-    document.execCommand('hiliteColor', false, 'transparent');
+    applyEditorHighlight(editorEl, savedRange, 'transparent');
     dropdown.remove();
   });
   row.appendChild(remove);
@@ -988,10 +1039,11 @@ export function buildHighlightDropdown(anchorBtn, editorEl) {
 
   // Dismiss on outside click
   const close = (ev) => {
-    if (!dropdown.contains(ev.target) && ev.target !== anchorBtn) {
+    if (!dropdown.contains(ev.target) && ev.target !== anchorBtn && !anchorBtn.contains(ev.target)) {
       dropdown.remove();
       document.removeEventListener('mousedown', close, true);
     }
   };
   setTimeout(() => document.addEventListener('mousedown', close, true), 0);
 }
+
