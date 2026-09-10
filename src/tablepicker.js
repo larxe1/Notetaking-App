@@ -883,3 +883,115 @@ export function handleEditorKeyDown(e, editorElement) {
     }
   }
 }
+
+// ── Highlight colour dropdown for contenteditable editors ──
+// Creates (or reuses) a floating colour picker anchored to `anchorBtn`.
+// Clicking a colour calls execCommand('hiliteColor') on the active selection.
+// Exported so viewer.js and notepad.js can both call it.
+export function buildHighlightDropdown(anchorBtn, editorEl) {
+  const DROPDOWN_ID = 'editor-hi-dropdown';
+  let dropdown = document.getElementById(DROPDOWN_ID);
+
+  // Toggle: close if already open
+  if (dropdown) {
+    dropdown.remove();
+    return;
+  }
+
+  dropdown = document.createElement('div');
+  dropdown.id = DROPDOWN_ID;
+  dropdown.style.cssText = [
+    'position:fixed',
+    'z-index:9999',
+    'background:var(--navy-l)',
+    'border:1px solid var(--navy-b)',
+    'border-radius:6px',
+    'padding:10px 12px',
+    'box-shadow:0 4px 18px rgba(0,0,0,.6)',
+    'display:flex',
+    'flex-direction:column',
+    'gap:8px',
+    'min-width:160px',
+  ].join(';');
+
+  // Prevent focus loss on editor while picking
+  dropdown.addEventListener('mousedown', e => e.preventDefault());
+
+  const lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:11px;color:var(--muted);font-family:Inter,sans-serif;font-weight:500;letter-spacing:.04em;text-transform:uppercase';
+  lbl.textContent = 'Highlight colour';
+  dropdown.appendChild(lbl);
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;flex-wrap:wrap;gap:7px;align-items:center';
+
+  const cats = S.colorCats || [];
+  for (const cat of cats) {
+    const dot = document.createElement('button');
+    dot.title = cat.name;
+    dot.style.cssText = [
+      `background:${cat.hex_color}`,
+      'width:22px',
+      'height:22px',
+      'border-radius:50%',
+      'border:2px solid transparent',
+      'cursor:pointer',
+      'transition:transform .12s,border-color .12s',
+      'flex-shrink:0',
+    ].join(';');
+    dot.addEventListener('mouseenter', () => { dot.style.transform = 'scale(1.2)'; dot.style.borderColor = '#fff'; });
+    dot.addEventListener('mouseleave', () => { dot.style.transform = ''; dot.style.borderColor = 'transparent'; });
+    dot.addEventListener('click', () => {
+      editorEl.focus();
+      document.execCommand('hiliteColor', false, cat.hex_color);
+      dropdown.remove();
+    });
+    row.appendChild(dot);
+  }
+
+  // Remove-highlight pill
+  const remove = document.createElement('button');
+  remove.textContent = '✕ Remove';
+  remove.title = 'Remove highlight from selection';
+  remove.style.cssText = [
+    'background:transparent',
+    'border:1px solid var(--navy-b)',
+    'color:var(--muted)',
+    'border-radius:4px',
+    'padding:2px 8px',
+    'font-size:11px',
+    'cursor:pointer',
+    'font-family:Inter,sans-serif',
+    'transition:all .12s',
+  ].join(';');
+  remove.addEventListener('mouseenter', () => { remove.style.borderColor = 'var(--red)'; remove.style.color = 'var(--red)'; });
+  remove.addEventListener('mouseleave', () => { remove.style.borderColor = 'var(--navy-b)'; remove.style.color = 'var(--muted)'; });
+  remove.addEventListener('click', () => {
+    editorEl.focus();
+    document.execCommand('hiliteColor', false, 'transparent');
+    dropdown.remove();
+  });
+  row.appendChild(remove);
+  dropdown.appendChild(row);
+  document.body.appendChild(dropdown);
+
+  // Position below anchor (flip up if near bottom of screen)
+  const rect = anchorBtn.getBoundingClientRect();
+  if (window.innerHeight - rect.bottom >= 90) {
+    dropdown.style.top  = (rect.bottom + 4) + 'px';
+    dropdown.style.left = rect.left + 'px';
+  } else {
+    dropdown.style.top       = (rect.top - 4) + 'px';
+    dropdown.style.left      = rect.left + 'px';
+    dropdown.style.transform = 'translateY(-100%)';
+  }
+
+  // Dismiss on outside click
+  const close = (ev) => {
+    if (!dropdown.contains(ev.target) && ev.target !== anchorBtn) {
+      dropdown.remove();
+      document.removeEventListener('mousedown', close, true);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+}

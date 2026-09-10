@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
 import { dbLoadNotepad, dbSaveNotepad } from './db.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
@@ -859,6 +859,10 @@ export function initNotepad() {
           activeEd?.dispatchEvent(new Event('input'));
           if (_activePdfId) scheduleSaveForPdf(_activePdfId);
         });
+        return;
+      }
+      if (btn.id === 'np-highlight-btn') {
+        buildHighlightDropdown(btn, activeEd);
         return;
       }
 

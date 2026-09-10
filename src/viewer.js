@@ -6,7 +6,7 @@ import { syncOK, syncSpin, jumpToPage } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageGet } from './storage.js';
 
@@ -114,6 +114,10 @@ export async function openFolderDoc(fold) {
       }
       if (btn.id === 'folder-doc-link-url') {
         insertWebLink(ed, () => ed.dispatchEvent(new Event('input')));
+        return;
+      }
+      if (btn.id === 'folder-doc-highlight') {
+        buildHighlightDropdown(btn, ed);
         return;
       }
 
