@@ -99,7 +99,7 @@ async function buildFolderHTML(folderId, depth = 1) {
 
   // 1. Folder Header
   const folderName = stripEmojis(folder.name) || 'Folder';
-  const hSize = depth === 1 ? '14pt' : (depth === 2 ? '12.5pt' : '11.5pt');
+  const hSize = depth === 1 ? '13pt' : (depth === 2 ? '11.5pt' : '10.5pt');
   const hTag = depth === 1 ? 'h1' : (depth === 2 ? 'h2' : 'h3');
   
   let folderHeaderHtml = `
@@ -116,7 +116,7 @@ async function buildFolderHTML(folderId, depth = 1) {
     hasAnyContent = true;
     folderHeaderHtml += `
       <div class="folder-notes-section" style="margin-bottom: 10pt; padding: 6pt 10pt; background: #f8fafc; border: 0.75pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.25; page-break-inside: avoid; break-inside: avoid;">
-        <div style="font-size: 8pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3pt;">Folder Notes</div>
+        <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3pt;">Folder Notes</div>
         <div class="note-content" style="color: #1e293b;">${cleanAndSanitizeHtml(folderNotes)}</div>
       </div>
     `;
@@ -140,7 +140,7 @@ async function buildFolderHTML(folderId, depth = 1) {
 
       sectionHtml += `
         <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
-          <div style="font-size: 11pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
+          <div class="case-title" style="font-size: 10pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
             ${pdfName}
           </div>
       `;
@@ -149,7 +149,7 @@ async function buildFolderHTML(folderId, depth = 1) {
       if (hasDigest) {
         sectionHtml += `
           <div style="margin-bottom: 6pt;">
-            <div style="font-size: 8pt; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Case Digest</div>
+            <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Case Digest</div>
             <div class="case-digest-body" style="padding-left: 8pt; border-left: 2pt solid #0284c7; color: #1e293b; line-height: 1.25;">
               ${cleanAndSanitizeHtml(digest)}
             </div>
@@ -161,7 +161,7 @@ async function buildFolderHTML(folderId, depth = 1) {
       if (hasContent) {
         sectionHtml += `
           <div style="margin-top: 5pt;">
-            <div style="font-size: 8pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Appendix / Notes</div>
+            <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Appendix / Notes</div>
             <div class="case-notes-body" style="padding-left: 8pt; border-left: 2pt solid #64748b; color: #1e293b; line-height: 1.25;">
               ${cleanAndSanitizeHtml(content)}
             </div>
@@ -234,7 +234,7 @@ export async function exportFolderToPDF(folder) {
       background: #f1f5f9;
       color: #0f172a;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, Helvetica, sans-serif;
-      font-size: 10pt;
+      font-size: 9pt;
       line-height: 1.25;
     }
     .top-bar {
@@ -367,7 +367,7 @@ export async function exportFolderToPDF(folder) {
       padding-bottom: 3pt !important;
       margin-bottom: 8pt !important;
       border-bottom: 1.5pt solid #334155 !important;
-      font-size: 8.5pt !important;
+      font-size: 7.5pt !important;
       font-weight: 700 !important;
       color: #475569 !important;
       text-transform: uppercase !important;
@@ -392,7 +392,7 @@ export async function exportFolderToPDF(folder) {
       padding: 4pt 6pt !important;
       text-align: left !important;
       vertical-align: top !important;
-      font-size: 9.5pt !important;
+      font-size: 8.5pt !important;
       color: #1e293b !important;
       line-height: 1.25 !important;
     }
@@ -421,7 +421,7 @@ export async function exportFolderToPDF(folder) {
       color: #0f172a !important;
       padding: 2px 4px !important;
       border-radius: 3px !important;
-      font-size: 9pt !important;
+      font-size: 8pt !important;
     }
     .np-banner-hdr {
       background: #e0f2fe !important;
@@ -430,7 +430,7 @@ export async function exportFolderToPDF(folder) {
       padding: 5pt 10pt !important;
       margin: 8pt 0 4pt !important;
       font-weight: 800 !important;
-      font-size: 11pt !important;
+      font-size: 10pt !important;
       border-radius: 3pt 3pt 0 0 !important;
       display: block !important;
       letter-spacing: 0.02em !important;
@@ -475,15 +475,36 @@ export async function exportFolderToPDF(folder) {
 
     /* Standard Mode Override */
     .standard-mode {
-      font-size: 11pt !important;
+      font-size: 10pt !important;
       line-height: 1.5 !important;
     }
     .standard-mode p {
       margin: 6pt 0 !important;
     }
     .standard-mode th:not(.report-th), .standard-mode td:not(.report-tf):not(.report-body-cell) {
-      font-size: 10pt !important;
+      font-size: 9pt !important;
       padding: 6pt 8pt !important;
+    }
+    .standard-mode .case-title {
+      font-size: 11pt !important;
+    }
+    .standard-mode .section-badge {
+      font-size: 8pt !important;
+    }
+    .standard-mode .folder-header-wrap h1 {
+      font-size: 14pt !important;
+    }
+    .standard-mode .folder-header-wrap h2 {
+      font-size: 12.5pt !important;
+    }
+    .standard-mode .folder-header-wrap h3 {
+      font-size: 11.5pt !important;
+    }
+    .standard-mode .np-banner-hdr {
+      font-size: 11pt !important;
+    }
+    .standard-mode pre, .standard-mode code {
+      font-size: 9pt !important;
     }
 
     @media print {
