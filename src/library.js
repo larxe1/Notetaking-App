@@ -794,6 +794,110 @@ function startInlineRename(nameEl, onSave) {
   inp.addEventListener('blur', () => finish(true));
 }
 
+// ── Normalize PDF filename by stripping download duplicate suffixes like (1), (2), - Copy, etc. ──
+export function normalizePdfName(filename) {
+  if (!filename) return '';
+  let base = filename.trim().replace(/\.pdf$/i, '').trim();
+  let prev;
+  do {
+    prev = base;
+    base = base
+      // Match trailing (1), (2), [1], [2], up to 2 digits so 4-digit legal citation years like (2024) are preserved
+      .replace(/\s*[\(\[]\s*\d{1,2}\s*[\)\]]$/, '')
+      // Match Windows duplicate copy suffixes like " - Copy", " - Copy (1)", "_copy"
+      .replace(/\s*-\s*copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
+      .replace(/_copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
+      .trim();
+  } while (base !== prev && base.length > 0);
+
+  return base.toLowerCase().trim();
+}
+
+// ── Prompt for Duplicate PDF Resolution (Shortcut vs Independent Copy vs Cancel) ──
+function promptDuplicateResolution(duplicateItems) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('mo-dup-upload');
+    const desc = document.getElementById('dup-upload-desc');
+    const list = document.getElementById('dup-upload-list');
+    const btnShortcut = document.getElementById('dup-btn-shortcut');
+    const btnCopy = document.getElementById('dup-btn-copy');
+    const btnCancel = document.getElementById('dup-btn-cancel');
+
+    if (!modal || !btnShortcut || !btnCopy) {
+      const ans = confirm('This file is already in your library.\n\nClick OK to create a linked shortcut, or Cancel to skip.');
+      return resolve(ans ? 'SHORTCUT' : 'CANCEL');
+    }
+
+    const formatLoc = (folderId) => {
+      const folder = S.folders.find(f => f.id === folderId);
+      if (!folder) return 'Library';
+      const parts = [folder.name];
+      let curr = folder;
+      let depth = 0;
+      while (curr.parent_folder_id && depth < 10) {
+        const parent = S.folders.find(f => f.id === curr.parent_folder_id);
+        if (!parent) break;
+        parts.unshift(parent.name);
+        curr = parent;
+        depth++;
+      }
+      const subject = S.subjects.find(s => s.id === folder.subject_id);
+      if (subject) parts.unshift(subject.name);
+      return parts.join(' > ');
+    };
+
+    if (duplicateItems.length === 1) {
+      const item = duplicateItems[0];
+      const loc = formatLoc(item.match.folder_id);
+      const isExact = item.file.name.toLowerCase().trim() === item.match.name.toLowerCase().trim();
+      const matchMsg = isExact
+        ? `already exists in your library under <b>${loc}</b>.`
+        : `substantially matches existing file <b>"${item.match.name}"</b> in <b>${loc}</b>.`;
+      desc.innerHTML = `The file <b>"${item.file.name}"</b> ${matchMsg}`;
+      list.style.display = 'none';
+    } else {
+      desc.textContent = `${duplicateItems.length} files you selected already exist or match files in your library:`;
+      list.style.display = 'block';
+      list.innerHTML = duplicateItems.map(d => {
+        const isExact = d.file.name.toLowerCase().trim() === d.match.name.toLowerCase().trim();
+        const loc = formatLoc(d.match.folder_id);
+        const detail = isExact ? `in ${loc}` : `matches "${d.match.name}" in ${loc}`;
+        return `• <b>${d.file.name}</b> (${detail})`;
+      }).join('<br>');
+    }
+
+    openModal('mo-dup-upload');
+
+    function cleanup() {
+      btnShortcut.removeEventListener('click', onShortcut);
+      btnCopy.removeEventListener('click', onCopy);
+      btnCancel?.removeEventListener('click', onCancel);
+    }
+
+    function onShortcut() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('SHORTCUT');
+    }
+
+    function onCopy() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('COPY');
+    }
+
+    function onCancel() {
+      cleanup();
+      closeModal('mo-dup-upload');
+      resolve('CANCEL');
+    }
+
+    btnShortcut.addEventListener('click', onShortcut, { once: true });
+    btnCopy.addEventListener('click', onCopy, { once: true });
+    btnCancel?.addEventListener('click', onCancel, { once: true });
+  });
+}
+
 // ── Modal wiring (subjects, folders, upload) ──
 export function initLibraryModals() {
   document.getElementById('new-subj-btn').addEventListener('click', () => {
@@ -956,110 +1060,6 @@ export function initLibraryModals() {
       document.getElementById('save-subfold')?.click();
     }
   });
-
-// ── Normalize PDF filename by stripping download duplicate suffixes like (1), (2), - Copy, etc. ──
-export function normalizePdfName(filename) {
-  if (!filename) return '';
-  let base = filename.trim().replace(/\.pdf$/i, '').trim();
-  let prev;
-  do {
-    prev = base;
-    base = base
-      // Match trailing (1), (2), [1], [2], up to 2 digits so 4-digit legal citation years like (2024) are preserved
-      .replace(/\s*[\(\[]\s*\d{1,2}\s*[\)\]]$/, '')
-      // Match Windows duplicate copy suffixes like " - Copy", " - Copy (1)", "_copy"
-      .replace(/\s*-\s*copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
-      .replace(/_copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
-      .trim();
-  } while (base !== prev && base.length > 0);
-
-  return base.toLowerCase().trim();
-}
-
-// ── Prompt for Duplicate PDF Resolution (Shortcut vs Independent Copy vs Cancel) ──
-function promptDuplicateResolution(duplicateItems) {
-  return new Promise((resolve) => {
-    const modal = document.getElementById('mo-dup-upload');
-    const desc = document.getElementById('dup-upload-desc');
-    const list = document.getElementById('dup-upload-list');
-    const btnShortcut = document.getElementById('dup-btn-shortcut');
-    const btnCopy = document.getElementById('dup-btn-copy');
-    const btnCancel = document.getElementById('dup-btn-cancel');
-
-    if (!modal || !btnShortcut || !btnCopy) {
-      const ans = confirm('This file is already in your library.\n\nClick OK to create a linked shortcut, or Cancel to skip.');
-      return resolve(ans ? 'SHORTCUT' : 'CANCEL');
-    }
-
-    const formatLoc = (folderId) => {
-      const folder = S.folders.find(f => f.id === folderId);
-      if (!folder) return 'Library';
-      const parts = [folder.name];
-      let curr = folder;
-      let depth = 0;
-      while (curr.parent_folder_id && depth < 10) {
-        const parent = S.folders.find(f => f.id === curr.parent_folder_id);
-        if (!parent) break;
-        parts.unshift(parent.name);
-        curr = parent;
-        depth++;
-      }
-      const subject = S.subjects.find(s => s.id === folder.subject_id);
-      if (subject) parts.unshift(subject.name);
-      return parts.join(' > ');
-    };
-
-    if (duplicateItems.length === 1) {
-      const item = duplicateItems[0];
-      const loc = formatLoc(item.match.folder_id);
-      const isExact = item.file.name.toLowerCase().trim() === item.match.name.toLowerCase().trim();
-      const matchMsg = isExact
-        ? `already exists in your library under <b>${loc}</b>.`
-        : `substantially matches existing file <b>"${item.match.name}"</b> in <b>${loc}</b>.`;
-      desc.innerHTML = `The file <b>"${item.file.name}"</b> ${matchMsg}`;
-      list.style.display = 'none';
-    } else {
-      desc.textContent = `${duplicateItems.length} files you selected already exist or match files in your library:`;
-      list.style.display = 'block';
-      list.innerHTML = duplicateItems.map(d => {
-        const isExact = d.file.name.toLowerCase().trim() === d.match.name.toLowerCase().trim();
-        const loc = formatLoc(d.match.folder_id);
-        const detail = isExact ? `in ${loc}` : `matches "${d.match.name}" in ${loc}`;
-        return `• <b>${d.file.name}</b> (${detail})`;
-      }).join('<br>');
-    }
-
-    openModal('mo-dup-upload');
-
-    function cleanup() {
-      btnShortcut.removeEventListener('click', onShortcut);
-      btnCopy.removeEventListener('click', onCopy);
-      btnCancel?.removeEventListener('click', onCancel);
-    }
-
-    function onShortcut() {
-      cleanup();
-      closeModal('mo-dup-upload');
-      resolve('SHORTCUT');
-    }
-
-    function onCopy() {
-      cleanup();
-      closeModal('mo-dup-upload');
-      resolve('COPY');
-    }
-
-    function onCancel() {
-      cleanup();
-      closeModal('mo-dup-upload');
-      resolve('CANCEL');
-    }
-
-    btnShortcut.addEventListener('click', onShortcut, { once: true });
-    btnCopy.addEventListener('click', onCopy, { once: true });
-    btnCancel?.addEventListener('click', onCancel, { once: true });
-  });
-}
 
   // PDF upload via Drive
   document.getElementById('pdf-file-in').addEventListener('change', async function () {
