@@ -957,7 +957,25 @@ export function initLibraryModals() {
     }
   });
 
-  // PDF upload via Drive
+// ── Normalize PDF filename by stripping download duplicate suffixes like (1), (2), - Copy, etc. ──
+export function normalizePdfName(filename) {
+  if (!filename) return '';
+  let base = filename.trim().replace(/\.pdf$/i, '').trim();
+  let prev;
+  do {
+    prev = base;
+    base = base
+      // Match trailing (1), (2), [1], [2], up to 2 digits so 4-digit legal citation years like (2024) are preserved
+      .replace(/\s*[\(\[]\s*\d{1,2}\s*[\)\]]$/, '')
+      // Match Windows duplicate copy suffixes like " - Copy", " - Copy (1)", "_copy"
+      .replace(/\s*-\s*copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
+      .replace(/_copy(?:\s*[\(\[]\s*\d{1,2}\s*[\)\]])?$/i, '')
+      .trim();
+  } while (base !== prev && base.length > 0);
+
+  return base.toLowerCase().trim();
+}
+
 // ── Prompt for Duplicate PDF Resolution (Shortcut vs Independent Copy vs Cancel) ──
 function promptDuplicateResolution(duplicateItems) {
   return new Promise((resolve) => {
@@ -994,12 +1012,21 @@ function promptDuplicateResolution(duplicateItems) {
     if (duplicateItems.length === 1) {
       const item = duplicateItems[0];
       const loc = formatLoc(item.match.folder_id);
-      desc.innerHTML = `The file <b>"${item.file.name}"</b> already exists in your library under <b>${loc}</b>.`;
+      const isExact = item.file.name.toLowerCase().trim() === item.match.name.toLowerCase().trim();
+      const matchMsg = isExact
+        ? `already exists in your library under <b>${loc}</b>.`
+        : `substantially matches existing file <b>"${item.match.name}"</b> in <b>${loc}</b>.`;
+      desc.innerHTML = `The file <b>"${item.file.name}"</b> ${matchMsg}`;
       list.style.display = 'none';
     } else {
-      desc.textContent = `${duplicateItems.length} files you selected already exist in your library:`;
+      desc.textContent = `${duplicateItems.length} files you selected already exist or match files in your library:`;
       list.style.display = 'block';
-      list.innerHTML = duplicateItems.map(d => `• <b>${d.file.name}</b> (in ${formatLoc(d.match.folder_id)})`).join('<br>');
+      list.innerHTML = duplicateItems.map(d => {
+        const isExact = d.file.name.toLowerCase().trim() === d.match.name.toLowerCase().trim();
+        const loc = formatLoc(d.match.folder_id);
+        const detail = isExact ? `in ${loc}` : `matches "${d.match.name}" in ${loc}`;
+        return `• <b>${d.file.name}</b> (${detail})`;
+      }).join('<br>');
     }
 
     openModal('mo-dup-upload');
@@ -1043,14 +1070,34 @@ function promptDuplicateResolution(duplicateItems) {
     try {
       const files = Array.from(this.files);
 
-      // ── Duplicate detection ──
+      // ── Duplicate detection (including re-downloads with (1), (2), etc.) ──
       const duplicatesInSameFolder = [];
       const duplicatesInOtherFolders = [];
       const newFiles = [];
 
       for (const f of files) {
         const cleanName = f.name.toLowerCase().trim();
-        const match = S.pdfs.find(p => p.name.toLowerCase().trim() === cleanName);
+
+        // 1. Exact match first
+        let match = S.pdfs.find(p => p.name.toLowerCase().trim() === cleanName);
+
+        // 2. If no exact match, detect substantial matches (e.g. re-downloads like "People v. Santos (1).pdf")
+        if (!match) {
+          const normUpload = normalizePdfName(f.name);
+          if (normUpload) {
+            const candidates = S.pdfs.filter(p => normalizePdfName(p.name) === normUpload);
+            if (candidates.length > 0) {
+              // Priority:
+              // a) A match in the target folder if one exists
+              // b) A master PDF (!linked_pdf_id)
+              // c) First match found
+              match = candidates.find(p => p.folder_id === targetFolderId)
+                   || candidates.find(p => !p.linked_pdf_id)
+                   || candidates[0];
+            }
+          }
+        }
+
         if (!match) {
           newFiles.push(f);
         } else if (match.folder_id === targetFolderId) {
@@ -1062,7 +1109,10 @@ function promptDuplicateResolution(duplicateItems) {
 
       // If all selected files are already in this exact folder
       if (duplicatesInSameFolder.length > 0 && duplicatesInOtherFolders.length === 0 && newFiles.length === 0) {
-        const names = duplicatesInSameFolder.map(d => `• ${d.file.name}`).join('\n');
+        const names = duplicatesInSameFolder.map(d => {
+          const isExact = d.file.name.toLowerCase().trim() === d.match.name.toLowerCase().trim();
+          return isExact ? `• ${d.file.name}` : `• ${d.file.name} (matches "${d.match.name}")`;
+        }).join('\n');
         toast(`Already in this folder:\n${names}`);
         this.value = '';
         return;
