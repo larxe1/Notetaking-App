@@ -223,7 +223,17 @@ export async function exportFolderToPDF(folder) {
   <style>
     @page {
       size: letter portrait;
-      margin: 0.5in 0.5in 0.5in 0.5in;
+      margin: 0.5in 0.5in 0.65in 0.5in;
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7.5pt;
+        color: #64748b;
+        border-top: 0.5pt solid #cbd5e1;
+        padding-top: 4pt;
+        width: 100%;
+        text-align: center;
+      }
     }
     * {
       box-sizing: border-box;
