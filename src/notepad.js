@@ -88,24 +88,66 @@ async function saveHistorySnapshot(pdfId, content, digest) {
   }
 }
 
+// ── Helper to update save status label consistently across auto-save and flush ──
+function updateSaveStatusLabel(targetPdfId, res) {
+  if (_activePdfId !== targetPdfId) return;
+  const lbl = $saveLbl();
+  if (!lbl) return;
+
+  if (res?.saved && (res?.code === '200_OK' || !res?.code)) {
+    lbl.textContent = '✓ Saved';
+    lbl.className = 'saved';
+    lbl.title = 'Saved to Supabase cloud (Click for Error & Sync Log)';
+  } else if (res?.code === 'WARN_SAVED_WITHOUT_DIGEST') {
+    lbl.textContent = '⚠️ Saved (No Cloud Digest)';
+    lbl.className = 'saving';
+    lbl.title = 'Notes saved to cloud, but "digest" column is missing in Supabase. Digest saved locally. Click for Error Log.';
+  } else if (res?.code === 'ERR_23503_FK' || res?.localOnly) {
+    lbl.textContent = '💾 Local Only (23503)';
+    lbl.className = 'saving';
+    lbl.title = 'PDF missing in Supabase library table (23503). Saved safely to local storage. Click for Error Log.';
+  } else if (res?.queued) {
+    lbl.textContent = '⏳ Queued Offline';
+    lbl.className = 'saving';
+    lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
+  } else if (res?.error && !res?.saved) {
+    lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
+    lbl.className = 'err';
+    lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
+  } else if (res?.saved) {
+    lbl.textContent = '✓ Saved';
+    lbl.className = 'saved';
+    lbl.title = 'Saved (Click for Error & Sync Log)';
+  }
+
+  setTimeout(() => {
+    if (_activePdfId === targetPdfId && (lbl.textContent === '✓ Saved' || lbl.textContent.startsWith('✓'))) {
+      lbl.textContent = '';
+      lbl.className = '';
+      lbl.title = '';
+    }
+  }, 3500);
+}
+
 // ── Execute an explicit save for a specific PDF ID ──
 async function executeSaveForPdf(targetPdfId) {
   if (!targetPdfId) return;
 
+  const entry = _notepadCache.get(targetPdfId);
   let content = '';
   let digest = '';
   let wasDirty = false;
 
-  if (_notepadCache.has(targetPdfId)) {
-    const entry = _notepadCache.get(targetPdfId);
+  if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
+    content = $notesEditor()?.innerHTML ?? (entry?.content || '');
+    digest = $digestEditor()?.innerHTML ?? (entry?.digest || '');
+    wasDirty = entry ? !!entry.dirty : true;
+    if (entry) entry.dirty = false;
+  } else if (_notepadCache.has(targetPdfId)) {
     content = entry.content;
     digest = entry.digest;
     wasDirty = !!entry.dirty;
     entry.dirty = false;
-  } else if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-    content = $notesEditor()?.innerHTML ?? '';
-    digest = $digestEditor()?.innerHTML ?? '';
-    wasDirty = true;
   } else {
     content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
     digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
@@ -123,7 +165,6 @@ async function executeSaveForPdf(targetPdfId) {
     }
   }
 
-  const lbl = $saveLbl();
   try {
     const savedWriteTs = getWriteTs(targetPdfId);
     // ── Snapshot BEFORE the cloud save: if DB throws or tab closes mid-flight,
@@ -135,45 +176,18 @@ async function executeSaveForPdf(targetPdfId) {
       setSyncTs(targetPdfId);
     }
 
-    if (_activePdfId === targetPdfId && lbl) {
-      if (res?.saved && res?.code === '200_OK') {
-        lbl.textContent = '✓ Saved';
-        lbl.className = 'saved';
-        lbl.title = 'Saved to Supabase cloud (Click for Error & Sync Log)';
-      } else if (res?.code === 'WARN_SAVED_WITHOUT_DIGEST') {
-        lbl.textContent = '⚠️ Saved (No Cloud Digest)';
-        lbl.className = 'saving';
-        lbl.title = 'Notes saved to cloud, but "digest" column is missing in Supabase. Digest saved locally. Click for Error Log.';
-      } else if (res?.code === 'ERR_23503_FK' || res?.localOnly) {
-        lbl.textContent = '💾 Local Only (23503)';
-        lbl.className = 'saving';
-        lbl.title = 'PDF missing in Supabase library table (23503). Saved safely to local storage. Click for Error Log.';
-      } else if (res?.queued) {
-        lbl.textContent = '⏳ Queued Offline';
-        lbl.className = 'saving';
-        lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
-      } else if (res?.error) {
-        lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
-        lbl.className = 'err';
-        lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
-      } else {
-        lbl.textContent = '✓ Saved';
-        lbl.className = 'saved';
-      }
-
-      setTimeout(() => {
-        if (_activePdfId === targetPdfId && (lbl.textContent === '✓ Saved' || lbl.textContent.startsWith('✓'))) {
-          lbl.textContent = '';
-          lbl.className = '';
-        }
-      }, 3500);
-    }
+    updateSaveStatusLabel(targetPdfId, res);
   } catch (err) {
     console.error(`[Notepad] Save failed for ${targetPdfId}:`, err);
-    if (_activePdfId === targetPdfId && lbl) {
-      lbl.textContent = `✗ Err: ${err?.code || 'FAIL'}`;
-      lbl.className = 'err';
-      lbl.title = `Save failed: ${err?.message || err}. Click to open Error Log.`;
+    logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'FAIL',
+      `Save exception: ${err?.message || String(err)}.`, { error: String(err) });
+    if (_activePdfId === targetPdfId) {
+      const lbl = $saveLbl();
+      if (lbl) {
+        lbl.textContent = `✗ Err: ${err?.code || 'FAIL'}`;
+        lbl.className = 'err';
+        lbl.title = `Save failed: ${err?.message || err}. Click to open Error Log.`;
+      }
     }
   }
 }
@@ -186,6 +200,7 @@ function scheduleSaveForPdf(pdfId) {
   if (lbl && _activePdfId === pdfId) {
     lbl.textContent = 'Unsaved…';
     lbl.className = 'saving';
+    lbl.title = 'Unsaved local changes (auto-saving in 1s…)';
   }
 
   if (_saveTimer) {
@@ -205,8 +220,8 @@ function scheduleSaveForPdf(pdfId) {
 }
 
 // ── Immediately flush pending save for the active PDF ──
-export async function flushNotepadSave() {
-  const targetPdfId = _timerPdfId || _activePdfId;
+export async function flushNotepadSave(specificPdfId = null) {
+  const targetPdfId = specificPdfId || _timerPdfId || _activePdfId;
   const hadTimer = !!_saveTimer;
   if (_saveTimer) {
     clearTimeout(_saveTimer);
@@ -225,15 +240,16 @@ export async function flushNotepadSave() {
     let digest = '';
     let wasDirty = false;
 
-    if (_notepadCache.has(targetPdfId)) {
+    if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
+      content = $notesEditor()?.innerHTML ?? (entry?.content || '');
+      digest = $digestEditor()?.innerHTML ?? (entry?.digest || '');
+      wasDirty = entry ? !!entry.dirty : true;
+      if (entry) entry.dirty = false;
+    } else if (_notepadCache.has(targetPdfId)) {
       content = entry.content;
       digest = entry.digest;
       wasDirty = !!entry.dirty;
       entry.dirty = false;
-    } else if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-      content = $notesEditor()?.innerHTML ?? '';
-      digest = $digestEditor()?.innerHTML ?? '';
-      wasDirty = true;
     } else {
       content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
       digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
@@ -266,22 +282,9 @@ export async function flushNotepadSave() {
     try {
       const res = await dbSaveNotepad(targetPdfId, content, digest);
       if (res?.saved) setSyncTs(targetPdfId);
-      // Surface queued/error state in the save label if the panel is open
-      if (_activePdfId === targetPdfId) {
-        const lbl = $saveLbl();
-        if (lbl) {
-          if (res?.queued) {
-            lbl.textContent = '⏳ Queued Offline';
-            lbl.className = 'saving';
-            lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
-          } else if (res?.error && !res?.saved) {
-            lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
-            lbl.className = 'err';
-            lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
-          }
-        }
-      }
+      updateSaveStatusLabel(targetPdfId, res);
     } catch (err) {
+      if (entry) entry.dirty = true;
       // Flush errors must NEVER be silent — log to diag and show in UI
       logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'ERR_FLUSH',
         `flushNotepadSave exception: ${err?.message || String(err)}. Data is safe in localStorage + history.`,
@@ -303,12 +306,14 @@ export async function openNotepad(pdfId) {
   if (!pdfId) {
     if ($notesEditor()) $notesEditor().innerHTML = '';
     if ($digestEditor()) $digestEditor().innerHTML = '';
+    const lbl = $saveLbl();
+    if (lbl) { lbl.textContent = ''; lbl.className = ''; lbl.title = ''; }
     return;
   }
 
   // 1. Flush previous PDF notes if switching
   if (_activePdfId && _activePdfId !== pdfId) {
-    await flushNotepadSave();
+    await flushNotepadSave(_activePdfId);
   }
 
   _activePdfId = pdfId;
@@ -320,6 +325,21 @@ export async function openNotepad(pdfId) {
 
   closeOtherPanels('notepad-panel');
   panel.classList.add('open');
+
+  // Reset/sync save status label for the active PDF
+  const lbl = $saveLbl();
+  if (lbl) {
+    const cachedEntry = _notepadCache.get(pdfId);
+    if (cachedEntry?.dirty) {
+      lbl.textContent = 'Unsaved…';
+      lbl.className = 'saving';
+      lbl.title = 'Unsaved local changes';
+    } else {
+      lbl.textContent = '';
+      lbl.className = '';
+      lbl.title = '';
+    }
+  }
 
   // 2. Prime UI immediately from memory or local cache (0ms instant response, no blank flash)
   let initialContent = '';
@@ -428,6 +448,13 @@ export async function openNotepad(pdfId) {
       executeSaveForPdf(pdfId);
       if (didMerge) toast('⚠️ Notes from two devices were merged — please review and clean up.');
       else if (pushLocal) toast('☁️ Recovered notes synced to cloud.');
+    } else {
+      const curLbl = $saveLbl();
+      if (curLbl && !currentEntry?.dirty) {
+        curLbl.textContent = '';
+        curLbl.className = '';
+        curLbl.title = '';
+      }
     }
   } catch (e) {
     console.error('[Notepad load error]', e);
@@ -435,7 +462,13 @@ export async function openNotepad(pdfId) {
 }
 
 export async function closeNotepad() {
-  $panel().classList.remove('open');
+  $panel()?.classList.remove('open');
+  const lbl = $saveLbl();
+  if (lbl && (lbl.textContent === 'Unsaved…' || lbl.className === 'saving')) {
+    lbl.textContent = '';
+    lbl.className = '';
+    lbl.title = '';
+  }
   await flushNotepadSave();
 }
 
@@ -480,31 +513,31 @@ export function switchNotepadTab(tab) {
 export async function notepadOnPDFChange(newPdfId) {
   const oldPdfId = _activePdfId;
 
-  // 1. Immediately flush old PDF data ONLY if it has dirty changes
+  // 1. Immediately flush old PDF data if it has an active timer or dirty changes
   if (oldPdfId && oldPdfId !== newPdfId) {
-    if (_saveTimer) {
-      clearTimeout(_saveTimer);
-      _saveTimer = null;
-      _timerPdfId = null;
-    }
-
     const oldEntry = _notepadCache.get(oldPdfId);
-    if (oldEntry?.dirty) {
-      await flushNotepadSave();
+    if (_saveTimer || oldEntry?.dirty) {
+      await flushNotepadSave(oldPdfId);
     }
   }
 
-  // 2. Clear editor DOM immediately
+  // 2. Clear editor DOM and save label immediately
   const notesEd = $notesEditor();
   const digestEd = $digestEditor();
   if (notesEd) notesEd.innerHTML = '';
   if (digestEd) digestEd.innerHTML = '';
+  const lbl = $saveLbl();
+  if (lbl) {
+    lbl.textContent = '';
+    lbl.className = '';
+    lbl.title = '';
+  }
 
   // 3. Update active pointer
   _activePdfId = newPdfId;
 
   // 4. If notepad panel is open, open for new PDF
-  if (newPdfId && $panel().classList.contains('open')) {
+  if (newPdfId && $panel()?.classList.contains('open')) {
     await openNotepad(newPdfId);
   }
 }
