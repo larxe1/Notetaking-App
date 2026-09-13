@@ -136,7 +136,7 @@ async function buildFolderHTML(folderId, depth = 1) {
 
     if (hasDigest || hasContent) {
       hasAnyContent = true;
-      const pdfName = stripEmojis(pdf.name) || 'Case Document';
+      const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
 
       sectionHtml += `
         <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
