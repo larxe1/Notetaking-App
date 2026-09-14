@@ -140,6 +140,7 @@ async function buildFolderHTML(folderId, depth = 1) {
 
       sectionHtml += `
         <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
+          <span class="case-name-runner">${pdfName}</span>
           <div class="case-title" style="font-size: 10pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
             ${pdfName}
           </div>
@@ -223,7 +224,33 @@ export async function exportFolderToPDF(folder) {
   <style>
     @page {
       size: letter portrait;
-      margin: 0.5in 0.5in 0.65in 0.5in;
+      margin: 0.75in 0.5in 0.65in 0.5in;
+      @top-left {
+        content: string(folder-path);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7pt;
+        color: #475569;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 4pt;
+        width: 100%;
+        text-align: left;
+        vertical-align: bottom;
+      }
+      @top-right {
+        content: string(case-name);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7pt;
+        color: #0f172a;
+        font-weight: 700;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 4pt;
+        max-width: 3.5in;
+        text-align: right;
+        vertical-align: bottom;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
       @bottom-center {
         content: "Page " counter(page) " of " counter(pages);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
@@ -234,6 +261,14 @@ export async function exportFolderToPDF(folder) {
         width: 100%;
         text-align: center;
       }
+    }
+    .page-header-path {
+      string-set: folder-path content();
+      display: none;
+    }
+    .case-name-runner {
+      string-set: case-name content();
+      display: none;
     }
     * {
       box-sizing: border-box;
@@ -567,13 +602,14 @@ export async function exportFolderToPDF(folder) {
   </div>
 
   <div class="paper-container">
+    <!-- Hidden elements to feed CSS string-set for @page margin boxes -->
+    <span class="page-header-path">${folderPath}</span>
     <table class="report-table">
       <thead>
         <tr>
           <th class="report-th">
             <div class="report-header">
               <span class="report-header-path">${folderPath}</span>
-              <span class="report-header-title">Notes &amp; Case Digests</span>
             </div>
           </th>
         </tr>
