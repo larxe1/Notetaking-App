@@ -73,6 +73,9 @@ async function handleNotepadRefresh(pdfId) {
       const { content, digest } = await dbLoadNotepad(trueId);
       const editor = document.getElementById('np-editor');
       const digestEditor = document.getElementById('np-digest-editor');
+      // ANTI-WIPE GUARD: Don't overwrite non-empty editor content with empty remote data.
+      const hasLocalContent = (editor && editor.innerHTML) || (digestEditor && digestEditor.innerHTML);
+      if (!content && !digest && hasLocalContent) return;
       // Don't overwrite if user is actively typing in the editor
       if (editor && document.activeElement !== editor && content !== undefined) {
         editor.innerHTML = content || '';

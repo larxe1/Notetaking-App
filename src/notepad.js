@@ -139,8 +139,12 @@ async function executeSaveForPdf(targetPdfId) {
   let wasDirty = false;
 
   if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-    content = $notesEditor()?.innerHTML ?? (entry?.content || '');
-    digest = $digestEditor()?.innerHTML ?? (entry?.digest || '');
+    const domContent = $notesEditor()?.innerHTML ?? '';
+    const domDigest  = $digestEditor()?.innerHTML ?? '';
+    // ANTI-RACE GUARD: If DOM returns empty but cache has content, the editor
+    // hasn't populated yet (race condition). Prefer the cached version.
+    content = domContent || (entry?.content || '');
+    digest  = domDigest  || (entry?.digest  || '');
     wasDirty = entry ? !!entry.dirty : true;
     if (entry) entry.dirty = false;
   } else if (_notepadCache.has(targetPdfId)) {
@@ -241,8 +245,12 @@ export async function flushNotepadSave(specificPdfId = null) {
     let wasDirty = false;
 
     if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-      content = $notesEditor()?.innerHTML ?? (entry?.content || '');
-      digest = $digestEditor()?.innerHTML ?? (entry?.digest || '');
+      const domContent = $notesEditor()?.innerHTML ?? '';
+      const domDigest  = $digestEditor()?.innerHTML ?? '';
+      // ANTI-RACE GUARD: If DOM returns empty but cache has content, the editor
+      // hasn't populated yet (race condition). Prefer the cached version.
+      content = domContent || (entry?.content || '');
+      digest  = domDigest  || (entry?.digest  || '');
       wasDirty = entry ? !!entry.dirty : true;
       if (entry) entry.dirty = false;
     } else if (_notepadCache.has(targetPdfId)) {
@@ -807,6 +815,17 @@ export function updateNotepadCacheFromRemote(pdfId, content, digest) {
   const existing = _notepadCache.get(pdfId);
   // Don't overwrite if the user has unsaved (dirty) local changes
   if (existing?.dirty) return;
+  // ANTI-WIPE GUARD: Don't overwrite non-empty local data with empty remote data.
+  // This prevents a 0-char accidental save on one device from wiping notes on another.
+  if (!content && !digest) {
+    const localC = existing?.content || safeStorageGet('local_notepad_' + pdfId, '') || '';
+    const localD = existing?.digest  || safeStorageGet('local_digest_'  + pdfId, '') || '';
+    if (localC || localD) {
+      logNotepadDiagnostic(pdfId, 'SYNC', 'WARN', 'SYNC_BLOCKED_EMPTY_REMOTE',
+        `Blocked empty remote sync from overwriting local data (Notes: ${localC.length} chars, Digest: ${localD.length} chars).`);
+      return;
+    }
+  }
   _notepadCache.set(pdfId, {
     content: content || '',
     digest: digest || '',
