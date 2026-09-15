@@ -90,7 +90,7 @@ function getFolderPathString(folder) {
   return parts.join(' > ');
 }
 
-async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
+async function buildFolderHTML(folderId, depth = 1) {
   const folder = S.folders.find(f => f.id === folderId);
   if (!folder) return '';
 
@@ -129,6 +129,9 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
     .filter(p => p.folder_id === folderId)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
+  // Breadcrumb path for this folder (used in case headers)
+  const casePathLabel = getFolderPathString(folder);
+
   for (const pdf of pdfs) {
     const { content, digest } = await fetchPdfNotesAndDigest(pdf);
     const hasDigest = hasMeaningfulContent(digest);
@@ -137,12 +140,12 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
     if (hasDigest || hasContent) {
       hasAnyContent = true;
       const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
-      // Assign a unique CSS page name for this case
-      const pageId = `cp${caseRegistry.length}`;
-      caseRegistry.push({ pageId, pdfName });
 
       sectionHtml += `
-        <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid; page: ${pageId};">
+        <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
+          <div class="case-breadcrumb" style="font-size: 6.5pt; color: #94a3b8; margin-bottom: 3pt; letter-spacing: 0.02em; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, Arial, sans-serif;">
+            ${casePathLabel}
+          </div>
           <div class="case-title" style="font-size: 10pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
             ${pdfName}
           </div>
@@ -176,13 +179,13 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
     }
   }
 
-  // 4. Subfolders recursively — pass the shared caseRegistry so indices are globally unique
+  // 4. Subfolders recursively
   const subfolders = S.folders
     .filter(f => f.parent_folder_id === folderId)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   for (const sf of subfolders) {
-    const subHtml = await buildFolderHTML(sf.id, depth + 1, caseRegistry);
+    const subHtml = await buildFolderHTML(sf.id, depth + 1);
     if (subHtml) {
       sectionHtml += subHtml;
       hasAnyContent = true;
@@ -205,8 +208,7 @@ export async function exportFolderToPDF(folder) {
 
   toast('Gathering notes for export...');
 
-  const caseRegistry = [];
-  const htmlContent = await buildFolderHTML(folder.id, 1, caseRegistry);
+  const htmlContent = await buildFolderHTML(folder.id, 1);
 
   if (!htmlContent || !hasMeaningfulContent(htmlContent)) {
     toast('No notes or digests found in this folder or its subfolders.');
@@ -218,36 +220,6 @@ export async function exportFolderToPDF(folder) {
   const rawName = stripEmojis(folder.name) || 'Folder';
   const folderPath = getFolderPathString(folder);
   const pageTitle = `${rawName} — Notes & Case Digests`;
-
-  // Build one @page rule per case with the case name hardcoded as a CSS string
-  const escapedFolderPath = folderPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const casePageCss = caseRegistry.map(({ pageId, pdfName }) => {
-    const safeName = pdfName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    return `
-    @page ${pageId} {
-      @top-left {
-        content: "${escapedFolderPath}";
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
-        font-size: 7pt;
-        color: #475569;
-        border-bottom: 0.5pt solid #cbd5e1;
-        padding-bottom: 4pt;
-        text-align: left;
-        vertical-align: bottom;
-      }
-      @top-right {
-        content: "${safeName}";
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
-        font-size: 7pt;
-        font-weight: 700;
-        color: #0f172a;
-        border-bottom: 0.5pt solid #cbd5e1;
-        padding-bottom: 4pt;
-        text-align: right;
-        vertical-align: bottom;
-      }
-    }`;
-  }).join('\n');
 
   const fullDocumentHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -269,7 +241,6 @@ export async function exportFolderToPDF(folder) {
         text-align: center;
       }
     }
-    ${casePageCss}
     * {
       box-sizing: border-box;
     }
