@@ -90,20 +90,57 @@ function getFolderPathString(folder) {
   return parts.join(' > ');
 }
 
-async function buildFolderHTML(folderId, depth = 1) {
+// Fast synchronous prescan: assign page IDs to every PDF, track each folder's first-case page ID.
+// Mirrors the order in which buildFolderHTML emits content (direct PDFs first, then subfolders).
+function prescanFolderTree(folderId, _s = { n: 0, pageIdMap: {}, folderFirstPageMap: {}, caseRegistry: [] }) {
+  const pdfs = S.pdfs
+    .filter(p => p.folder_id === folderId)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+  if (pdfs.length > 0) {
+    _s.folderFirstPageMap[folderId] = `cp${_s.n}`;
+  }
+
+  for (const pdf of pdfs) {
+    const pageId = `cp${_s.n}`;
+    const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
+    _s.pageIdMap[pdf.id] = pageId;
+    _s.caseRegistry.push({ pageId, pdfName });
+    _s.n++;
+  }
+
+  const subfolders = S.folders
+    .filter(f => f.parent_folder_id === folderId)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+  for (const sf of subfolders) {
+    prescanFolderTree(sf.id, _s);
+    // Inherit first-case page from subfolder if this folder has no direct PDFs
+    if (!_s.folderFirstPageMap[folderId] && _s.folderFirstPageMap[sf.id]) {
+      _s.folderFirstPageMap[folderId] = _s.folderFirstPageMap[sf.id];
+    }
+  }
+
+  return _s;
+}
+
+async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstPageMap = {}) {
   const folder = S.folders.find(f => f.id === folderId);
   if (!folder) return '';
 
   let sectionHtml = '';
   let hasAnyContent = false;
 
-  // 1. Folder Header
+  // 1. Folder Header — apply same named page as this folder's first case so there's
+  // no named-page transition (and thus no forced blank page) between header and first case.
   const folderName = stripEmojis(folder.name) || 'Folder';
   const hSize = depth === 1 ? '13pt' : (depth === 2 ? '11.5pt' : '10.5pt');
   const hTag = depth === 1 ? 'h1' : (depth === 2 ? 'h2' : 'h3');
-  
+  const folderPageId = folderFirstPageMap[folderId];
+  const folderPageStyle = folderPageId ? `page: ${folderPageId}; ` : '';
+
   let folderHeaderHtml = `
-    <div class="folder-header-wrap" style="margin-top: ${depth === 1 ? '0' : '14pt'}; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
+    <div class="folder-header-wrap" style="${folderPageStyle}margin-top: ${depth === 1 ? '0' : '14pt'}; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
       <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
         ${folderName}
       </${hTag}>
@@ -129,9 +166,6 @@ async function buildFolderHTML(folderId, depth = 1) {
     .filter(p => p.folder_id === folderId)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-  // Breadcrumb path for this folder (used in case headers)
-  const casePathLabel = getFolderPathString(folder);
-
   for (const pdf of pdfs) {
     const { content, digest } = await fetchPdfNotesAndDigest(pdf);
     const hasDigest = hasMeaningfulContent(digest);
@@ -140,12 +174,11 @@ async function buildFolderHTML(folderId, depth = 1) {
     if (hasDigest || hasContent) {
       hasAnyContent = true;
       const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
+      const casePageId = pageIdMap[pdf.id];
+      const casePageStyle = casePageId ? `page: ${casePageId}; ` : '';
 
       sectionHtml += `
-        <div class="case-section" style="margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
-          <div class="case-breadcrumb" style="font-size: 6.5pt; color: #94a3b8; margin-bottom: 3pt; letter-spacing: 0.02em; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, Arial, sans-serif;">
-            ${casePathLabel}
-          </div>
+        <div class="case-section" style="${casePageStyle}margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
           <div class="case-title" style="font-size: 10pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
             ${pdfName}
           </div>
@@ -185,7 +218,7 @@ async function buildFolderHTML(folderId, depth = 1) {
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   for (const sf of subfolders) {
-    const subHtml = await buildFolderHTML(sf.id, depth + 1);
+    const subHtml = await buildFolderHTML(sf.id, depth + 1, pageIdMap, folderFirstPageMap);
     if (subHtml) {
       sectionHtml += subHtml;
       hasAnyContent = true;
@@ -208,7 +241,10 @@ export async function exportFolderToPDF(folder) {
 
   toast('Gathering notes for export...');
 
-  const htmlContent = await buildFolderHTML(folder.id, 1);
+  // Prescan to assign page IDs — fast sync walk, no content loading
+  const { pageIdMap, folderFirstPageMap, caseRegistry } = prescanFolderTree(folder.id);
+
+  const htmlContent = await buildFolderHTML(folder.id, 1, pageIdMap, folderFirstPageMap);
 
   if (!htmlContent || !hasMeaningfulContent(htmlContent)) {
     toast('No notes or digests found in this folder or its subfolders.');
@@ -220,6 +256,46 @@ export async function exportFolderToPDF(folder) {
   const rawName = stripEmojis(folder.name) || 'Folder';
   const folderPath = getFolderPathString(folder);
   const pageTitle = `${rawName} — Notes & Case Digests`;
+
+  // Build one @page rule per case with the case name hardcoded as a CSS string literal
+  const escapedPath = folderPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const casePageCss = caseRegistry.map(({ pageId, pdfName }) => {
+    const safeName = pdfName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `
+    @page ${pageId} {
+      @top-left {
+        content: "${escapedPath}";
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7pt;
+        color: #475569;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 4pt;
+        text-align: left;
+        vertical-align: bottom;
+      }
+      @top-right {
+        content: "${safeName}";
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7pt;
+        font-weight: 700;
+        color: #0f172a;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 4pt;
+        text-align: right;
+        vertical-align: bottom;
+      }
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
+        font-size: 7.5pt;
+        color: #64748b;
+        border-top: 0.5pt solid #cbd5e1;
+        padding-top: 4pt;
+        width: 100%;
+        text-align: center;
+      }
+    }`;
+  }).join('\n');
 
   const fullDocumentHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -241,6 +317,7 @@ export async function exportFolderToPDF(folder) {
         text-align: center;
       }
     }
+    ${casePageCss}
     * {
       box-sizing: border-box;
     }
