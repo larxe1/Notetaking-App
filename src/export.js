@@ -131,21 +131,30 @@ async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstP
   let sectionHtml = '';
   let hasAnyContent = false;
 
-  // 1. Folder Header — apply same named page as this folder's first case so there's
-  // no named-page transition (and thus no forced blank page) between header and first case.
+  // 1. Folder Header
+  // Depth=1 is the top-level exported folder — its name is already shown by the
+  // repeating <thead>, so we skip the h1 to avoid duplication.
+  // Subfolders (depth >= 2) still get an hN section divider.
   const folderName = stripEmojis(folder.name) || 'Folder';
-  const hSize = depth === 1 ? '13pt' : (depth === 2 ? '11.5pt' : '10.5pt');
-  const hTag = depth === 1 ? 'h1' : (depth === 2 ? 'h2' : 'h3');
   const folderPageId = folderFirstPageMap[folderId];
   const folderPageStyle = folderPageId ? `page: ${folderPageId}; ` : '';
 
-  let folderHeaderHtml = `
-    <div class="folder-header-wrap" style="${folderPageStyle}margin-top: ${depth === 1 ? '0' : '14pt'}; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
-      <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
-        ${folderName}
-      </${hTag}>
-    </div>
-  `;
+  let folderHeaderHtml = '';
+  if (depth >= 2) {
+    const hSize = depth === 2 ? '11.5pt' : '10.5pt';
+    const hTag = depth === 2 ? 'h2' : 'h3';
+    folderHeaderHtml = `
+      <div class="folder-header-wrap" style="${folderPageStyle}margin-top: 14pt; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
+        <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
+          ${folderName}
+        </${hTag}>
+      </div>
+    `;
+  } else if (folderPageStyle) {
+    // Depth=1: emit a zero-height anchor so the named page style is still applied,
+    // keeping the folder header and first case on the same named page (no blank-page break).
+    folderHeaderHtml = `<div style="${folderPageStyle}height: 0; overflow: hidden; margin: 0; padding: 0;"></div>`;
+  }
 
   // 2. Folder Notes (from folder doc)
   const folderNotes = folder.notes || safeStorageGet('local_folder_notes_' + folder.id, '') || '';
