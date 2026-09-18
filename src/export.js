@@ -90,87 +90,16 @@ function getFolderPathString(folder) {
   return parts.join(' > ');
 }
 
-// Fast synchronous prescan: assign page IDs to every PDF, track each folder's first-case page ID.
-// Mirrors the order in which buildFolderHTML emits content (direct PDFs first, then subfolders).
-function prescanFolderTree(folderId, _s = { n: 0, pageIdMap: {}, folderFirstPageMap: {}, caseRegistry: [] }) {
-  const pdfs = S.pdfs
-    .filter(p => p.folder_id === folderId)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-
-  if (pdfs.length > 0) {
-    _s.folderFirstPageMap[folderId] = `cp${_s.n}`;
-  }
-
-  for (const pdf of pdfs) {
-    const pageId = `cp${_s.n}`;
-    const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
-    _s.pageIdMap[pdf.id] = pageId;
-    _s.caseRegistry.push({ pageId, pdfName });
-    _s.n++;
-  }
-
-  const subfolders = S.folders
-    .filter(f => f.parent_folder_id === folderId)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-
-  for (const sf of subfolders) {
-    prescanFolderTree(sf.id, _s);
-    // Inherit first-case page from subfolder if this folder has no direct PDFs
-    if (!_s.folderFirstPageMap[folderId] && _s.folderFirstPageMap[sf.id]) {
-      _s.folderFirstPageMap[folderId] = _s.folderFirstPageMap[sf.id];
-    }
-  }
-
-  return _s;
-}
-
-async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstPageMap = {}) {
+// Build HTML tree for folder export. Only registers cases that actually have notes/digest.
+async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
   const folder = S.folders.find(f => f.id === folderId);
   if (!folder) return '';
 
-  let sectionHtml = '';
+  let casesHtml = '';
+  let subfoldersHtml = '';
   let hasAnyContent = false;
 
-  // 1. Folder Header
-  // Depth=1 is the top-level exported folder — its name is already shown by the
-  // repeating <thead>, so we skip the h1 to avoid duplication.
-  // Subfolders (depth >= 2) still get an hN section divider.
-  const folderName = stripEmojis(folder.name) || 'Folder';
-  const folderPageId = folderFirstPageMap[folderId];
-  const folderPageStyle = folderPageId ? `page: ${folderPageId}; ` : '';
-
-  let folderHeaderHtml = '';
-  if (depth >= 2) {
-    const hSize = depth === 2 ? '11.5pt' : '10.5pt';
-    const hTag = depth === 2 ? 'h2' : 'h3';
-    folderHeaderHtml = `
-      <div class="folder-header-wrap" style="${folderPageStyle}margin-top: 14pt; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
-        <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
-          ${folderName}
-        </${hTag}>
-      </div>
-    `;
-  } else if (folderPageStyle) {
-    // Depth=1: emit a zero-height anchor so the named page style is still applied,
-    // keeping the folder header and first case on the same named page (no blank-page break).
-    folderHeaderHtml = `<div style="${folderPageStyle}height: 0; overflow: hidden; margin: 0; padding: 0;"></div>`;
-  }
-
-  // 2. Folder Notes (from folder doc)
-  const folderNotes = folder.notes || safeStorageGet('local_folder_notes_' + folder.id, '') || '';
-  if (hasMeaningfulContent(folderNotes)) {
-    hasAnyContent = true;
-    folderHeaderHtml += `
-      <div class="folder-notes-section" style="margin-bottom: 10pt; padding: 6pt 10pt; background: #f8fafc; border: 0.75pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.25; page-break-inside: avoid; break-inside: avoid;">
-        <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3pt;">Folder Notes</div>
-        <div class="note-content" style="color: #1e293b;">${cleanAndSanitizeHtml(folderNotes)}</div>
-      </div>
-    `;
-  }
-
-  sectionHtml += folderHeaderHtml;
-
-  // 3. Cases / PDFs inside this folder
+  // 1. Cases / PDFs directly inside this folder
   const pdfs = S.pdfs
     .filter(p => p.folder_id === folderId)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -183,19 +112,19 @@ async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstP
     if (hasDigest || hasContent) {
       hasAnyContent = true;
       const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
-      const casePageId = pageIdMap[pdf.id];
-      const casePageStyle = casePageId ? `page: ${casePageId}; ` : '';
+      const pageId = `cp${caseRegistry.length}`;
+      caseRegistry.push({ pageId, pdfName });
 
-      sectionHtml += `
-        <div class="case-section" style="${casePageStyle}margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
+      casesHtml += `
+        <div class="case-section" style="page: ${pageId}; margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff;">
           <div class="case-title" style="font-size: 10pt; font-weight: 700; color: #0f172a; margin-bottom: 5pt; border-bottom: 0.75pt solid #e2e8f0; padding-bottom: 2pt;">
             ${pdfName}
           </div>
       `;
 
-      // 3a. Case Digest
+      // 1a. Case Digest
       if (hasDigest) {
-        sectionHtml += `
+        casesHtml += `
           <div style="margin-bottom: 6pt;">
             <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Case Digest</div>
             <div class="case-digest-body" style="padding-left: 8pt; border-left: 2pt solid #0284c7; color: #1e293b; line-height: 1.25;">
@@ -205,9 +134,9 @@ async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstP
         `;
       }
 
-      // 3b. Appendix / Notes
+      // 1b. Appendix / Notes
       if (hasContent) {
-        sectionHtml += `
+        casesHtml += `
           <div style="margin-top: 5pt;">
             <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2pt;">Appendix / Notes</div>
             <div class="case-notes-body" style="padding-left: 8pt; border-left: 2pt solid #64748b; color: #1e293b; line-height: 1.25;">
@@ -217,24 +146,57 @@ async function buildFolderHTML(folderId, depth = 1, pageIdMap = {}, folderFirstP
         `;
       }
 
-      sectionHtml += `</div>`;
+      casesHtml += `</div>`;
     }
   }
 
-  // 4. Subfolders recursively
+  // 2. Subfolders recursively
   const subfolders = S.folders
     .filter(f => f.parent_folder_id === folderId)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   for (const sf of subfolders) {
-    const subHtml = await buildFolderHTML(sf.id, depth + 1, pageIdMap, folderFirstPageMap);
+    const subHtml = await buildFolderHTML(sf.id, depth + 1, caseRegistry);
     if (subHtml) {
-      sectionHtml += subHtml;
+      subfoldersHtml += subHtml;
       hasAnyContent = true;
     }
   }
 
-  return hasAnyContent ? sectionHtml : '';
+  // 3. Folder Notes
+  let folderNotesHtml = '';
+  const folderNotes = folder.notes || safeStorageGet('local_folder_notes_' + folder.id, '') || '';
+  if (hasMeaningfulContent(folderNotes)) {
+    hasAnyContent = true;
+    folderNotesHtml += `
+      <div class="folder-notes-section" style="margin-bottom: 10pt; padding: 6pt 10pt; background: #f8fafc; border: 0.75pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.25;">
+        <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3pt;">Folder Notes</div>
+        <div class="note-content" style="color: #1e293b;">${cleanAndSanitizeHtml(folderNotes)}</div>
+      </div>
+    `;
+  }
+
+  if (!hasAnyContent) return '';
+
+  // 4. Folder Header:
+  // Depth=1 is the top-level exported folder — its name is already in the running @top-left header,
+  // so we skip the h1 to avoid duplicate titles.
+  // Subfolders (depth >= 2) get an hN section divider.
+  let headerHtml = '';
+  if (depth >= 2) {
+    const folderName = stripEmojis(folder.name) || 'Folder';
+    const hSize = depth === 2 ? '11.5pt' : '10.5pt';
+    const hTag = depth === 2 ? 'h2' : 'h3';
+    headerHtml = `
+      <div class="folder-header-wrap" style="margin-top: 14pt; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
+        <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
+          ${folderName}
+        </${hTag}>
+      </div>
+    `;
+  }
+
+  return headerHtml + folderNotesHtml + casesHtml + subfoldersHtml;
 }
 
 export async function exportFolderToPDF(folder) {
@@ -250,10 +212,8 @@ export async function exportFolderToPDF(folder) {
 
   toast('Gathering notes for export...');
 
-  // Prescan to assign page IDs — fast sync walk, no content loading
-  const { pageIdMap, folderFirstPageMap, caseRegistry } = prescanFolderTree(folder.id);
-
-  const htmlContent = await buildFolderHTML(folder.id, 1, pageIdMap, folderFirstPageMap);
+  const caseRegistry = [];
+  const htmlContent = await buildFolderHTML(folder.id, 1, caseRegistry);
 
   if (!htmlContent || !hasMeaningfulContent(htmlContent)) {
     toast('No notes or digests found in this folder or its subfolders.');
@@ -265,6 +225,7 @@ export async function exportFolderToPDF(folder) {
   const rawName = stripEmojis(folder.name) || 'Folder';
   const folderPath = getFolderPathString(folder);
   const pageTitle = `${rawName} — Notes & Case Digests`;
+  const firstPageStyle = caseRegistry.length > 0 ? `page: ${caseRegistry[0].pageId};` : '';
 
   // Build one @page rule per case with the case name hardcoded as a CSS string literal
   const escapedPath = folderPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -331,6 +292,7 @@ export async function exportFolderToPDF(folder) {
       box-sizing: border-box;
     }
     body {
+      ${firstPageStyle}
       margin: 0;
       padding: 0;
       background: #f1f5f9;
@@ -436,60 +398,18 @@ export async function exportFolderToPDF(folder) {
       border-radius: 4px;
     }
 
-    /* Print Document Report Table for Perfect Non-Overlapping Repeating Header & Footer */
-    .report-table {
-      width: 100% !important;
-      border-collapse: collapse !important;
-      border: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: transparent !important;
-      table-layout: fixed !important;
-    }
-    .report-table thead {
-      display: table-header-group !important;
-    }
-    .report-table tfoot {
-      display: table-footer-group !important;
-    }
-    .report-table tbody {
-      display: table-row-group !important;
-    }
-    .report-th, .report-body-cell {
-      border: none !important;
-      padding: 0 !important;
-      background: transparent !important;
-      text-align: left !important;
-      font-weight: normal !important;
-    }
-    .report-header {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: center !important;
-      padding-bottom: 3pt !important;
-      margin-bottom: 8pt !important;
-      border-bottom: 1.5pt solid #334155 !important;
-      font-size: 7.5pt !important;
-      font-weight: 700 !important;
-      color: #475569 !important;
-      text-transform: uppercase !important;
-      letter-spacing: 0.04em !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Aptos, Arial, sans-serif !important;
-      width: 100% !important;
-    }
-
     /* Compact Layout Styling */
     p {
       margin: 3pt 0 !important;
     }
-    table:not(.report-table) {
+    table {
       width: 100% !important;
       border-collapse: collapse !important;
       margin: 6pt 0 !important;
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    th:not(.report-th), td:not(.report-tf):not(.report-body-cell) {
+    th, td {
       border: 1pt solid #cbd5e1 !important;
       padding: 4pt 6pt !important;
       text-align: left !important;
@@ -498,7 +418,7 @@ export async function exportFolderToPDF(folder) {
       color: #1e293b !important;
       line-height: 1.25 !important;
     }
-    th:not(.report-th) {
+    th {
       background-color: #f1f5f9 !important;
       font-weight: 700 !important;
       color: #0f172a !important;
@@ -583,7 +503,7 @@ export async function exportFolderToPDF(folder) {
     .standard-mode p {
       margin: 6pt 0 !important;
     }
-    .standard-mode th:not(.report-th), .standard-mode td:not(.report-tf):not(.report-body-cell) {
+    .standard-mode th, .standard-mode td {
       font-size: 9pt !important;
       padding: 6pt 8pt !important;
     }
@@ -614,6 +534,7 @@ export async function exportFolderToPDF(folder) {
         display: none !important;
       }
       body {
+        ${firstPageStyle}
         background: #ffffff !important;
         color: #000000 !important;
       }
@@ -626,12 +547,20 @@ export async function exportFolderToPDF(folder) {
         width: 100% !important;
       }
       .case-section {
-        page-break-inside: avoid;
-        break-inside: avoid;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+      }
+      .case-title {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      .section-badge {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
       }
       h1, h2, h3, h4 {
-        page-break-after: avoid;
-        break-after: avoid;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
       }
     }
   </style>
@@ -659,26 +588,9 @@ export async function exportFolderToPDF(folder) {
   </div>
 
   <div class="paper-container">
-    <table class="report-table">
-      <thead>
-        <tr>
-          <th class="report-th">
-            <div class="report-header">
-              <span class="report-header-path">${folderPath}</span>
-            </div>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="report-body-cell">
-            <div id="document-body">
-              ${htmlContent}
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div id="document-body">
+      ${htmlContent}
+    </div>
   </div>
 
   <script>
