@@ -88,6 +88,116 @@ async function saveHistorySnapshot(pdfId, content, digest) {
   }
 }
 
+
+// ── Startup / resume: alert user if any save errors happened while they were away ──
+// Uses a persistent sticky banner (not a 3s toast) so the warning stays visible.
+function checkAndAlertSaveErrors() {
+  try {
+    // Read raw localStorage directly — safeStorageGet is synchronous.
+    const globalLogs = JSON.parse(
+      safeStorageGet('notepad_global_diag_log', '[]') || '[]'
+    );
+
+    // Find the timestamp of the last time the user acknowledged warnings
+    const lastAckedTs = parseInt(safeStorageGet('notepad_warn_acked_ts', '0') || '0');
+
+    // Collect ERR-level entries that are newer than the last acknowledgement
+    const unackedErrors = globalLogs.filter(
+      e => e.status === 'ERR' && e.ts > lastAckedTs
+    );
+
+    if (unackedErrors.length === 0) {
+      _removeSaveErrorBanner();
+      return;
+    }
+
+    const newest = unackedErrors[0]; // logs are newest-first
+    const dStr = (() => {
+      try {
+        return new Date(newest.ts).toLocaleString(undefined, {
+          month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+      } catch { return 'recently'; }
+    })();
+
+    _showSaveErrorBanner(unackedErrors.length, newest.code, dStr);
+  } catch (e) {
+    console.warn('[Notepad] checkAndAlertSaveErrors failed:', e);
+  }
+}
+
+function _removeSaveErrorBanner() {
+  document.getElementById('np-save-error-banner')?.remove();
+}
+
+function _showSaveErrorBanner(count, lastCode, lastTime) {
+  // Only show one banner at a time
+  _removeSaveErrorBanner();
+
+  const banner = document.createElement('div');
+  banner.id = 'np-save-error-banner';
+  banner.style.cssText = [
+    'position: fixed',
+    'bottom: 0',
+    'left: 0',
+    'right: 0',
+    'z-index: 99999',
+    'background: #7f1d1d',
+    'color: #fee2e2',
+    'font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    'font-size: 12px',
+    'padding: 8px 16px',
+    'display: flex',
+    'align-items: center',
+    'gap: 10px',
+    'box-shadow: 0 -2px 12px rgba(0,0,0,0.4)',
+    'border-top: 2px solid #ef4444',
+  ].join(';');
+
+  banner.innerHTML = `
+    <span style="font-size:16px">⚠️</span>
+    <span style="flex:1">
+      <strong>${count} save error${count > 1 ? 's' : ''} occurred</strong> while you were away
+      (last: <code style="background:rgba(0,0,0,.3);padding:1px 4px;border-radius:3px">${lastCode}</code> at ${lastTime}).
+      Your notes are <strong>safe in local storage</strong> — but cloud sync may have gaps.
+    </span>
+    <button id="np-serr-view-log"
+      style="background:#ef4444;color:#fff;border:none;padding:5px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap">
+      View Error Log
+    </button>
+    <button id="np-serr-dismiss"
+      style="background:transparent;color:#fca5a5;border:1px solid #fca5a5;padding:5px 10px;border-radius:5px;cursor:pointer;font-size:12px;white-space:nowrap">
+      Dismiss
+    </button>
+  `;
+
+  document.body.appendChild(banner);
+
+  banner.querySelector('#np-serr-view-log')?.addEventListener('click', () => {
+    // Mark as acknowledged so we don't re-show until new errors occur
+    safeStorageSet('notepad_warn_acked_ts', String(Date.now()));
+    _removeSaveErrorBanner();
+    // Open the notepad error log panel if a PDF is active, otherwise prompt
+    if (_activePdfId) {
+      // Make sure notepad panel is open first
+      const panel = $panel();
+      if (panel && !panel.classList.contains('open')) {
+        const pdf = window.S?.pdfs?.find(p => p.id === _activePdfId);
+        if (pdf) openNotepad(_activePdfId);
+      }
+      openHistoryPanel('logs');
+    } else {
+      toast('📂 Open a PDF notepad first, then click the 🕐 history button to see the Error Log.');
+    }
+  });
+
+  banner.querySelector('#np-serr-dismiss')?.addEventListener('click', () => {
+    safeStorageSet('notepad_warn_acked_ts', String(Date.now()));
+    _removeSaveErrorBanner();
+  });
+}
+
 // ── Helper to update save status label consistently across auto-save and flush ──
 function updateSaveStatusLabel(targetPdfId, res) {
   if (_activePdfId !== targetPdfId) return;
@@ -181,10 +291,16 @@ async function executeSaveForPdf(targetPdfId) {
     }
 
     updateSaveStatusLabel(targetPdfId, res);
+    // If save did not succeed (and wasn't just a local-only FK edge case), show the warning banner
+    if (res && !res.saved && res.error && !res.localOnly) {
+      checkAndAlertSaveErrors();
+    }
   } catch (err) {
     console.error(`[Notepad] Save failed for ${targetPdfId}:`, err);
     logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'FAIL',
       `Save exception: ${err?.message || String(err)}.`, { error: String(err) });
+    // Show the persistent warning banner immediately so the user sees something is wrong
+    checkAndAlertSaveErrors();
     if (_activePdfId === targetPdfId) {
       const lbl = $saveLbl();
       if (lbl) {
@@ -297,6 +413,8 @@ export async function flushNotepadSave(specificPdfId = null) {
       logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'ERR_FLUSH',
         `flushNotepadSave exception: ${err?.message || String(err)}. Data is safe in localStorage + history.`,
         { error: String(err) });
+      // Show the persistent warning banner immediately
+      checkAndAlertSaveErrors();
       if (_activePdfId === targetPdfId) {
         const lbl = $saveLbl();
         if (lbl) {
@@ -466,6 +584,16 @@ export async function openNotepad(pdfId) {
     }
   } catch (e) {
     console.error('[Notepad load error]', e);
+    logNotepadDiagnostic(pdfId, 'LOAD', 'ERR', e?.code || 'ERR_LOAD',
+      `Failed to load notes from cloud: ${e?.message || String(e)}. Local data is safe.`,
+      { error: String(e) });
+    // Show error in save label so it's visible
+    const lbl = $saveLbl();
+    if (lbl && _activePdfId === pdfId) {
+      lbl.textContent = '⚠️ Load Err';
+      lbl.className = 'err';
+      lbl.title = `Cloud load failed: ${e?.message || e}. Using local data. Click to see Error Log.`;
+    }
   }
 }
 
@@ -1023,8 +1151,16 @@ export function initNotepad() {
       // Synchronous localStorage write is already done by the input handler.
       // Fire the async Supabase save — the browser gives us a few seconds of grace.
       flushNotepadSave();
+    } else if (document.visibilityState === 'visible') {
+      // User just returned to the app (e.g. opened laptop, switched back from another app).
+      // Check if any save errors occurred while they were away and show a banner if so.
+      checkAndAlertSaveErrors();
     }
   });
+
+  // Check for unacknowledged save errors at startup (in case errors from the previous session
+  // were never dismissed — they stay visible until the user opens the Error Log or dismisses).
+  setTimeout(checkAndAlertSaveErrors, 1500);
 
   // beforeunload is the last-resort on desktop tab close / navigation
   window.addEventListener('beforeunload', () => {
