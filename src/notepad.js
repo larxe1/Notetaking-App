@@ -967,6 +967,100 @@ export function updateNotepadCacheFromRemote(pdfId, content, digest) {
     `In-memory cache updated from realtime sync (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars)`);
 }
 
+// ── Manual save: force an immediate cloud save regardless of dirty state ──
+// Called by the "Save Now" button and Ctrl+S shortcut.
+async function _manualSave() {
+  const pdfId = _activePdfId;
+  if (!pdfId) {
+    toast('Open a PDF notepad first before saving.');
+    return;
+  }
+
+  const btn = document.getElementById('np-save-now-btn');
+  const lbl = $saveLbl();
+
+  // Visual feedback: show saving state on button
+  if (btn) {
+    btn.textContent = '⏳ Saving…';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+  }
+  if (lbl) {
+    lbl.textContent = 'Saving…';
+    lbl.className = 'saving';
+    lbl.title = 'Manual save in progress…';
+  }
+
+  try {
+    // Cancel any pending auto-save timer so we don't double-save
+    if (_saveTimer) {
+      clearTimeout(_saveTimer);
+      _saveTimer = null;
+      _timerPdfId = null;
+    }
+
+    // Read latest content from DOM (most up-to-date source of truth)
+    const content = $notesEditor()?.innerHTML ?? '';
+    const digest  = $digestEditor()?.innerHTML ?? '';
+
+    // Update cache and localStorage first (synchronous, always safe)
+    _notepadCache.set(pdfId, { content, digest, dirty: false, timestamp: Date.now() });
+    safeStorageSet('local_notepad_' + pdfId, content);
+    safeStorageSet('local_digest_'  + pdfId, digest);
+    setWriteTs(pdfId);
+
+    // Snapshot before cloud save
+    await saveHistorySnapshot(pdfId, content, digest);
+
+    // Force cloud save
+    const res = await dbSaveNotepad(pdfId, content, digest);
+    if (res?.saved) setSyncTs(pdfId);
+
+    // Show result in label
+    updateSaveStatusLabel(pdfId, res);
+
+    // Button feedback
+    if (btn) {
+      if (res?.saved || res?.localOnly) {
+        btn.textContent = '✓ Saved!';
+        btn.style.background = '#14532d';
+      } else if (res?.queued) {
+        btn.textContent = '⏳ Queued';
+        btn.style.background = '#78350f';
+      } else {
+        btn.textContent = '✗ Failed';
+        btn.style.background = '#7f1d1d';
+        // Show error banner if the save actually failed
+        if (res?.error && !res?.localOnly) checkAndAlertSaveErrors();
+      }
+    }
+  } catch (err) {
+    console.error('[Manual Save] Error:', err);
+    logNotepadDiagnostic(pdfId, 'SAVE', 'ERR', err?.code || 'ERR_MANUAL_SAVE',
+      `Manual save exception: ${err?.message || String(err)}`, { error: String(err) });
+    checkAndAlertSaveErrors();
+    if (btn) {
+      btn.textContent = '✗ Failed';
+      btn.style.background = '#7f1d1d';
+    }
+    if (lbl) {
+      lbl.textContent = `✗ Err`;
+      lbl.className = 'err';
+      lbl.title = `Manual save failed: ${err?.message || err}`;
+    }
+  } finally {
+    // Reset button after 2.5s
+    setTimeout(() => {
+      if (btn) {
+        btn.textContent = '💾 Save Now';
+        btn.disabled = false;
+        btn.style.opacity = '';
+        btn.style.background = '#1e6b3a';
+      }
+    }, 2500);
+  }
+}
+
 export function initNotepad() {
   document.getElementById('btn-notepad')?.addEventListener('click', () => {
     const panel = $panel();
@@ -998,6 +1092,19 @@ export function initNotepad() {
   // History button — opens the history/recovery panel
   document.getElementById('np-history-btn')?.addEventListener('click', () => {
     openHistoryPanel('snapshots');
+  });
+
+  // ── Manual Save Now button ──
+  document.getElementById('np-save-now-btn')?.addEventListener('click', async () => {
+    await _manualSave();
+  });
+
+  // Ctrl+S / Cmd+S keyboard shortcut when notepad is open
+  document.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's' && $panel()?.classList.contains('open')) {
+      e.preventDefault();
+      await _manualSave();
+    }
   });
   document.getElementById('np-history-close')?.addEventListener('click', () => {
     document.getElementById('np-history-modal')?.classList.remove('open');
