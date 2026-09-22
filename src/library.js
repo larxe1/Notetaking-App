@@ -39,14 +39,25 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
   document.getElementById('lib-ctx-export-pdf').style.display = isFolder ? 'block' : 'none';
 
+  // Position off-screen first so we can measure actual rendered dimensions
+  menu.style.left = '-9999px';
+  menu.style.top  = '-9999px';
   menu.classList.add('open');
 
-  // Position menu, keeping it on-screen
+  // Measure actual size after it's visible
+  const mw = menu.offsetWidth  || 200;
+  const mh = menu.offsetHeight || 200;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const mw = 200, mh = 185;
-  menu.style.left = (x + mw > vw ? vw - mw - 4 : x) + 'px';
-  menu.style.top  = (y + mh > vh ? vh - mh - 4 : y) + 'px';
+  const GAP = 4;
+
+  // Flip left if it would overflow the right edge
+  const left = (x + mw + GAP > vw) ? Math.max(0, x - mw) : x;
+  // Flip up if it would overflow the bottom edge
+  const top  = (y + mh + GAP > vh) ? Math.max(0, y - mh) : y;
+
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
 }
 
 function hideLibCtxMenu() {
