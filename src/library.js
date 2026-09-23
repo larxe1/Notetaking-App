@@ -65,6 +65,61 @@ function hideLibCtxMenu() {
   _ctxTarget = null;
 }
 
+// ── Export options modal: lets user pick portrait / landscape before exporting ──
+function showExportOptsModal(folder) {
+  const modal = document.getElementById('export-opts-modal');
+  if (!modal) {
+    // Fallback: export directly without modal
+    import('./export.js').then(m => m.exportFolderToPDF(folder));
+    return;
+  }
+
+  // Reset to portrait selection each time
+  const portraitRadio   = document.getElementById('export-opt-portrait');
+  const landscapeRadio  = document.getElementById('export-opt-landscape');
+  const portraitLbl     = document.getElementById('export-opt-portrait-lbl');
+  const landscapeLbl    = document.getElementById('export-opt-landscape-lbl');
+
+  if (portraitRadio)  portraitRadio.checked = true;
+  if (landscapeRadio) landscapeRadio.checked = false;
+  if (portraitLbl)  { portraitLbl.style.border = '2px solid #2e6bd6'; portraitLbl.style.background = 'rgba(46,107,214,0.12)'; }
+  if (landscapeLbl) { landscapeLbl.style.border = '2px solid #2e3f5c'; landscapeLbl.style.background = 'transparent'; }
+
+  // Wire up click-to-select visuals
+  function selectOrientation(val) {
+    if (portraitRadio)  portraitRadio.checked  = val === 'portrait';
+    if (landscapeRadio) landscapeRadio.checked = val === 'landscape';
+    if (portraitLbl)  { portraitLbl.style.border  = val === 'portrait'  ? '2px solid #2e6bd6' : '2px solid #2e3f5c'; portraitLbl.style.background  = val === 'portrait'  ? 'rgba(46,107,214,0.12)' : 'transparent'; }
+    if (landscapeLbl) { landscapeLbl.style.border = val === 'landscape' ? '2px solid #2e6bd6' : '2px solid #2e3f5c'; landscapeLbl.style.background = val === 'landscape' ? 'rgba(46,107,214,0.12)' : 'transparent'; }
+  }
+
+  if (portraitLbl)  portraitLbl.onclick  = () => selectOrientation('portrait');
+  if (landscapeLbl) landscapeLbl.onclick = () => selectOrientation('landscape');
+
+  // Show modal
+  modal.style.display = 'flex';
+
+  // Cancel
+  const cancelBtn = document.getElementById('export-opts-cancel');
+  const goBtn     = document.getElementById('export-opts-go');
+
+  const cleanup = () => { modal.style.display = 'none'; };
+
+  if (cancelBtn) cancelBtn.onclick = cleanup;
+
+  if (goBtn) {
+    goBtn.onclick = async () => {
+      const orientation = landscapeRadio?.checked ? 'landscape' : 'portrait';
+      cleanup();
+      const { exportFolderToPDF } = await import('./export.js');
+      await exportFolderToPDF(folder, { orientation });
+    };
+  }
+
+  // Also close on backdrop click
+  modal.onclick = (e) => { if (e.target === modal) cleanup(); };
+}
+
 export function initContextMenu() {
   const menu = document.getElementById('lib-ctx-menu');
   if (!menu) return;
@@ -177,12 +232,11 @@ export function initContextMenu() {
   });
 
   // "Export Notes to PDF"
-  document.getElementById('lib-ctx-export-pdf')?.addEventListener('click', async () => {
+  document.getElementById('lib-ctx-export-pdf')?.addEventListener('click', () => {
     if (!_ctxTarget || !_ctxIsFolder) return;
     const folder = _ctxTarget;
     hideLibCtxMenu();
-    const { exportFolderToPDF } = await import('./export.js');
-    await exportFolderToPDF(folder);
+    showExportOptsModal(folder);
   });
 
   // Dismiss on outside click

@@ -199,7 +199,8 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
   return headerHtml + folderNotesHtml + casesHtml + subfoldersHtml;
 }
 
-export async function exportFolderToPDF(folder) {
+export async function exportFolderToPDF(folder, opts = {}) {
+  const orientation = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
   // 1. Flush any pending active editor notes from memory to state
   try {
     const { flushFolderDoc } = await import('./viewer.js');
@@ -274,7 +275,7 @@ export async function exportFolderToPDF(folder) {
   <title>${pageTitle}</title>
   <style>
     @page {
-      size: letter portrait;
+      size: letter ${orientation};
       margin: 0.75in 0.5in 0.65in 0.5in;
       @bottom-center {
         content: "Page " counter(page) " of " counter(pages);

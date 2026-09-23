@@ -1296,5 +1296,33 @@
   }
 </script>
 
+<!-- Export PDF Options Modal -->
+<div id="export-opts-modal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;">
+  <div style="background:#1a2135;border:1px solid #2e3f5c;border-radius:10px;padding:24px 28px;min-width:280px;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,0.6);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e8e4db;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;">📄 Export Notes to PDF</div>
+    <div style="font-size:11px;color:#94a3b8;margin-bottom:18px;">Choose page orientation before exporting.</div>
+
+    <div style="display:flex;gap:12px;margin-bottom:20px;">
+      <label id="export-opt-portrait-lbl" style="flex:1;border:2px solid #2e6bd6;border-radius:8px;padding:12px 10px;cursor:pointer;text-align:center;background:rgba(46,107,214,0.12);transition:all .15s;">
+        <input type="radio" name="export-orientation" id="export-opt-portrait" value="portrait" checked style="display:none">
+        <div style="font-size:22px;margin-bottom:4px;">📄</div>
+        <div style="font-size:12px;font-weight:700;">Portrait</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">8.5 × 11 in</div>
+      </label>
+      <label id="export-opt-landscape-lbl" style="flex:1;border:2px solid #2e3f5c;border-radius:8px;padding:12px 10px;cursor:pointer;text-align:center;background:transparent;transition:all .15s;">
+        <input type="radio" name="export-orientation" id="export-opt-landscape" value="landscape" style="display:none">
+        <div style="font-size:22px;margin-bottom:4px;">🖼️</div>
+        <div style="font-size:12px;font-weight:700;">Landscape</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">11 × 8.5 in</div>
+      </label>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button id="export-opts-cancel" style="flex:1;padding:8px;border:1px solid #2e3f5c;background:transparent;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:13px;">Cancel</button>
+      <button id="export-opts-go" style="flex:2;padding:8px;border:none;background:#2e6bd6;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;">Export PDF →</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
