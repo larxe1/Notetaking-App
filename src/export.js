@@ -95,6 +95,8 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
   const folder = S.folders.find(f => f.id === folderId);
   if (!folder) return '';
 
+  const startCaseIdx = caseRegistry.length;
+
   let casesHtml = '';
   let subfoldersHtml = '';
   let hasAnyContent = false;
@@ -163,13 +165,17 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
     }
   }
 
+  // Determine the named page of the first case under this folder branch
+  const firstCase = caseRegistry.length > startCaseIdx ? caseRegistry[startCaseIdx] : null;
+  const firstPageStyle = firstCase ? `page: ${firstCase.pageId};` : '';
+
   // 3. Folder Notes
   let folderNotesHtml = '';
   const folderNotes = folder.notes || safeStorageGet('local_folder_notes_' + folder.id, '') || '';
   if (hasMeaningfulContent(folderNotes)) {
     hasAnyContent = true;
     folderNotesHtml += `
-      <div class="folder-notes-section" style="margin-bottom: 10pt; padding: 6pt 10pt; background: #f8fafc; border: 0.75pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.25;">
+      <div class="folder-notes-section" style="${firstPageStyle} margin-bottom: 10pt; padding: 6pt 10pt; background: #f8fafc; border: 0.75pt solid #e2e8f0; border-radius: 4pt; color: #1e293b; line-height: 1.25;">
         <div class="section-badge" style="font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3pt;">Folder Notes</div>
         <div class="note-content" style="color: #1e293b;">${cleanAndSanitizeHtml(folderNotes)}</div>
       </div>
@@ -182,13 +188,15 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
   // Depth=1 is the top-level exported folder — its name is already in the running @top-left header,
   // so we skip the h1 to avoid duplicate titles.
   // Subfolders (depth >= 2) get an hN section divider.
+  // Assigning firstPageStyle ensures Chrome keeps the header on the same named page as its first case,
+  // preventing an empty intermediate page with only the folder header!
   let headerHtml = '';
   if (depth >= 2) {
     const folderName = stripEmojis(folder.name) || 'Folder';
     const hSize = depth === 2 ? '11.5pt' : '10.5pt';
     const hTag = depth === 2 ? 'h2' : 'h3';
     headerHtml = `
-      <div class="folder-header-wrap" style="margin-top: 14pt; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
+      <div class="folder-header-wrap" style="${firstPageStyle} margin-top: 14pt; margin-bottom: 8pt; page-break-after: avoid; break-after: avoid;">
         <${hTag} style="margin: 0 0 3pt 0; font-size: ${hSize}; color: #0f172a; font-weight: 700; border-bottom: 1.5pt solid #334155; padding-bottom: 2pt;">
           ${folderName}
         </${hTag}>
@@ -562,6 +570,12 @@ export async function exportFolderToPDF(folder, opts = {}) {
       h1, h2, h3, h4 {
         page-break-after: avoid !important;
         break-after: avoid !important;
+      }
+      .folder-header-wrap {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
     }
   </style>
