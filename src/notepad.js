@@ -198,6 +198,33 @@ function _showSaveErrorBanner(count, lastCode, lastTime) {
   });
 }
 
+// ── Read the best available content for a PDF from DOM + cache + localStorage ──
+// Always prefers the LONGEST (most complete) version across all three sources so
+// that a hidden editor, stale cache, or race condition never silently loses data.
+function _readEditorContent(pdfId) {
+  const entry = _notepadCache.get(pdfId);
+  const isActiveOpen = (_activePdfId === pdfId) && $panel()?.classList.contains('open');
+
+  // DOM values (may be empty if editor not yet painted, or if tab is switched)
+  const domContent = isActiveOpen ? ($notesEditor()?.innerHTML ?? '') : '';
+  const domDigest  = isActiveOpen ? ($digestEditor()?.innerHTML ?? '') : '';
+
+  // Cache values
+  const cacheContent = entry?.content ?? '';
+  const cacheDigest  = entry?.digest  ?? '';
+
+  // Local storage fallback
+  const lsContent = safeStorageGet('local_notepad_' + pdfId, '') || '';
+  const lsDigest  = safeStorageGet('local_digest_'  + pdfId, '') || '';
+
+  // Pick the LONGEST (most characters) to avoid data loss from hidden/stale sources.
+  // A shorter string is never better — if one source has more content, prefer that.
+  const content = [domContent, cacheContent, lsContent].reduce((a, b) => (b.length > a.length ? b : a), '');
+  const digest  = [domDigest,  cacheDigest,  lsDigest ].reduce((a, b) => (b.length > a.length ? b : a), '');
+
+  return { content, digest, wasDirty: entry ? !!entry.dirty : true };
+}
+
 // ── Helper to update save status label consistently across auto-save and flush ──
 function updateSaveStatusLabel(targetPdfId, res) {
   if (_activePdfId !== targetPdfId) return;
@@ -243,29 +270,12 @@ function updateSaveStatusLabel(targetPdfId, res) {
 async function executeSaveForPdf(targetPdfId) {
   if (!targetPdfId) return;
 
-  const entry = _notepadCache.get(targetPdfId);
-  let content = '';
-  let digest = '';
-  let wasDirty = false;
+  // Use the shared helper that picks the LONGEST version from DOM+cache+localStorage
+  const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
 
-  if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-    const domContent = $notesEditor()?.innerHTML ?? '';
-    const domDigest  = $digestEditor()?.innerHTML ?? '';
-    // ANTI-RACE GUARD: If DOM returns empty but cache has content, the editor
-    // hasn't populated yet (race condition). Prefer the cached version.
-    content = domContent || (entry?.content || '');
-    digest  = domDigest  || (entry?.digest  || '');
-    wasDirty = entry ? !!entry.dirty : true;
-    if (entry) entry.dirty = false;
-  } else if (_notepadCache.has(targetPdfId)) {
-    content = entry.content;
-    digest = entry.digest;
-    wasDirty = !!entry.dirty;
-    entry.dirty = false;
-  } else {
-    content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
-    digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
-  }
+  // Mark cache clean (no longer dirty now that we're saving)
+  const entry = _notepadCache.get(targetPdfId);
+  if (entry) entry.dirty = false;
 
   // ANTI-WIPE SAFETY GUARD:
   // If attempting to save empty notes + digest without an active user edit,
@@ -356,28 +366,9 @@ export async function flushNotepadSave(specificPdfId = null) {
       return;
     }
 
-    let content = '';
-    let digest = '';
-    let wasDirty = false;
-
-    if (_activePdfId === targetPdfId && $panel()?.classList.contains('open')) {
-      const domContent = $notesEditor()?.innerHTML ?? '';
-      const domDigest  = $digestEditor()?.innerHTML ?? '';
-      // ANTI-RACE GUARD: If DOM returns empty but cache has content, the editor
-      // hasn't populated yet (race condition). Prefer the cached version.
-      content = domContent || (entry?.content || '');
-      digest  = domDigest  || (entry?.digest  || '');
-      wasDirty = entry ? !!entry.dirty : true;
-      if (entry) entry.dirty = false;
-    } else if (_notepadCache.has(targetPdfId)) {
-      content = entry.content;
-      digest = entry.digest;
-      wasDirty = !!entry.dirty;
-      entry.dirty = false;
-    } else {
-      content = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
-      digest = safeStorageGet('local_digest_' + targetPdfId, '') || '';
-    }
+    // Use the shared helper that picks the LONGEST version from DOM+cache+localStorage
+    const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
+    if (entry) entry.dirty = false;
 
     // ANTI-WIPE SAFETY GUARD:
     // Do not save 0 chars if not dirty and local storage already has notes!
@@ -999,9 +990,8 @@ async function _manualSave() {
       _timerPdfId = null;
     }
 
-    // Read latest content from DOM (most up-to-date source of truth)
-    const content = $notesEditor()?.innerHTML ?? '';
-    const digest  = $digestEditor()?.innerHTML ?? '';
+    // Read best available content from DOM + cache + localStorage (picks longest = most complete)
+    const { content, digest } = _readEditorContent(pdfId);
 
     // Update cache and localStorage first (synchronous, always safe)
     _notepadCache.set(pdfId, { content, digest, dirty: false, timestamp: Date.now() });
