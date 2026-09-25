@@ -25,19 +25,40 @@ let _ctxTarget = null;
 let _ctxIsFolder = false;
 
 function showLibCtxMenu(item, x, y, isFolder = false) {
-  _ctxTarget = item;
+  let target = item;
   _ctxIsFolder = isFolder;
+
+  const exportBtn = document.getElementById('lib-ctx-export-pdf');
+  let isMultiFolder = false;
+
+  // Check if multiple folders are currently selected and the clicked item is among them
+  if (isFolder && S.selectedIds && S.selectedIds.size > 1 && S.selectedIds.has(item.id)) {
+    const selectedFolders = [...S.selectedIds]
+      .map(id => S.folders.find(f => f.id === id))
+      .filter(Boolean);
+    if (selectedFolders.length > 1) {
+      target = selectedFolders; // Retains exact insertion/selection order
+      isMultiFolder = true;
+      if (exportBtn) exportBtn.textContent = `📥 Export ${selectedFolders.length} Folders to PDF`;
+    } else if (exportBtn) {
+      exportBtn.textContent = '📥 Export Notes to PDF';
+    }
+  } else if (exportBtn) {
+    exportBtn.textContent = '📥 Export Notes to PDF';
+  }
+
+  _ctxTarget = target;
   const menu = document.getElementById('lib-ctx-menu');
   if (!menu) return;
 
   // Toggle visibility of context items
-  document.getElementById('lib-ctx-open').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-reference').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-link').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-offline').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-download').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-gdrive').style.display = isFolder ? 'none' : 'block';
-  document.getElementById('lib-ctx-export-pdf').style.display = isFolder ? 'block' : 'none';
+  document.getElementById('lib-ctx-open').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-reference').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-link').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-offline').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-download').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-gdrive').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  document.getElementById('lib-ctx-export-pdf').style.display = (isFolder || isMultiFolder) ? 'block' : 'none';
 
   // Position off-screen first so we can measure actual rendered dimensions
   menu.style.left = '-9999px';
@@ -66,12 +87,26 @@ function hideLibCtxMenu() {
 }
 
 // ── Export options modal: lets user pick portrait / landscape before exporting ──
-function showExportOptsModal(folder) {
+function showExportOptsModal(foldersOrFolder) {
+  const folders = Array.isArray(foldersOrFolder) ? foldersOrFolder : [foldersOrFolder];
   const modal = document.getElementById('export-opts-modal');
   if (!modal) {
     // Fallback: export directly without modal
-    import('./export.js').then(m => m.exportFolderToPDF(folder));
+    import('./export.js').then(m => m.exportFolderToPDF(folders));
     return;
+  }
+
+  const titleEl = document.getElementById('export-opts-title');
+  const descEl  = document.getElementById('export-opts-desc');
+  if (titleEl) {
+    titleEl.textContent = folders.length > 1
+      ? `📄 Export ${folders.length} Folders to PDF`
+      : `📄 Export Notes to PDF`;
+  }
+  if (descEl) {
+    descEl.textContent = folders.length > 1
+      ? `Export order: ${folders.map((f, i) => `${i + 1}. ${f.name || 'Folder'}`).join(' → ')}`
+      : `Choose page orientation before exporting.`;
   }
 
   // Reset to portrait selection each time
@@ -112,7 +147,7 @@ function showExportOptsModal(folder) {
       const orientation = landscapeRadio?.checked ? 'landscape' : 'portrait';
       cleanup();
       const { exportFolderToPDF } = await import('./export.js');
-      await exportFolderToPDF(folder, { orientation });
+      await exportFolderToPDF(folders, { orientation });
     };
   }
 

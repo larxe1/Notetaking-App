@@ -115,7 +115,7 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
       hasAnyContent = true;
       const pdfName = (stripEmojis(pdf.name) || 'Case Document').replace(/\.pdf$/i, '').trim() || 'Case Document';
       const pageId = `cp${caseRegistry.length}`;
-      caseRegistry.push({ pageId, pdfName });
+      caseRegistry.push({ pageId, pdfName, folderPath: getFolderPathString(folder) });
 
       casesHtml += `
         <div class="case-section" style="page: ${pageId}; margin: 8pt 0; padding: 8pt 10pt; border: 0.75pt solid #cbd5e1; border-radius: 4pt; background: #ffffff;">
@@ -207,7 +207,8 @@ async function buildFolderHTML(folderId, depth = 1, caseRegistry = []) {
   return headerHtml + folderNotesHtml + casesHtml + subfoldersHtml;
 }
 
-export async function exportFolderToPDF(folder, opts = {}) {
+export async function exportFolderToPDF(foldersOrFolder, opts = {}) {
+  const folders = Array.isArray(foldersOrFolder) ? foldersOrFolder : [foldersOrFolder];
   const orientation = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
   // 1. Flush any pending active editor notes from memory to state
   try {
@@ -222,28 +223,40 @@ export async function exportFolderToPDF(folder, opts = {}) {
   toast('Gathering notes for export...');
 
   const caseRegistry = [];
-  const htmlContent = await buildFolderHTML(folder.id, 1, caseRegistry);
+  const htmlParts = [];
+  for (const f of folders) {
+    const depth = folders.length > 1 ? 2 : 1;
+    const fHtml = await buildFolderHTML(f.id, depth, caseRegistry);
+    if (fHtml && hasMeaningfulContent(fHtml)) {
+      htmlParts.push(fHtml);
+    }
+  }
+  const htmlContent = htmlParts.join('\n');
 
   if (!htmlContent || !hasMeaningfulContent(htmlContent)) {
-    toast('No notes or digests found in this folder or its subfolders.');
+    toast('No notes or digests found in the selected folder(s).');
     return;
   }
 
   toast('Preparing PDF export document...');
 
-  const rawName = stripEmojis(folder.name) || 'Folder';
-  const folderPath = getFolderPathString(folder);
-  const pageTitle = `${rawName} — Notes & Case Digests`;
+  const titleParts = folders.map(f => stripEmojis(f.name) || 'Folder');
+  const pageTitle = folders.length > 1
+    ? `${titleParts.join(', ')} — Notes & Case Digests`
+    : `${titleParts[0]} — Notes & Case Digests`;
+  const folderPath = folders.length > 1
+    ? `${folders.length} Folders: ${titleParts.join(' &bull; ')}`
+    : getFolderPathString(folders[0]);
   const firstPageStyle = caseRegistry.length > 0 ? `page: ${caseRegistry[0].pageId};` : '';
 
-  // Build one @page rule per case with the case name hardcoded as a CSS string literal
-  const escapedPath = folderPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const casePageCss = caseRegistry.map(({ pageId, pdfName }) => {
-    const safeName = pdfName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  // Build one @page rule per case with the case name and its own folder path hardcoded as CSS string literals
+  const casePageCss = caseRegistry.map(({ pageId, pdfName, folderPath: casePath }) => {
+    const safeName = (pdfName || 'Case Document').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const safePath = (casePath || folderPath).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return `
     @page ${pageId} {
       @top-left {
-        content: "${escapedPath}";
+        content: "${safePath}";
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Calibri, Arial, sans-serif;
         font-size: 7pt;
         color: #475569;
@@ -295,6 +308,11 @@ export async function exportFolderToPDF(folder, opts = {}) {
         width: 100%;
         text-align: center;
       }
+    }
+    @page :blank {
+      @top-left { content: none; }
+      @top-right { content: none; }
+      @bottom-center { content: none; }
     }
     ${casePageCss}
     * {
@@ -546,18 +564,35 @@ export async function exportFolderToPDF(folder, opts = {}) {
         ${firstPageStyle}
         background: #ffffff !important;
         color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
-      .paper-container {
+      .paper-container,
+      #document-body {
+        display: contents !important;
         margin: 0 !important;
         padding: 0 !important;
         box-shadow: none !important;
-        border-radius: 0 !important;
+        border: none !important;
         max-width: none !important;
         width: 100% !important;
       }
       .case-section {
         page-break-inside: auto !important;
         break-inside: auto !important;
+        margin: 8pt 0 !important;
+      }
+      .case-section:last-child {
+        margin-bottom: 0 !important;
+      }
+      .case-section:last-child > *:last-child {
+        margin-bottom: 0 !important;
+      }
+      .folder-notes-section:last-child {
+        margin-bottom: 0 !important;
+      }
+      .folder-header-wrap:last-child {
+        margin-bottom: 0 !important;
       }
       .case-title {
         page-break-after: avoid !important;
@@ -602,11 +637,7 @@ export async function exportFolderToPDF(folder, opts = {}) {
     </div>
   </div>
 
-  <div class="paper-container">
-    <div id="document-body">
-      ${htmlContent}
-    </div>
-  </div>
+  <div class="paper-container"><div id="document-body">${htmlContent}</div></div>
 
   <script>
     function setLayoutMode(mode) {
