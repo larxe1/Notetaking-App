@@ -958,6 +958,89 @@ export function updateNotepadCacheFromRemote(pdfId, content, digest) {
     `In-memory cache updated from realtime sync (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars)`);
 }
 
+// ── Background sync: push any notes whose local write_ts > sync_ts to the cloud ──
+// This is the "belt-and-suspenders" safeguard: even if an individual auto-save or
+// manual save silently failed to reach Supabase, this sweep catches it on the next
+// startup, tab-resume, or 3-minute tick and re-uploads from localStorage.
+let _isSyncing = false;
+export async function syncAllUnsyncedNotes({ silent = false } = {}) {
+  if (_isSyncing) return;          // don't stack concurrent runs
+  if (!navigator.onLine) return;   // pointless offline
+
+  const allPdfs = S.pdfs || [];
+  if (allPdfs.length === 0) return;
+
+  // Collect every pdfId where local write is newer than last confirmed cloud sync
+  const toSync = [];
+  for (const pdf of allPdfs) {
+    const trueId = pdf.linked_pdf_id || pdf.id;
+    if (!trueId) continue;
+    const wt = getWriteTs(trueId);
+    const st = getSyncTs(trueId);
+    if (wt > 0 && wt > st) {
+      // Read best-available local content from localStorage
+      const content = safeStorageGet('local_notepad_' + trueId, '') || '';
+      const digest  = safeStorageGet('local_digest_'  + trueId, '') || '';
+      if (content || digest) {
+        toSync.push({ trueId, content, digest });
+      }
+    }
+  }
+
+  if (toSync.length === 0) return;
+
+  _isSyncing = true;
+
+  // Show a subtle indicator in the sync-status bar
+  const stxt = document.getElementById('stxt');
+  const sdot = document.getElementById('sdot');
+  if (!silent && stxt) stxt.textContent = `☁️ Syncing ${toSync.length} note${toSync.length === 1 ? '' : 's'} to cloud…`;
+  if (!silent && sdot) { sdot.className = 'sdot spin'; sdot.style.background = 'var(--gold)'; }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const { trueId, content, digest } of toSync) {
+    try {
+      const res = await dbSaveNotepad(trueId, content, digest);
+      if (res?.saved || res?.localOnly || res?.queued) {
+        if (res?.saved) setSyncTs(trueId);
+        successCount++;
+      } else {
+        failCount++;
+        logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', res?.code || 'ERR_BGSYNC',
+          `Background sync failed for ${trueId}: ${res?.error || 'unknown'}`, { res });
+      }
+    } catch (err) {
+      failCount++;
+      logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', err?.code || 'ERR_BGSYNC',
+        `Background sync exception for ${trueId}: ${err?.message || String(err)}`, { error: String(err) });
+    }
+  }
+
+  _isSyncing = false;
+
+  // Restore the sync-status bar to normal after a short delay
+  if (!silent && stxt) {
+    if (failCount === 0) {
+      stxt.textContent = `✓ ${successCount} note${successCount === 1 ? '' : 's'} synced to cloud`;
+      if (sdot) { sdot.className = 'sdot ok'; sdot.style.background = ''; }
+      setTimeout(() => {
+        if (stxt && stxt.textContent.startsWith('✓')) {
+          stxt.textContent = 'DB Sync Active';
+          if (sdot) sdot.style.background = '';
+        }
+      }, 4000);
+    } else {
+      stxt.textContent = `⚠️ ${failCount} note${failCount === 1 ? '' : 's'} failed cloud sync — check Error Log`;
+      if (sdot) { sdot.className = 'sdot'; sdot.style.background = '#ef4444'; }
+      checkAndAlertSaveErrors();
+    }
+  } else if (failCount > 0) {
+    checkAndAlertSaveErrors();
+  }
+}
+
 // ── Manual save: force an immediate cloud save regardless of dirty state ──
 // Called by the "Save Now" button and Ctrl+S shortcut.
 async function _manualSave() {
@@ -1250,14 +1333,25 @@ export function initNotepad() {
       flushNotepadSave();
     } else if (document.visibilityState === 'visible') {
       // User just returned to the app (e.g. opened laptop, switched back from another app).
-      // Check if any save errors occurred while they were away and show a banner if so.
+      // 1. Show any unacknowledged save-error banner.
       checkAndAlertSaveErrors();
+      // 2. Run the background sync sweep: any PDF whose local write > sync_ts gets pushed.
+      //    Small delay so the app finishes re-rendering before hitting the network.
+      setTimeout(() => syncAllUnsyncedNotes(), 1500);
     }
   });
 
-  // Check for unacknowledged save errors at startup (in case errors from the previous session
-  // were never dismissed — they stay visible until the user opens the Error Log or dismisses).
-  setTimeout(checkAndAlertSaveErrors, 1500);
+  // ── Startup checks: run after 8s so the library has time to finish loading S.pdfs ──
+  setTimeout(() => {
+    // 1. Show any unacknowledged save errors from the previous session.
+    checkAndAlertSaveErrors();
+    // 2. Background sync sweep: re-upload any notes that never confirmed as synced.
+    syncAllUnsyncedNotes();
+  }, 8000);
+
+  // ── Periodic background sync every 3 minutes ──
+  // Keeps cloud in sync even if individual auto-saves are spotty.
+  setInterval(() => { syncAllUnsyncedNotes({ silent: true }); }, 3 * 60 * 1000);
 
   // beforeunload is the last-resort on desktop tab close / navigation
   window.addEventListener('beforeunload', () => {
