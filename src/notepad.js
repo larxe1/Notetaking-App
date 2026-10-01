@@ -199,72 +199,104 @@ function _showSaveErrorBanner(count, lastCode, lastTime) {
 }
 
 // ── Read the best available content for a PDF from DOM + cache + localStorage ──
-// Always prefers the LONGEST (most complete) version across all three sources so
-// that a hidden editor, stale cache, or race condition never silently loses data.
+// Priority:
+//   1. If the notepad panel is OPEN for this PDF → DOM is the authoritative source.
+//      Both editors are in the DOM even when hidden (display:none), so innerHTML is always
+//      available. We only fall back to cache when the DOM element is genuinely missing.
+//   2. If the panel is NOT open (closed or a different PDF is active) → use in-memory
+//      cache first (most recently captured), then localStorage as final fallback.
+// We deliberately do NOT use "pick longest" because that would restore deleted content
+// when a user purposely clears their notes.
 function _readEditorContent(pdfId) {
   const entry = _notepadCache.get(pdfId);
   const isActiveOpen = (_activePdfId === pdfId) && $panel()?.classList.contains('open');
 
-  // DOM values (may be empty if editor not yet painted, or if tab is switched)
-  const domContent = isActiveOpen ? ($notesEditor()?.innerHTML ?? '') : '';
-  const domDigest  = isActiveOpen ? ($digestEditor()?.innerHTML ?? '') : '';
+  if (isActiveOpen) {
+    // Panel is open → DOM editors are live. Both are always in the DOM even if one is
+    // display:none, so innerHTML is reliable regardless of which tab is active.
+    const notesEl  = $notesEditor();
+    const digestEl = $digestEditor();
+    const domContent = notesEl  ? (notesEl.innerHTML  ?? '') : null;
+    const domDigest  = digestEl ? (digestEl.innerHTML ?? '') : null;
 
-  // Cache values
-  const cacheContent = entry?.content ?? '';
-  const cacheDigest  = entry?.digest  ?? '';
+    // If the DOM element exists, trust it completely (even if empty = user cleared it).
+    // Only fall back to cache when the DOM element itself is missing (shouldn't happen).
+    const content = domContent !== null ? domContent : (entry?.content ?? safeStorageGet('local_notepad_' + pdfId, '') ?? '');
+    const digest  = domDigest  !== null ? domDigest  : (entry?.digest  ?? safeStorageGet('local_digest_'  + pdfId, '') ?? '');
 
-  // Local storage fallback
-  const lsContent = safeStorageGet('local_notepad_' + pdfId, '') || '';
-  const lsDigest  = safeStorageGet('local_digest_'  + pdfId, '') || '';
-
-  // Pick the LONGEST (most characters) to avoid data loss from hidden/stale sources.
-  // A shorter string is never better — if one source has more content, prefer that.
-  const content = [domContent, cacheContent, lsContent].reduce((a, b) => (b.length > a.length ? b : a), '');
-  const digest  = [domDigest,  cacheDigest,  lsDigest ].reduce((a, b) => (b.length > a.length ? b : a), '');
-
-  return { content, digest, wasDirty: entry ? !!entry.dirty : true };
+    return { content, digest, wasDirty: entry ? !!entry.dirty : true };
+  } else {
+    // Panel is NOT open → DOM editors are not live for this PDF. Use cache (captured on
+    // close/switch) as the most reliable source, then localStorage as fallback.
+    const content = entry?.content ?? safeStorageGet('local_notepad_' + pdfId, '') ?? '';
+    const digest  = entry?.digest  ?? safeStorageGet('local_digest_'  + pdfId, '') ?? '';
+    return { content, digest, wasDirty: entry ? !!entry.dirty : false };
+  }
 }
 
+// ── Update the local-save indicator (💾) in the notepad header ──
+function updateLocalSaveLabel(state) {
+  // state: 'saving' | 'saved' | 'error'
+  const lbl = document.getElementById('np-local-lbl');
+  if (!lbl) return;
+  if (state === 'saved') {
+    lbl.textContent = '💾 Local ✓';
+    lbl.title = 'Saved to this device\'s local storage';
+    lbl.style.color = '#4ade80';
+  } else if (state === 'saving') {
+    lbl.textContent = '💾 Saving…';
+    lbl.title = 'Writing to local storage…';
+    lbl.style.color = 'var(--gold, #facc15)';
+  } else {
+    lbl.textContent = '💾 Local ✗';
+    lbl.title = 'Local save error';
+    lbl.style.color = '#f87171';
+  }
+}
+
+
 // ── Helper to update save status label consistently across auto-save and flush ──
+// This reflects CLOUD (Supabase) save status only. Local save status is shown via updateLocalSaveLabel.
 function updateSaveStatusLabel(targetPdfId, res) {
   if (_activePdfId !== targetPdfId) return;
   const lbl = $saveLbl();
   if (!lbl) return;
 
   if (res?.saved && (res?.code === '200_OK' || !res?.code)) {
-    lbl.textContent = '✓ Saved';
+    lbl.textContent = '☁️ Cloud ✓';
     lbl.className = 'saved';
     lbl.title = 'Saved to Supabase cloud (Click for Error & Sync Log)';
   } else if (res?.code === 'WARN_SAVED_WITHOUT_DIGEST') {
-    lbl.textContent = '⚠️ Saved (No Cloud Digest)';
+    lbl.textContent = '☁️ ⚠️ No Digest';
     lbl.className = 'saving';
     lbl.title = 'Notes saved to cloud, but "digest" column is missing in Supabase. Digest saved locally. Click for Error Log.';
   } else if (res?.code === 'ERR_23503_FK' || res?.localOnly) {
-    lbl.textContent = '💾 Local Only (23503)';
+    lbl.textContent = '☁️ Local Only';
     lbl.className = 'saving';
     lbl.title = 'PDF missing in Supabase library table (23503). Saved safely to local storage. Click for Error Log.';
   } else if (res?.queued) {
-    lbl.textContent = '⏳ Queued Offline';
+    lbl.textContent = '☁️ Queued…';
     lbl.className = 'saving';
     lbl.title = 'Offline or cloud sync pending. Queued in outbox. Click for Error Log.';
   } else if (res?.error && !res?.saved) {
-    lbl.textContent = `✗ Err: ${res.code || 'FAIL'}`;
+    lbl.textContent = `☁️ ✗ ${res.code || 'FAIL'}`;
     lbl.className = 'err';
-    lbl.title = `Save failed: ${res.error}. Click to open Error Log.`;
+    lbl.title = `Cloud save failed: ${res.error}. Click to open Error Log.`;
   } else if (res?.saved) {
-    lbl.textContent = '✓ Saved';
+    lbl.textContent = '☁️ Cloud ✓';
     lbl.className = 'saved';
-    lbl.title = 'Saved (Click for Error & Sync Log)';
+    lbl.title = 'Saved to cloud (Click for Error & Sync Log)';
   }
 
   setTimeout(() => {
-    if (_activePdfId === targetPdfId && (lbl.textContent === '✓ Saved' || lbl.textContent.startsWith('✓'))) {
+    if (_activePdfId === targetPdfId && (lbl.textContent.includes('✓') || lbl.textContent === '☁️ Cloud ✓')) {
       lbl.textContent = '';
       lbl.className = '';
       lbl.title = '';
     }
   }, 3500);
 }
+
 
 // ── Execute an explicit save for a specific PDF ID ──
 async function executeSaveForPdf(targetPdfId) {
@@ -970,15 +1002,18 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   const allPdfs = S.pdfs || [];
   if (allPdfs.length === 0) return;
 
-  // Collect every pdfId where local write is newer than last confirmed cloud sync
+  // Collect every pdfId where local write is newer than last confirmed cloud sync.
+  // Minimum age guard: only pick up writes that are at least 10 seconds old so we
+  // don't race with the auto-save debounce that's about to fire on its own.
+  const now = Date.now();
+  const MIN_AGE_MS = 10_000;
   const toSync = [];
   for (const pdf of allPdfs) {
     const trueId = pdf.linked_pdf_id || pdf.id;
     if (!trueId) continue;
     const wt = getWriteTs(trueId);
     const st = getSyncTs(trueId);
-    if (wt > 0 && wt > st) {
-      // Read best-available local content from localStorage
+    if (wt > 0 && wt > st && (now - wt) >= MIN_AGE_MS) {
       const content = safeStorageGet('local_notepad_' + trueId, '') || '';
       const digest  = safeStorageGet('local_digest_'  + trueId, '') || '';
       if (content || digest) {
@@ -1000,25 +1035,28 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   let successCount = 0;
   let failCount = 0;
 
-  for (const { trueId, content, digest } of toSync) {
-    try {
-      const res = await dbSaveNotepad(trueId, content, digest);
-      if (res?.saved || res?.localOnly || res?.queued) {
-        if (res?.saved) setSyncTs(trueId);
-        successCount++;
-      } else {
+  try {
+    for (const { trueId, content, digest } of toSync) {
+      try {
+        const res = await dbSaveNotepad(trueId, content, digest);
+        if (res?.saved || res?.localOnly || res?.queued) {
+          if (res?.saved) setSyncTs(trueId);
+          successCount++;
+        } else {
+          failCount++;
+          logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', res?.code || 'ERR_BGSYNC',
+            `Background sync failed for ${trueId}: ${res?.error || 'unknown'}`, { res });
+        }
+      } catch (err) {
         failCount++;
-        logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', res?.code || 'ERR_BGSYNC',
-          `Background sync failed for ${trueId}: ${res?.error || 'unknown'}`, { res });
+        logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', err?.code || 'ERR_BGSYNC',
+          `Background sync exception for ${trueId}: ${err?.message || String(err)}`, { error: String(err) });
       }
-    } catch (err) {
-      failCount++;
-      logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', err?.code || 'ERR_BGSYNC',
-        `Background sync exception for ${trueId}: ${err?.message || String(err)}`, { error: String(err) });
     }
+  } finally {
+    // ALWAYS reset the lock — even if something unexpected throws outside the inner try/catch
+    _isSyncing = false;
   }
-
-  _isSyncing = false;
 
   // Restore the sync-status bar to normal after a short delay
   if (!silent && stxt) {
@@ -1081,6 +1119,7 @@ async function _manualSave() {
     safeStorageSet('local_notepad_' + pdfId, content);
     safeStorageSet('local_digest_'  + pdfId, digest);
     setWriteTs(pdfId);
+    updateLocalSaveLabel('saved'); // ✅ local save always succeeds
 
     // Snapshot before cloud save
     await saveHistorySnapshot(pdfId, content, digest);
@@ -1279,6 +1318,8 @@ export function initNotepad() {
         setWriteTs(_activePdfId); // record that this device has local unsaved changes
         safeStorageSet('local_notepad_' + _activePdfId, content);
         safeStorageSet('local_digest_' + _activePdfId, digest);
+        // ✅ Local save always succeeds synchronously — show confirmation immediately
+        updateLocalSaveLabel('saved');
         scheduleSaveForPdf(_activePdfId);
       }
     });
@@ -1341,13 +1382,11 @@ export function initNotepad() {
     }
   });
 
-  // ── Startup checks: run after 8s so the library has time to finish loading S.pdfs ──
-  setTimeout(() => {
-    // 1. Show any unacknowledged save errors from the previous session.
-    checkAndAlertSaveErrors();
-    // 2. Background sync sweep: re-upload any notes that never confirmed as synced.
-    syncAllUnsyncedNotes();
-  }, 8000);
+  // ── Startup checks ──
+  // Show error banner quickly (1.5s) — doesn't depend on S.pdfs being loaded.
+  setTimeout(checkAndAlertSaveErrors, 1500);
+  // Background sync sweep (15s) — must wait for S.pdfs to fully load from DB.
+  setTimeout(() => syncAllUnsyncedNotes(), 15_000);
 
   // ── Periodic background sync every 3 minutes ──
   // Keeps cloud in sync even if individual auto-saves are spotty.
