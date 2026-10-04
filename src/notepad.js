@@ -2,7 +2,7 @@
 // NOTEPAD — per-PDF general notes with auto-save
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { dbLoadNotepad, dbSaveNotepad } from './db.js';
+import { dbLoadNotepad, dbSaveNotepad, dbFetchCloudNotepadRaw } from './db.js';
 import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
@@ -302,7 +302,7 @@ function updateSaveStatusLabel(targetPdfId, res) {
 async function executeSaveForPdf(targetPdfId) {
   if (!targetPdfId) return;
 
-  // Use the shared helper that picks the LONGEST version from DOM+cache+localStorage
+  // DOM-first when panel is open, cache/localStorage when closed
   const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
 
   // Mark cache clean (no longer dirty now that we're saving)
@@ -398,7 +398,7 @@ export async function flushNotepadSave(specificPdfId = null) {
       return;
     }
 
-    // Use the shared helper that picks the LONGEST version from DOM+cache+localStorage
+    // Use the shared helper: DOM-first when panel is open, cache/localStorage when closed
     const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
     if (entry) entry.dirty = false;
 
@@ -598,6 +598,9 @@ export async function openNotepad(pdfId) {
       if (didMerge) toast('⚠️ Notes from two devices were merged — please review and clean up.');
       else if (pushLocal) toast('☁️ Recovered notes synced to cloud.');
     } else {
+      // Clean remote load: this device is confirmed in sync with the cloud.
+      // Stamp sync_ts so the background sweep doesn't re-upload on next startup.
+      if (remC !== undefined || remD !== undefined) setSyncTs(pdfId);
       const curLbl = $saveLbl();
       if (curLbl && !currentEntry?.dirty) {
         curLbl.textContent = '';
@@ -990,6 +993,99 @@ export function updateNotepadCacheFromRemote(pdfId, content, digest) {
     `In-memory cache updated from realtime sync (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars)`);
 }
 
+// ── Random spot-check: verify a few notes against the REAL cloud row and repair drift ──
+// Catches the "local is fine but cloud silently lost / never received it" case even when
+// write_ts/sync_ts say everything is synced (e.g. a write that was reported OK but dropped).
+let _isVerifying = false;
+export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = true } = {}) {
+  if (_isVerifying || _isSyncing) return;
+  if (!navigator.onLine) return;
+  const allPdfs = S.pdfs || [];
+  if (allPdfs.length === 0) return;
+
+  // Candidates: notes that have local content and are NOT currently being edited
+  const now = Date.now();
+  const candidates = allPdfs.filter(p => {
+    if (!p.id) return false;
+    if (p.id === _activePdfId && _notepadCache.get(p.id)?.dirty) return false;
+    if (now - getWriteTs(p.id) < 15_000) return false; // too fresh, auto-save still in flight
+    return !!(safeStorageGet('local_notepad_' + p.id, '') || safeStorageGet('local_digest_' + p.id, ''));
+  });
+  if (candidates.length === 0) return;
+
+  // Fisher–Yates partial shuffle → random sample
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  const sample = candidates.slice(0, sampleSize);
+
+  _isVerifying = true;
+  let repaired = 0, adopted = 0, errors = 0;
+  try {
+    for (const pdf of sample) {
+      const id = pdf.id;
+      try {
+        const localC = safeStorageGet('local_notepad_' + id, '') || '';
+        const localD = safeStorageGet('local_digest_'  + id, '') || '';
+        const cloud = await dbFetchCloudNotepadRaw(id);
+        if (!cloud.ok) {
+          errors++;
+          logNotepadDiagnostic(id, 'VERIFY', 'ERR', 'ERR_VERIFY_READ', `Spot-check could not read cloud row: ${cloud.error}`);
+          continue;
+        }
+        const digestMatch = cloud.digestKnown === false || cloud.digest === localD;
+        if (cloud.exists && cloud.content === localC && digestMatch) {
+          logNotepadDiagnostic(id, 'VERIFY', 'OK', 'VERIFY_MATCH', 'Spot-check: local and cloud are identical.');
+          continue;
+        }
+
+        const cloudEmpty = !cloud.exists || (!cloud.content && !cloud.digest);
+        const localDirty = getWriteTs(id) > getSyncTs(id);
+
+        if (cloudEmpty || localDirty) {
+          // Cloud lost it / never got it, or we have newer local edits → push local up
+          const res = await dbSaveNotepad(id, localC, localD);
+          const re = res?.saved && !res?.localOnly ? await dbFetchCloudNotepadRaw(id) : null;
+          const ok = re?.ok && re.exists && re.content === localC && (re.digestKnown === false || re.digest === localD);
+          if (ok) {
+            setSyncTs(id);
+            repaired++;
+            logNotepadDiagnostic(id, 'VERIFY', 'WARN', 'VERIFY_REPAIRED_CLOUD',
+              `Spot-check found cloud ${cloudEmpty ? 'missing/empty' : 'behind local'} — re-uploaded from this device and verified.`);
+          } else {
+            errors++;
+            logNotepadDiagnostic(id, 'VERIFY', 'ERR', 'ERR_VERIFY_REPAIR_FAILED',
+              `Spot-check found cloud out of date and re-upload could not be verified (${res?.error || 'read-back mismatch'}).`);
+          }
+        } else if (id !== _activePdfId) {
+          // Local is clean (was synced) but cloud differs and has content → another device
+          // updated it. Adopt the cloud version locally (never touch the open note).
+          safeStorageSet('local_notepad_' + id, cloud.content);
+          if (cloud.digestKnown !== false) safeStorageSet('local_digest_' + id, cloud.digest);
+          _notepadCache.delete(id);
+          setSyncTs(id);
+          adopted++;
+          logNotepadDiagnostic(id, 'VERIFY', 'WARN', 'VERIFY_ADOPTED_CLOUD',
+            'Spot-check: cloud had a newer version from another device — local copy updated.');
+        }
+      } catch (err) {
+        errors++;
+        logNotepadDiagnostic(id, 'VERIFY', 'ERR', 'ERR_VERIFY', `Spot-check exception: ${err?.message || String(err)}`, { error: String(err) });
+      }
+    }
+  } finally {
+    _isVerifying = false;
+  }
+
+  if (errors > 0) checkAndAlertSaveErrors();
+  if (!silent || repaired || adopted) {
+    if (repaired) toast(`☁️ Sync check: re-uploaded ${repaired} note${repaired === 1 ? '' : 's'} missing from the cloud.`);
+    else if (adopted) toast(`☁️ Sync check: updated ${adopted} note${adopted === 1 ? '' : 's'} from another device.`);
+    else if (!errors) toast('☁️ Sync check passed — cloud matches this device.');
+  }
+}
+
 // ── Background sync: push any notes whose local write_ts > sync_ts to the cloud ──
 // This is the "belt-and-suspenders" safeguard: even if an individual auto-save or
 // manual save silently failed to reach Supabase, this sweep catches it on the next
@@ -1009,15 +1105,17 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   const MIN_AGE_MS = 10_000;
   const toSync = [];
   for (const pdf of allPdfs) {
-    const trueId = pdf.linked_pdf_id || pdf.id;
-    if (!trueId) continue;
-    const wt = getWriteTs(trueId);
-    const st = getSyncTs(trueId);
+    // NOTE: write_ts / sync_ts / local_* keys are all keyed by pdf.id (same as the
+    // normal save path). dbSaveNotepad resolves linked_pdf_id itself for the cloud row.
+    const id = pdf.id;
+    if (!id) continue;
+    const wt = getWriteTs(id);
+    const st = getSyncTs(id);
     if (wt > 0 && wt > st && (now - wt) >= MIN_AGE_MS) {
-      const content = safeStorageGet('local_notepad_' + trueId, '') || '';
-      const digest  = safeStorageGet('local_digest_'  + trueId, '') || '';
+      const content = safeStorageGet('local_notepad_' + id, '') || '';
+      const digest  = safeStorageGet('local_digest_'  + id, '') || '';
       if (content || digest) {
-        toSync.push({ trueId, content, digest });
+        toSync.push({ trueId: id, content, digest, wtAtStart: wt });
       }
     }
   }
@@ -1036,11 +1134,26 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   let failCount = 0;
 
   try {
-    for (const { trueId, content, digest } of toSync) {
+    for (const { trueId, content, digest, wtAtStart } of toSync) {
       try {
         const res = await dbSaveNotepad(trueId, content, digest);
-        if (res?.saved || res?.localOnly || res?.queued) {
-          if (res?.saved) setSyncTs(trueId);
+        if (res?.saved && !res?.localOnly) {
+          // Read the row back from Supabase and confirm it really matches before
+          // declaring this note synced. If it doesn't, leave sync_ts alone so the
+          // next sweep retries.
+          const check = await dbFetchCloudNotepadRaw(trueId);
+          const digestOk = check.digestKnown === false || check.digest === digest;
+          if (check.ok && check.exists && check.content === content && digestOk) {
+            if (getWriteTs(trueId) === wtAtStart) setSyncTs(trueId);
+            successCount++;
+          } else {
+            failCount++;
+            logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', 'ERR_VERIFY_MISMATCH',
+              `Upload reported success but cloud read-back did not match (${check.ok ? (check.exists ? 'content differs' : 'row missing') : check.error}). Will retry.`,
+              { check: { ok: check.ok, exists: check.exists } });
+          }
+        } else if (res?.localOnly || res?.queued) {
+          // Not confirmed in cloud (FK error / queued in outbox) — don't stamp sync_ts
           successCount++;
         } else {
           failCount++;
@@ -1126,16 +1239,41 @@ async function _manualSave() {
 
     // Force cloud save
     const res = await dbSaveNotepad(pdfId, content, digest);
-    if (res?.saved) setSyncTs(pdfId);
+
+    // Read the row back from Supabase to PROVE the cloud has it (not just "no error returned")
+    let verified = false;
+    let verifyMsg = '';
+    if (res?.saved && !res?.localOnly) {
+      const check = await dbFetchCloudNotepadRaw(pdfId);
+      verified = !!(check.ok && check.exists && check.content === content &&
+                    (check.digestKnown === false || check.digest === digest));
+      if (!verified) {
+        verifyMsg = check.ok ? (check.exists ? 'cloud content differs' : 'row missing in cloud') : check.error;
+        logNotepadDiagnostic(pdfId, 'SAVE', 'ERR', 'ERR_VERIFY_MISMATCH',
+          `Manual save reported success but read-back did not match (${verifyMsg}).`);
+      }
+    }
+    if (verified) setSyncTs(pdfId);
 
     // Show result in label
     updateSaveStatusLabel(pdfId, res);
+    if (res?.saved && !res?.localOnly && !verified) {
+      const l = $saveLbl();
+      if (l) { l.textContent = '☁️ ⚠️ Unverified'; l.className = 'err'; l.title = `Cloud read-back failed: ${verifyMsg}. Will retry automatically.`; }
+    }
 
     // Button feedback
     if (btn) {
-      if (res?.saved || res?.localOnly) {
-        btn.textContent = '✓ Saved!';
+      if (verified) {
+        btn.textContent = '✓ Verified in cloud';
         btn.style.background = '#14532d';
+      } else if (res?.saved && !res?.localOnly) {
+        btn.textContent = '⚠️ Not verified';
+        btn.style.background = '#78350f';
+        toast('⚠️ Saved, but the cloud copy could not be verified. It will retry automatically — check the Error Log if this repeats.');
+      } else if (res?.localOnly) {
+        btn.textContent = '💾 Local only';
+        btn.style.background = '#78350f';
       } else if (res?.queued) {
         btn.textContent = '⏳ Queued';
         btn.style.background = '#78350f';
@@ -1378,7 +1516,10 @@ export function initNotepad() {
       checkAndAlertSaveErrors();
       // 2. Run the background sync sweep: any PDF whose local write > sync_ts gets pushed.
       //    Small delay so the app finishes re-rendering before hitting the network.
-      setTimeout(() => syncAllUnsyncedNotes(), 1500);
+      setTimeout(async () => {
+        await syncAllUnsyncedNotes();
+        await verifyRandomNotesAgainstCloud({ sampleSize: 5 });
+      }, 1500);
     }
   });
 
@@ -1387,10 +1528,14 @@ export function initNotepad() {
   setTimeout(checkAndAlertSaveErrors, 1500);
   // Background sync sweep (15s) — must wait for S.pdfs to fully load from DB.
   setTimeout(() => syncAllUnsyncedNotes(), 15_000);
+  // Random cloud spot-check (25s) — runs after the sweep has had a chance to finish.
+  setTimeout(() => verifyRandomNotesAgainstCloud({ sampleSize: 5 }), 25_000);
 
   // ── Periodic background sync every 3 minutes ──
   // Keeps cloud in sync even if individual auto-saves are spotty.
   setInterval(() => { syncAllUnsyncedNotes({ silent: true }); }, 3 * 60 * 1000);
+  // ── Periodic random spot-check every 5 minutes (3 random notes vs. the real cloud row) ──
+  setInterval(() => { verifyRandomNotesAgainstCloud({ sampleSize: 3 }); }, 5 * 60 * 1000);
 
   // beforeunload is the last-resort on desktop tab close / navigation
   window.addEventListener('beforeunload', () => {

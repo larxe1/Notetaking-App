@@ -622,6 +622,26 @@ export async function dbLoadNotepad(pdf_id) {
   return { content, digest, code: diagCode, status: diagStatus, source };
 }
 
+// ── Read the RAW cloud row for a notepad (no local fallback, no side effects) ──
+// Used by sync verification to find out what Supabase ACTUALLY holds.
+// Returns { ok:true, exists:boolean, content, digest, digestKnown } or { ok:false, error }.
+export async function dbFetchCloudNotepadRaw(pdf_id) {
+  if (!pdf_id) return { ok: false, error: 'Missing pdf_id' };
+  const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
+  try {
+    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
+    if (error) {
+      // Maybe the digest column is missing — retry content only
+      const fb = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
+      if (fb.error) return { ok: false, error: fb.error.message || String(fb.error) };
+      return { ok: true, exists: !!fb.data, content: fb.data?.content || '', digest: '', digestKnown: false };
+    }
+    return { ok: true, exists: !!data, content: data?.content || '', digest: data?.digest || '', digestKnown: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 export async function dbSaveNotepad(pdf_id, content, digest) {
   if (!pdf_id) {
     logNotepadDiagnostic(pdf_id, 'SAVE', 'ERR', 'ERR_NO_PDF_ID', 'Save aborted: missing pdf_id');
@@ -632,10 +652,13 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
   if (content !== undefined) {
     payload.content = content;
     safeStorageSet('local_notepad_' + truePdfId, content);
+    // Also keep the original-id key in sync so callers that read by pdf_id stay consistent
+    if (truePdfId !== pdf_id) safeStorageSet('local_notepad_' + pdf_id, content);
   }
   if (digest !== undefined) {
     payload.digest = digest;
     safeStorageSet('local_digest_' + truePdfId, digest);
+    if (truePdfId !== pdf_id) safeStorageSet('local_digest_' + pdf_id, digest);
   }
 
   const cLen = content?.length || 0;
