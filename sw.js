@@ -3,12 +3,13 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v108';
+const CACHE_NAME = 'legal-annotator-shell-v109';
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './pen-debug.html',
   './favicon.ico',
   './icon-32.png',
   './icon-64.png',

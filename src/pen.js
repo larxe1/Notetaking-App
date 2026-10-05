@@ -71,6 +71,8 @@ export function setPenMode(on, { silent = false } = {}) {
   document.body.classList.toggle('pen-on', _enabled);
   _btn?.classList.toggle('active', _enabled);
   _btn?.setAttribute('aria-pressed', String(_enabled));
+  const sb = document.getElementById('btn-pen-setting');
+  if (sb) sb.textContent = _enabled ? 'Pen Mode: ON (tap to turn off)' : 'Pen Mode: OFF (tap to turn on)';
   safeStorageSet(LS_KEY, _enabled ? '1' : '0');
   if (!_enabled) cancelStroke();
   if (!silent) {
@@ -104,6 +106,12 @@ function buildButton(toolbar) {
   if (anchor?.parentNode) anchor.parentNode.insertBefore(_btn, anchor.nextSibling);
   else toolbar.appendChild(_btn);
   _btn.addEventListener('click', () => setPenMode(!_enabled));
+
+  const sb = document.getElementById('btn-pen-setting');
+  if (sb) {
+    sb.textContent = 'Pen Mode: OFF (tap to turn on)';
+    sb.addEventListener('click', () => setPenMode(!_enabled));
+  }
 }
 
 // ───────────────────────── error guard ─────────────────────────
