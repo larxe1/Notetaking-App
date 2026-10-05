@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pen Diagnostic</title>
+<!-- Standalone test page. Does NOT load or touch the app. Open it on your iPad in Safari. -->
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; background:#0d1424; color:#e8e4db; margin:0; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:14px; margin:18px 0 6px; color:#c9a84c; }
+  p, li { font-size:13px; line-height:1.45; color:#b0aaa0; }
+  .box { background:#141c30; border:1px solid #2a3558; border-radius:8px; padding:10px; }
+  #pad { height:180px; touch-action:none; background:#0a0f1c; border:1px dashed #c9a84c; border-radius:8px; position:relative; overflow:hidden; }
+  #scrollbox { height:150px; overflow:auto; background:#0a0f1c; border:1px solid #2a3558; border-radius:8px; padding:8px; -webkit-overflow-scrolling:touch; }
+  #scrollbox p { color:#8f8a80; margin:0 0 10px; }
+  #live { font-family: ui-monospace, Menlo, monospace; font-size:12px; white-space:pre-wrap; color:#9fe0a8; min-height:96px; }
+  #log { font-family: ui-monospace, Menlo, monospace; font-size:11px; height:120px; overflow:auto; white-space:pre-wrap; color:#8fb4ff; }
+  button { background:#c9a84c; color:#111; border:0; border-radius:6px; padding:8px 12px; font-weight:700; font-size:13px; }
+  label { font-size:13px; color:#e8e4db; }
+  .ok { color:#6ee7a0; } .bad { color:#ff8080; } .warn { color:#ffd166; }
+  #textTest { font-size:20px; line-height:1.6; user-select:text; -webkit-user-select:text; }
+</style>
+</head>
+<body>
+<h1>✒ Pen Diagnostic</h1>
+<p>Takes about 3 minutes. Do the 4 tests, then press <b>Copy report</b> and paste it to me (or send a screenshot).</p>
+
+<h2>0. Browser features</h2>
+<div class="box"><div id="features">…</div></div>
+
+<h2>1. Pencil vs finger — live readout</h2>
+<p>Draw on the dashed pad with the <b>Apple Pencil</b>, then with a <b>finger</b>. Press harder/softer with the Pencil and tilt it.</p>
+<div id="pad"></div>
+<div class="box" style="margin-top:6px"><div id="live">Waiting for input…</div></div>
+
+<h2>2. Scroll blocking (most important)</h2>
+<p>Tick the box below. Then drag inside the grey scroll area: <b>finger should still scroll</b> it, the <b>Pencil should NOT</b> scroll it.</p>
+<label><input type="checkbox" id="blockPen"> Block scrolling for Pencil only</label>
+<div id="scrollbox" style="margin-top:6px">
+  <p>Line 1 — scroll test content.</p><p>Line 2 — scroll test content.</p><p>Line 3 — scroll test content.</p>
+  <p>Line 4 — scroll test content.</p><p>Line 5 — scroll test content.</p><p>Line 6 — scroll test content.</p>
+  <p>Line 7 — scroll test content.</p><p>Line 8 — scroll test content.</p><p>Line 9 — scroll test content.</p>
+  <p>Line 10 — scroll test content.</p><p>Line 11 — scroll test content.</p><p>Line 12 — end.</p>
+</div>
+<div class="box" style="margin-top:6px">
+  <label>Did the Pencil scroll the box with the option ON? </label>
+  <select id="penScrolled"><option value="">choose…</option><option>yes (bad)</option><option>no (good)</option></select><br>
+  <label>Did a finger still scroll it with the option ON? </label>
+  <select id="fingerScrolled"><option value="">choose…</option><option>yes (good)</option><option>no (bad)</option></select>
+</div>
+
+<h2>3. Text under the Pencil</h2>
+<p>Drag the Pencil across the words below. Does it start a native text selection / magnifier?</p>
+<div class="box"><div id="textTest">The quick brown fox jumps over the lazy dog near the riverbank.</div></div>
+<div class="box" style="margin-top:6px">
+  <label>Pencil drag caused text selection/loupe? </label>
+  <select id="selected"><option value="">choose…</option><option>yes</option><option>no</option></select>
+  <div id="caret" style="margin-top:6px"></div>
+</div>
+
+<h2>Report</h2>
+<button id="copy">Copy report</button> <button id="clear">Clear log</button>
+<div class="box" style="margin-top:8px"><div id="log"></div></div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const stats = { pen:{ down:0, maxP:0, minP:1, tiltSeen:false, hover:false, events:0 },
+                  touch:{ down:0 }, mouse:{ down:0 },
+                  touchTypes:{}, coalesced:false, penTouchstart:0 };
+  const logEl = $('log');
+  const log = s => { logEl.textContent = (s + '\n' + logEl.textContent).slice(0, 4000); };
+
+  // 0. features
+  const feat = {
+    PointerEvent: 'PointerEvent' in window,
+    maxTouchPoints: navigator.maxTouchPoints,
+    getCoalescedEvents: 'getCoalescedEvents' in PointerEvent.prototype,
+    caretRangeFromPoint: typeof document.caretRangeFromPoint === 'function',
+    touchEvents: 'ontouchstart' in window,
+    devicePixelRatio: window.devicePixelRatio,
+    userAgent: navigator.userAgent
+  };
+  $('features').innerHTML = Object.entries(feat).map(([k, v]) =>
+    `<div>${k}: <span class="${v === false ? 'bad' : 'ok'}">${String(v)}</span></div>`).join('');
+
+  // 1. pointer readout
+  const pad = $('pad');
+  const show = e => {
+    $('live').textContent =
+      `pointerType: ${e.pointerType}\npressure: ${e.pressure.toFixed(3)}\n` +
+      `tiltX/tiltY: ${e.tiltX}/${e.tiltY}\n` +
+      `altitudeAngle: ${e.altitudeAngle ?? 'n/a'}  azimuthAngle: ${e.azimuthAngle ?? 'n/a'}\n` +
+      `buttons: ${e.buttons}  isPrimary: ${e.isPrimary}`;
+  };
+  const rec = (e, kind) => {
+    const t = stats[e.pointerType] || (stats[e.pointerType] = { down:0 });
+    if (kind === 'down') t.down++;
+    if (e.pointerType === 'pen') {
+      stats.pen.events++;
+      if (e.buttons && e.pressure > 0) {
+        stats.pen.maxP = Math.max(stats.pen.maxP, e.pressure);
+        stats.pen.minP = Math.min(stats.pen.minP, e.pressure);
+      }
+      if (e.tiltX || e.tiltY) stats.pen.tiltSeen = true;
+      if (!e.buttons && kind === 'move') stats.pen.hover = true;
+    }
+    if (typeof e.getCoalescedEvents === 'function') {
+      try { if (e.getCoalescedEvents().length > 1) stats.coalesced = true; } catch (_) {}
+    }
+  };
+  ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(type => {
+    pad.addEventListener(type, e => {
+      show(e); rec(e, type.replace('pointer', ''));
+      if (type !== 'pointermove') log(`${type} ${e.pointerType} p=${e.pressure.toFixed(2)}`);
+    });
+  });
+
+  // 2. scroll blocking via touch.touchType
+  const sb = $('scrollbox');
+  const onTouch = e => {
+    let stylus = false;
+    for (const t of e.changedTouches) {
+      const tt = t.touchType === undefined ? 'undefined' : t.touchType;
+      stats.touchTypes[tt] = (stats.touchTypes[tt] || 0) + 1;
+      if (t.touchType === 'stylus') stylus = true;
+    }
+    if (stylus) stats.penTouchstart++;
+    if ($('blockPen').checked && stylus && e.cancelable) e.preventDefault();
+    if (e.type === 'touchstart') log(`touchstart types=${[...e.changedTouches].map(t => t.touchType).join(',')} blocked=${$('blockPen').checked && stylus}`);
+  };
+  sb.addEventListener('touchstart', onTouch, { passive: false });
+  sb.addEventListener('touchmove',  onTouch, { passive: false });
+
+  // 3. caretRangeFromPoint on the text
+  const tt = $('textTest');
+  tt.addEventListener('pointerup', e => {
+    if (typeof document.caretRangeFromPoint !== 'function') { $('caret').textContent = 'caretRangeFromPoint: unavailable'; return; }
+    const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+    $('caret').textContent = r ? `caretRangeFromPoint OK → offset ${r.startOffset}` : 'caretRangeFromPoint returned null';
+  });
+
+  function report() {
+    return JSON.stringify({
+      features: feat,
+      pen: stats.pen,
+      touchDownCount: stats.touch.down,
+      touchTypes: stats.touchTypes,
+      stylusTouchstarts: stats.penTouchstart,
+      coalescedEventsSeen: stats.coalesced,
+      answers: {
+        pencilScrolledWhenBlocked: $('penScrolled').value,
+        fingerScrolledWhenBlocked: $('fingerScrolled').value,
+        pencilCausedSelection: $('selected').value,
+        blockOptionChecked: $('blockPen').checked
+      }
+    }, null, 2);
+  }
+  $('copy').onclick = async () => {
+    const r = report();
+    try { await navigator.clipboard.writeText(r); log('Report copied to clipboard.'); }
+    catch (_) { logEl.textContent = r; log('Clipboard blocked — select the text below and copy it manually.'); }
+  };
+  $('clear').onclick = () => { logEl.textContent = ''; };
+})();
+</script>
+</body>
+</html>

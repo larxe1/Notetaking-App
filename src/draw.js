@@ -15,10 +15,25 @@ export function setupDrawListeners(canvas, pageNum) {
     return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
   }
 
+  // ── Pen mode helpers (inactive unless S.penMode is on; see pen.js) ──
+  let activePid = null;
+  let pSum = 0, pN = 0;
+  const samplePressure = e => {
+    if (S.penMode && e.pointerType === 'pen' && e.pressure > 0) { pSum += e.pressure; pN++; }
+  };
+  // Light press ≈ 0.6× the chosen size, firm press ≈ 1.5× (average over the stroke)
+  const pressureMul = () => (S.penMode && pN) ? 0.5 + (pSum / pN) : 1;
+  const penWidth = () => Math.max(1, Math.round(S.drawWidth * pressureMul() * 10) / 10);
+
   canvas.addEventListener('pointerdown', e => {
     if (S.mode !== 'draw') return;
+    // Pen mode: only the Pencil draws. Fingers/palms are ignored so they can scroll/zoom.
+    if (S.penMode && e.pointerType === 'touch') return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
+    activePid = e.pointerId;
+    pSum = 0; pN = 0;
+    samplePressure(e);
     const [x, y] = getPt(e);
     S.curPts = [[x / canvas.width, y / canvas.height]];
     S.isDrawing = true;
@@ -26,24 +41,28 @@ export function setupDrawListeners(canvas, pageNum) {
 
   canvas.addEventListener('pointermove', e => {
     if (!S.isDrawing || S.mode !== 'draw') return;
+    if (activePid !== null && e.pointerId !== activePid) return;
     e.preventDefault();
+    samplePressure(e);
     const [x, y] = getPt(e);
     S.curPts.push([x / canvas.width, y / canvas.height]);
     const previewColor = S.drawTool === 'erase' ? ERASE_COLOR : S.activeColor;
-    const previewWidth = S.drawTool === 'erase' ? S.eraseWidth : S.drawWidth;
+    const previewWidth = S.drawTool === 'erase' ? S.eraseWidth : penWidth();
     renderCanvas(canvas, [
       ...(S.drawData[pageNum] || []),
       { points: S.curPts, color: previewColor, width: previewWidth },
     ]);
   });
 
-  const onEnd = async () => {
+  const onEnd = async e => {
+    if (e && activePid !== null && e.pointerId !== activePid) return;
     if (!S.isDrawing) return;
     S.isDrawing = false;
+    activePid = null;
     if (S.curPts.length >= 2) {
       if (!S.drawData[pageNum]) S.drawData[pageNum] = [];
       const color = S.drawTool === 'erase' ? ERASE_COLOR : S.activeColor;
-      const width = S.drawTool === 'erase' ? S.eraseWidth : S.drawWidth;
+      const width = S.drawTool === 'erase' ? S.eraseWidth : penWidth();
       S.drawData[pageNum].push({ points: S.curPts, color, width });
       if (S.curPDF) {
         const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;

@@ -113,6 +113,8 @@ async function init() {
   safeInit(initSearch, 'Search');
   safeInit(initDrawControls, 'DrawControls');
   safeInit(initPinchZoom, 'PinchZoom');
+  // Pen (Apple Pencil) support — optional add-on; loaded lazily so it can never break startup.
+  safeInit(() => import('./pen.js').then(m => m.initPen()).catch(e => console.warn('[Init] Pen module unavailable:', e)), 'Pen');
   safeInit(initZoom, 'Zoom');
   safeInit(initNavButtons, 'NavButtons');
   safeInit(initNotepad, 'Notepad');
