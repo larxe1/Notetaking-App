@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v117';
+const CACHE_NAME = 'legal-annotator-shell-v118';
 
 const STATIC_ASSETS = [
   './',
@@ -36,7 +36,6 @@ const STATIC_ASSETS = [
   './src/dualview.js',
   './src/sync.js',
   './src/backup.js',
-  './src/quiz.js',
   './src/search.js',
   './src/tablepicker.js',
   './src/notepad.js',

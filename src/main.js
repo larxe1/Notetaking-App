@@ -2,7 +2,7 @@
 // MAIN — entry point, wires everything together
 // ═══════════════════════════════════════════════
 import { S }                  from './state.js';
-import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbClearAllBookmarks, dbLoadLinks, dbSaveLinks, dbGetSetting } from './db.js';
+import { db, dbLoad, dbLoadAnnCounts, dbCreateBookmark, dbDelBookmark, dbClearAllBookmarks, dbLoadLinks, dbSaveLinks, dbGetSetting, dbSetSetting } from './db.js';
 import { initDriveBar }       from './drive.js';
 import { renderLibrary, initLibraryModals, initLibrarySelection, initContextMenu } from './library.js';
 import { renderColorDots, initColors } from './colors.js';
@@ -441,7 +441,7 @@ async function init() {
     }
     if (!key) {
       detectedContainer.innerHTML = `<div style="color:#888; font-size:13px; padding:10px;">
-        No Gemini API key found. Open <strong>✨ Quiz Me</strong> in the toolbar to enter your key — it will sync here automatically.
+        No Gemini API key found. Open <strong>⚙️ Settings</strong> to enter your free Gemini API key.
       </div>`;
       return;
     }
@@ -575,9 +575,56 @@ RULES:
     } catch {}
   }
 
+  async function refreshGeminiKey() {
+    const keyInp = document.getElementById('settings-gemini-key');
+    const statusEl = document.getElementById('settings-gemini-status');
+    if (!keyInp) return;
+    let key = safeStorageGet('gemini_api_key');
+    if (!key) {
+      try {
+        key = await dbGetSetting('gemini_api_key');
+        if (key) safeStorageSet('gemini_api_key', key);
+      } catch {}
+    }
+    if (key) {
+      keyInp.value = key;
+      if (statusEl) {
+        statusEl.textContent = '✓ Key configured and ready for AI Table of Contents.';
+        statusEl.style.color = '#4ade80';
+      }
+    } else {
+      keyInp.value = '';
+      if (statusEl) {
+        statusEl.textContent = 'No key set. AI Table of Contents is currently inactive.';
+        statusEl.style.color = 'var(--muted)';
+      }
+    }
+  }
+
   document.getElementById('btn-settings')?.addEventListener('click', () => {
     openModal('mo-settings');
     refreshCacheStats();
+    refreshGeminiKey();
+  });
+
+  document.getElementById('settings-btn-save-gemini')?.addEventListener('click', async () => {
+    const inp = document.getElementById('settings-gemini-key');
+    const val = inp?.value.trim() || '';
+    if (!val) {
+      toast('Please enter a key, or click ✕ to clear');
+      return;
+    }
+    safeStorageSet('gemini_api_key', val);
+    try { await dbSetSetting('gemini_api_key', val); } catch {}
+    toast('✓ Gemini API key saved');
+    refreshGeminiKey();
+  });
+
+  document.getElementById('settings-btn-clear-gemini')?.addEventListener('click', async () => {
+    safeStorageRemove('gemini_api_key');
+    try { await dbSetSetting('gemini_api_key', ''); } catch {}
+    toast('Gemini API key removed');
+    refreshGeminiKey();
   });
   document.getElementById('btn-export-settings')?.addEventListener('click', () => {
     closeModal('mo-settings');
