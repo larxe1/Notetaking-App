@@ -163,26 +163,35 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
     return;
   }
 
+  let timeoutId = null;
   try {
-    if (action === 'upsert') {
-      const { error } = await dbClient.from(table).upsert(data, getUpsertOptions(table));
-      if (error) throw error;
-    } else if (action === 'update') {
-      let q = dbClient.from(table).update(data);
-      if (matchQuery && isValidMatchQuery(matchQuery)) {
-        q = q.match(matchQuery);
-      } else if (data?.id) {
-        q = q.eq('id', data.id);
-      } else {
-        console.error(`[Outbox] Blocked unsafe update on "${table}" — no valid matchQuery or id provided:`, data);
-        return;
+    const dbPromise = (async () => {
+      if (action === 'upsert') {
+        const { error } = await dbClient.from(table).upsert(data, getUpsertOptions(table));
+        if (error) throw error;
+      } else if (action === 'update') {
+        let q = dbClient.from(table).update(data);
+        if (matchQuery && isValidMatchQuery(matchQuery)) {
+          q = q.match(matchQuery);
+        } else if (data?.id) {
+          q = q.eq('id', data.id);
+        } else {
+          console.error(`[Outbox] Blocked unsafe update on "${table}" — no valid matchQuery or id provided:`, data);
+          return;
+        }
+        const { error } = await q;
+        if (error) throw error;
+      } else if (action === 'delete') {
+        const { error } = await dbClient.from(table).delete().match(matchQuery);
+        if (error) throw error;
       }
-      const { error } = await q;
-      if (error) throw error;
-    } else if (action === 'delete') {
-      const { error } = await dbClient.from(table).delete().match(matchQuery);
-      if (error) throw error;
-    }
+    })();
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Supabase ${action} on ${table} timed out after 8s`)), 8000);
+    });
+
+    await Promise.race([dbPromise, timeoutPromise]);
   } catch (err) {
     const errMsg = (err?.message || err?.details || String(err)).toLowerCase();
     const isForeignKey = err?.code === '23503' || errMsg.includes('23503') || errMsg.includes('foreign key') || errMsg.includes('fkey');
@@ -195,6 +204,8 @@ export async function safeDbWrite(dbClient, table, action, data, matchQuery = nu
     console.warn(`[Outbox] Direct Supabase write failed — saving to offline outbox queue:`, err);
     import('./ui.js').then(m => m.recordError(err, `Write to ${table}`));
     enqueueAction(table, action, data, matchQuery);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

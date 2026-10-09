@@ -173,9 +173,11 @@ async function init() {
       S.bookmarks.push({ pdf_id: trueId, page: S.curPage, title });
       S.bookmarks.sort((a, b) => a.page - b.page);
       inp.value = '';
+      autosave('saved');
       // Re-render TOC
       document.getElementById('btn-toc').click();
     } catch (e) {
+      autosave('err');
       console.error('Bookmark Error:', e);
       alert('Supabase Error: ' + (e.message || JSON.stringify(e)));
       toast('Failed to add bookmark.');

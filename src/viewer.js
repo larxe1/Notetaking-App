@@ -21,22 +21,27 @@ let _folderDocDebounce = null;
 export async function flushFolderDoc() {
   if (_currentFolderDocId) {
     const ed = document.getElementById('folder-doc-editor');
-    if (ed) {
+    const wasDebouncing = !!_folderDocDebounce;
+    if (_folderDocDebounce) {
+      clearTimeout(_folderDocDebounce);
+      _folderDocDebounce = null;
+    }
+    if (ed && wasDebouncing) {
       const text = ed.innerHTML;
       const prevId = _currentFolderDocId;
       const f = S.folders.find(x => x.id === prevId);
       if (f) f.notes = text;
       safeStorageSet('local_folder_notes_' + prevId, text);
       
-      if (_folderDocDebounce) {
-        clearTimeout(_folderDocDebounce);
-        _folderDocDebounce = null;
-      }
-      
       try {
         const { dbUpdateFolderNotes } = await import('./db.js');
         await dbUpdateFolderNotes(prevId, text);
-      } catch {}
+        const { autosave } = await import('./ui.js');
+        autosave('saved');
+      } catch {
+        const { autosave } = await import('./ui.js');
+        autosave('err');
+      }
     }
   }
 }
@@ -96,7 +101,11 @@ export async function openFolderDoc(fold) {
 
       clearTimeout(_folderDocDebounce);
       _folderDocDebounce = setTimeout(async () => {
-        if (!_currentFolderDocId || _currentFolderDocId !== currentId) return;
+        _folderDocDebounce = null;
+        if (!currentId) {
+          autosave('saved');
+          return;
+        }
         const { dbUpdateFolderNotes } = await import('./db.js');
         try {
           await dbUpdateFolderNotes(currentId, currentText);
@@ -104,7 +113,6 @@ export async function openFolderDoc(fold) {
         } catch {
           autosave('err');
         }
-        _folderDocDebounce = null;
       }, 800);
     });
 
@@ -292,6 +300,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     await flushNotepadSave();
   } catch {}
   await flushFolderDoc();
+  _currentFolderDocId = null;
 
   // Destroy previous PDF.js document immediately to free RAM/GPU memory
   if (S.pdfDoc) {

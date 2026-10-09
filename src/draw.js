@@ -150,9 +150,13 @@ export function initDrawControls() {
     const c = S.pages[pg]?.drawCanvas;
     if (c) renderCanvas(c, S.drawData[pg]);
     autosave('saving');
-    await dbSaveDrawings(trueId, pg, S.drawData[pg]);
-    autosave('saved');
-    toast('Undone');
+    try {
+      await dbSaveDrawings(trueId, pg, S.drawData[pg]);
+      autosave('saved');
+      toast('Undone');
+    } catch {
+      autosave('err');
+    }
   });
 
   document.getElementById('btn-clear').addEventListener('click', async () => {
@@ -163,9 +167,13 @@ export function initDrawControls() {
     const c = S.pages[pg]?.drawCanvas;
     if (c) renderCanvas(c, []);
     autosave('saving');
-    await dbSaveDrawings(trueId, pg, []);
-    autosave('saved');
-    toast('Drawing cleared');
+    try {
+      await dbSaveDrawings(trueId, pg, []);
+      autosave('saved');
+      toast('Drawing cleared');
+    } catch {
+      autosave('err');
+    }
   });
 
   document.querySelectorAll('.dw-btn').forEach(btn => {

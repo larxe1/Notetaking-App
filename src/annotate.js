@@ -204,15 +204,21 @@ function renderAnnColors() {
     d.style.background = cat.hex_color;
     d.title = cat.name;
     d.addEventListener('click', async () => {
-      if (!S.selAnn) return;
+      const targetAnn = S.selAnn;
+      if (!targetAnn) return;
       autosave('saving');
-      S.selAnn.hex_color = cat.hex_color;
-      await dbUpdateAnnColor(S.selAnn.id, cat.hex_color);
-      clearAnnMark(S.selAnn.id);
-      drawAnnotation(S.selAnn);
-      renderAnnColors();
-      autosave('saved');
-      toast('Color updated');
+      try {
+        targetAnn.hex_color = cat.hex_color;
+        clearAnnMark(targetAnn.id);
+        drawAnnotation(targetAnn);
+        renderAnnColors();
+        await dbUpdateAnnColor(targetAnn.id, cat.hex_color);
+        autosave('saved');
+        toast('Color updated');
+      } catch (e) {
+        console.error(e);
+        autosave('err');
+      }
     });
     c.appendChild(d);
   }
@@ -241,7 +247,9 @@ function updateEditorState() {
 }
 
 function renderNotes(ann) {
+  if (!ann) return;
   const list = document.getElementById('ann-notes');
+  if (!list) return;
   list.innerHTML = '';
   updateTabBadges(ann);
   updateEditorState();
@@ -299,11 +307,18 @@ function renderNotes(ann) {
 
     card.querySelector('.note-act-btn.del').addEventListener('click', async () => {
       autosave('saving');
-      await dbDelNote(note.id);
-      ann.notes = ann.notes.filter(n => n.id !== note.id);
-      renderNotes(ann);
-      autosave('saved');
-      import('./ui.js').then(m => m.toast(isCase ? 'Case summary deleted' : 'Note deleted'));
+      try {
+        ann.notes = ann.notes.filter(n => n.id !== note.id);
+        const trueId = ann.pdf_file_id;
+        if (trueId) safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+        renderNotes(ann);
+        await dbDelNote(note.id);
+        autosave('saved');
+        import('./ui.js').then(m => m.toast(isCase ? 'Case summary deleted' : 'Note deleted'));
+      } catch (e) {
+        console.error(e);
+        autosave('err');
+      }
     });
 
     list.appendChild(card);
@@ -325,65 +340,90 @@ export function initAnnPanel() {
   });
 
   document.getElementById('btn-del-hi').addEventListener('click', async () => {
-    if (!S.selAnn) return;
+    const targetAnn = S.selAnn;
+    if (!targetAnn) return;
     autosave('saving');
-    await dbDelAnnotation(S.selAnn.id);
-    S.annotations = S.annotations.filter(x => x.id !== S.selAnn.id);
-    const trueId = S.selAnn.pdf_file_id;
-    if (trueId) {
-      S.annCounts[trueId] = Math.max(0, (S.annCounts[trueId] || 1) - 1);
-      updateAnnBadge(trueId);
+    try {
+      S.annotations = S.annotations.filter(x => x.id !== targetAnn.id);
+      const trueId = targetAnn.pdf_file_id;
+      if (trueId) {
+        S.annCounts[trueId] = Math.max(0, (S.annCounts[trueId] || 1) - 1);
+        updateAnnBadge(trueId);
+      }
+      clearAnnMark(targetAnn.id);
+      closeAnnPanel();
+      await dbDelAnnotation(targetAnn.id);
+      autosave('saved');
+      toast('Highlight deleted');
+    } catch (e) {
+      console.error(e);
+      autosave('err');
     }
-    clearAnnMark(S.selAnn.id);
-    closeAnnPanel();
-    autosave('saved');
-    toast('Highlight deleted');
   });
 
   // Add note / Case summary — with empty-editor shake (fixes bug #5)
   document.getElementById('btn-add-note').addEventListener('click', async () => {
-    const ed   = document.getElementById('note-editor');
+    const ed = document.getElementById('note-editor');
     const rawHtml = ed.innerHTML.trim();
-    if (!rawHtml || rawHtml === '<br>' || !S.selAnn) {
+    const targetAnn = S.selAnn;
+    if (!rawHtml || rawHtml === '<br>' || !targetAnn) {
       ed.classList.remove('shake');
       void ed.offsetWidth; // reflow to restart animation
       ed.classList.add('shake');
       return;
     }
-    const htmlToSave = wrapNoteHtml(rawHtml, activeNoteTab);
+    const savedTab = activeNoteTab;
+    const htmlToSave = wrapNoteHtml(rawHtml, savedTab);
     autosave('saving');
-    const note = await dbCreateNote(S.selAnn.id, htmlToSave, S.selAnn.notes.length);
-    S.selAnn.notes.push(note);
-    const trueId = S.selAnn.pdf_file_id;
-    if (trueId) {
-      safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+    try {
+      const note = await dbCreateNote(targetAnn.id, htmlToSave, targetAnn.notes.length);
+      targetAnn.notes.push(note);
+      const trueId = targetAnn.pdf_file_id;
+      if (trueId) {
+        safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+      }
+      ed.innerHTML = '';
+      if (S.selAnn?.id === targetAnn.id) renderNotes(targetAnn);
+      autosave('saved');
+      toast(savedTab === 'case' ? 'Case summary added' : 'Note added');
+    } catch (e) {
+      console.error(e);
+      autosave('err');
     }
-    ed.innerHTML = '';
-    renderNotes(S.selAnn);
-    autosave('saved');
-    toast(activeNoteTab === 'case' ? 'Case summary added' : 'Note added');
   });
 
   // Save edited note / Case summary
   document.getElementById('save-edit-note').addEventListener('click', async () => {
     const rawHtml = document.getElementById('edit-note-ed').innerHTML.trim();
     if (!rawHtml) return;
-    const note = S.selAnn?.notes.find(n => n.id === S.editingNoteId);
+    let targetAnn = S.selAnn;
+    let note = targetAnn?.notes.find(n => n.id === S.editingNoteId);
+    if (!note && S.editingNoteId) {
+      for (const a of (S.annotations || [])) {
+        const found = a.notes?.find(n => n.id === S.editingNoteId);
+        if (found) { targetAnn = a; note = found; break; }
+      }
+    }
     const noteType = getNoteType(note);
     const htmlToSave = wrapNoteHtml(rawHtml, noteType);
     autosave('saving');
-    await dbUpdateNote(S.editingNoteId, htmlToSave);
-    if (note) {
-      note.note_html = htmlToSave;
-      const trueId = S.selAnn?.pdf_file_id;
-      if (trueId) {
-        safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+    try {
+      if (note) {
+        note.note_html = htmlToSave;
+        const trueId = targetAnn?.pdf_file_id;
+        if (trueId) {
+          safeStorageSet('local_anns_' + trueId, JSON.stringify(S.annotations));
+        }
+        if (S.selAnn?.id === targetAnn?.id) renderNotes(targetAnn);
       }
-      renderNotes(S.selAnn);
+      closeModal('mo-edit-note');
+      await dbUpdateNote(S.editingNoteId, htmlToSave);
+      autosave('saved');
+      toast(noteType === 'case' ? 'Case summary updated' : 'Note updated');
+    } catch (e) {
+      console.error(e);
+      autosave('err');
     }
-    closeModal('mo-edit-note');
-    autosave('saved');
-    toast(noteType === 'case' ? 'Case summary updated' : 'Note updated');
   });
 
   // Format buttons (add-note editor)

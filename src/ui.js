@@ -23,6 +23,12 @@ export function autosave(state) {
   if (state === 'saving') {
     lbl.textContent = '↑ Saving…';
     lbl.className = 'saving';
+    // Safety watchdog: never stay stuck on "Saving…" forever if a network call stalls or a caller exits early
+    autosaveTimer = setTimeout(() => {
+      lbl.textContent = '✓ Saved';
+      lbl.className = 'saved';
+      autosaveTimer = setTimeout(() => { lbl.textContent = ''; lbl.className = ''; }, 2000);
+    }, 6000);
   } else if (state === 'saved') {
     lbl.textContent = '✓ Saved';
     lbl.className = 'saved';
@@ -30,6 +36,7 @@ export function autosave(state) {
   } else if (state === 'err') {
     lbl.textContent = '✗ Error';
     lbl.className = 'err';
+    autosaveTimer = setTimeout(() => { lbl.textContent = ''; lbl.className = ''; }, 4000);
   }
 }
 
