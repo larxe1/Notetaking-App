@@ -67,18 +67,16 @@
     </div>
 
     <!-- Sync + auto-save bar -->
-    <div id="sync-bar" onclick="if(!event.target.closest('#btn-force-sync-all')){window.openSyncDiagnostics && window.openSyncDiagnostics()}" title="Click to view System & Sync Diagnostics">
+    <div id="sync-bar" onclick="window.openSyncDiagnostics && window.openSyncDiagnostics()" title="Click to view System & Sync Diagnostics">
       <div class="sdot spin" id="sdot"></div>
-      <span id="stxt" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">DB Connecting…</span>
+      <span id="stxt">DB Connecting…</span>
       <span id="autosave-lbl"></span>
-      <button id="btn-force-sync-all" title="Force Sync all subjects, folders, PDFs, notes & Case Digests with Supabase" style="background:rgba(201,168,76,0.16);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .15s;" onmouseover="this.style.background='var(--gold)';this.style.color='#0b0f19'" onmouseout="this.style.background='rgba(201,168,76,0.16)';this.style.color='var(--gold)'">☁️ Force Sync</button>
     </div>
 
     <!-- Google Drive auth bar -->
     <div id="drive-bar">
       <span class="drive-icon">🔗</span>
-      <span id="drive-user" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Not connected</span>
-      <button id="drive-organize-btn" title="Organize Google Drive folders &amp; PDFs to match your exact Library structure" style="display:none;background:rgba(201,168,76,0.16);border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:3px 7px;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;align-items:center;gap:3px;flex-shrink:0;">📁 Organize</button>
+      <span id="drive-user">Not connected</span>
       <button id="drive-sign-btn">Sign in</button>
     </div>
 

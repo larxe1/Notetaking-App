@@ -206,15 +206,10 @@ export function driveSignOut() {
 function updateDriveBar() {
   const userEl = document.getElementById('drive-user');
   const btnEl  = document.getElementById('drive-sign-btn');
-  const orgBtn = document.getElementById('drive-organize-btn');
   if (S.driveUser) {
     userEl.textContent = S.driveUser;
     btnEl.textContent  = 'Sign out';
     btnEl.onclick = driveSignOut;
-    if (orgBtn) {
-      orgBtn.style.display = 'inline-flex';
-      orgBtn.onclick = () => driveOrganizeAll({ silent: false });
-    }
   } else {
     userEl.textContent = 'Not connected';
     btnEl.textContent  = 'Sign in';
@@ -227,7 +222,6 @@ function updateDriveBar() {
         toast('Drive sign-in failed');
       }
     };
-    if (orgBtn) orgBtn.style.display = 'none';
   }
 }
 
@@ -432,10 +426,10 @@ export async function driveOrganizeAll({ silent = false } = {}) {
   }
 
   _isOrganizingDrive = true;
-  const orgBtn = document.getElementById('drive-organize-btn');
+  const orgBtn = document.getElementById('settings-btn-organize-drive');
   if (orgBtn) {
     orgBtn.disabled = true;
-    orgBtn.textContent = '⏳ Organizing…';
+    orgBtn.textContent = '⏳ Organizing Google Drive…';
   }
   if (!silent) {
     syncSpin('Organizing Google Drive folders…');
@@ -729,7 +723,7 @@ export async function driveOrganizeAll({ silent = false } = {}) {
     _isOrganizingDrive = false;
     if (orgBtn) {
       orgBtn.disabled = false;
-      orgBtn.textContent = '📁 Organize';
+      orgBtn.textContent = '📁 Organize Google Drive Folders Now';
     }
     if (_pendingOrganize) {
       _pendingOrganize = false;
