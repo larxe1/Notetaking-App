@@ -13,7 +13,7 @@ import {
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
   dbLoadAnnCounts, dbUpdateFolderNotes
 } from './db.js';
-import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder } from './drive.js';
+import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder, driveResolveFolderPath, scheduleDriveOrganize } from './drive.js';
 import { openPDFFromLibrary, updateActivePDF, openFolderDoc } from './viewer.js';
 import { closeSidebar } from './ui.js';
 
@@ -867,8 +867,8 @@ function buildPdfEl(pdf) {
     if (!confirm(msg)) return;
     
     dbDelPDF(pdf.id).then(async () => {
-      // Also remove from Drive
-      if (pdf.drive_file_id) await driveDeleteFile(pdf.drive_file_id);
+      // Also remove from Drive (only if this is the master PDF, not a shortcut)
+      if (pdf.drive_file_id && !pdf.linked_pdf_id) await driveDeleteFile(pdf.drive_file_id);
       renderLibrary();
       if (S.curPDF?.id === pdf.id || S.curPDF?.linked_pdf_id === pdf.id) {
         S.curPDF = null;
@@ -1279,35 +1279,16 @@ export function initLibraryModals() {
       if (filesToUpload.length > 0) {
         toast(`Uploading ${filesToUpload.length} PDF${filesToUpload.length > 1 ? 's' : ''}…`);
 
-        // ── Resolve Drive folder path (Subject / Folder) ──
+        // ── Resolve full Drive folder hierarchy (Legal Annotator / Subject / Folder / Subfolder / ...) ──
         let driveFolderId = null;
         try {
-          const appFolder = S.driveFolderId;
-          if (appFolder) {
-            const folder   = S.folders.find(f => f.id === targetFolderId);
-            const subject  = folder ? S.subjects.find(s => s.id === folder.subject_id) : null;
-            if (subject && folder) {
-              const subjDriveId = await driveEnsureSubFolder(subject.name, appFolder);
-              // If nested subfolder, build full path
-              if (folder.parent_folder_id) {
-                const parentFold = S.folders.find(f => f.id === folder.parent_folder_id);
-                if (parentFold) {
-                  const parentDriveId = await driveEnsureSubFolder(parentFold.name, subjDriveId);
-                  driveFolderId = await driveEnsureSubFolder(folder.name, parentDriveId);
-                } else {
-                  driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
-                }
-              } else {
-                driveFolderId = await driveEnsureSubFolder(folder.name, subjDriveId);
-              }
-            }
-          }
+          driveFolderId = await driveResolveFolderPath(targetFolderId);
         } catch (e) {
-          console.warn('Could not create Drive subfolder, uploading to root:', e);
+          console.warn('Could not resolve Drive subfolder path, uploading to root:', e);
         }
 
         for (const file of filesToUpload) {
-          // Upload to Drive (inside the resolved subject/folder path)
+          // Upload to Drive (inside the resolved subject/folder/subfolder path)
           const driveFile = await driveUploadPDF(file, driveFolderId);
           // Register in Supabase
           lastRec = await dbRegisterPDF(targetFolderId, file.name, driveFile.id);
@@ -1779,6 +1760,7 @@ window.undoLastMove = async function() {
   
   if (changed) {
     renderLibrary();
+    scheduleDriveOrganize(1000);
     toast('Undo successful');
   } else {
     toast('Nothing to undo');

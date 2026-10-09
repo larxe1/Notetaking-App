@@ -197,104 +197,55 @@ export async function openFolderDoc(fold) {
 // ── Virtualized Page Rendering Observer & Memory-Managed Document Renderer ──
 let _pageObserver = null;
 let _renderedPages = new Set();
-let _bgRenderActive = false;
-let _bgRenderDocId = null;
-let _unrenderTimer = null;
+let _bgRenderGen = 0;
 let _activeBlobUrl = null; // kept alive for the full PDF session; revoked on next PDF open
 
-// ── Canvas GPU/RAM Memory Recycling (Keeps Text Layer alive, frees heavy pixel bitmaps) ──
-export function unrenderFarPages(curPage) {
-  if (!S.pdfDoc || S.totalPages <= 45) return;
-  const KEEP_RADIUS = 18; // 18 pages ahead & behind = 37 active rendered canvases maximum in RAM
-
-  for (let p = 1; p <= S.totalPages; p++) {
-    if (Math.abs(p - curPage) > KEEP_RADIUS) {
-      const pg = S.pages?.[p];
-      if (pg && pg.rendered && !pg.rendering) {
-        // Free GPU/VRAM pixel canvas memory immediately
-        if (pg.pdfCanvas) {
-          pg.pdfCanvas.width = 1;
-          pg.pdfCanvas.height = 1;
-          pg.pdfCanvas = null;
-        }
-        if (pg.drawCanvas) {
-          pg.drawCanvas.width = 1;
-          pg.drawCanvas.height = 1;
-          pg.drawCanvas = null;
-        }
-        if (pg.wrap) {
-          pg.wrap.innerHTML = `<div class="pg-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;font-family:'Inter',sans-serif;letter-spacing:.05em">Page ${p}</div>`;
-        }
-        pg.rendered = false;
-        _renderedPages.delete(p);
-        _boxDone.delete(p);
-        _drawDone.delete(p);
-        _textDone.delete(p);
-      }
-    }
-  }
+// ── Full PDF Rendering (partial loading / page unrendering disabled so full PDF stays loaded) ──
+export function unrenderFarPages() {
+  // Intentionally disabled: user requested the full PDF to always load and stay rendered.
 }
 
 export function scheduleUnrenderFarPages() {
-  clearTimeout(_unrenderTimer);
-  _unrenderTimer = setTimeout(() => {
-    unrenderFarPages(S.curPage || 1);
-  }, 800);
+  // Intentionally disabled: user requested the full PDF to always load and stay rendered.
 }
 
 export function startBackgroundDocRenderer(docId) {
-  _bgRenderDocId = docId;
-  if (_bgRenderActive) return;
-  _bgRenderActive = true;
+  const myGen = ++_bgRenderGen;
 
   const renderNextUnrendered = async () => {
-    if (!S.pdfDoc || _bgRenderDocId !== docId) {
-      _bgRenderActive = false;
+    if (!S.pdfDoc || _bgRenderGen !== myGen) {
       return;
     }
 
     const cur = S.curPage || 1;
-    // On large PDFs (> 45 pages), only pre-render up to 10 pages around the active reading window
-    const maxRadius = (S.totalPages > 45) ? 10 : S.totalPages;
-
     let nextP = null;
     let minDiff = Infinity;
 
+    // Always render ALL pages of the PDF (no partial-load radius cap), starting closest to curPage
     for (let p = 1; p <= S.totalPages; p++) {
-      const diff = Math.abs(p - cur);
-      if (diff <= maxRadius) {
-        const pg = S.pages?.[p];
-        if (pg && !pg.rendered && !pg.rendering) {
-          if (diff < minDiff) {
-            minDiff = diff;
-            nextP = p;
-          }
+      const pg = S.pages?.[p];
+      if (pg && !pg.rendered && !pg.rendering) {
+        const diff = Math.abs(p - cur);
+        if (diff < minDiff) {
+          minDiff = diff;
+          nextP = p;
         }
       }
     }
 
-    if (nextP !== null) {
+    if (nextP !== null && _bgRenderGen === myGen) {
       try {
         await ensurePageRendered(nextP);
       } catch (e) {
         console.warn(`[Background Render] Page ${nextP} error:`, e);
       }
-      // Yield to main thread to guarantee smooth 60fps scrolling and UI responsiveness
-      if (window.requestIdleCallback) {
-        window.requestIdleCallback(() => renderNextUnrendered(), { timeout: 120 });
-      } else {
-        setTimeout(renderNextUnrendered, 20);
+      if (_bgRenderGen === myGen) {
+        setTimeout(renderNextUnrendered, 0);
       }
-    } else {
-      _bgRenderActive = false;
     }
   };
 
-  if (window.requestIdleCallback) {
-    window.requestIdleCallback(() => renderNextUnrendered(), { timeout: 150 });
-  } else {
-    setTimeout(renderNextUnrendered, 30);
-  }
+  setTimeout(renderNextUnrendered, 0);
 }
 
 // ── Smart Syllabus Pre-Fetching of Next PDF in Sequence ──
@@ -568,16 +519,25 @@ export async function reRenderAll() {
   _textDone.clear();
   _renderedPages.clear();
 
-  // Re-render current page and visible pages
+  // Re-render current page and all remaining pages in the PDF
   await ensurePageRendered(S.curPage);
-  if (S.curPDF) {
-    startBackgroundDocRenderer(S.curPDF.id);
-  }
+  if (S.curPage > 1) ensurePageRendered(S.curPage - 1);
+  if (S.curPage < S.totalPages) ensurePageRendered(S.curPage + 1);
+  startBackgroundDocRenderer(S.curPDF?.id || 'zoom');
 }
 
 // ── Render a single page on-demand ──
-export async function ensurePageRendered(pageNum) {
-  if (!S.pdfDoc || !S.pages[pageNum]) return;
+export async function ensurePageRendered(pageNum, container = null) {
+  if (!S.pdfDoc) return;
+  if (!S.pages[pageNum]) {
+    const scroll = container || document.getElementById('canvas-scroll');
+    if (!scroll) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'pg-wrap';
+    wrap.dataset.page = pageNum;
+    scroll.appendChild(wrap);
+    S.pages[pageNum] = { wrap, rendered: false, rendering: false, viewport: null, textItems: [] };
+  }
   const pgState = S.pages[pageNum];
   if (pgState.rendered || pgState.rendering) return;
   pgState.rendering = true;
@@ -684,7 +644,6 @@ export async function ensurePageRendered(pageNum) {
     }
 
     _renderedPages.add(pageNum);
-    scheduleUnrenderFarPages();
   } catch (err) {
     console.error(`Failed to render page ${pageNum}:`, err);
   } finally {

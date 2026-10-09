@@ -2,7 +2,13 @@
 // DB — all Supabase interactions
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { driveDeleteFile } from './drive.js';
+import {
+  driveDeleteFile,
+  driveResolveSubjectPath,
+  driveResolveFolderPath,
+  driveSyncPdfLocation,
+  scheduleDriveOrganize,
+} from './drive.js';
 import { broadcastSync } from './sync.js';
 import { safeDbWrite, enqueueAction } from './outbox.js';
 import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
@@ -131,6 +137,7 @@ export async function dbCreateSubject(name, hex_color) {
   await safeDbWrite(db, 'subjects', 'upsert', { id, name, hex_color });
   S.subjects.push({ id, name, hex_color });
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  driveResolveSubjectPath(id).catch(() => {});
   return id;
 }
 
@@ -139,6 +146,7 @@ export async function dbRenameSubject(id, name) {
   const subj = S.subjects.find(s => s.id === id);
   if (subj) subj.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(600);
 }
 
 // ── Modular Helper: Safely purge a single PDF and its related records ──
@@ -193,10 +201,14 @@ export async function dbDelSubject(id) {
   const fids = S.folders.filter(f => f.subject_id === cleanId).map(f => f.id);
   // Get all PDF IDs under those folders
   const pdfsToDelete = S.pdfs.filter(p => fids.includes(p.folder_id));
+  const deletingIds = new Set(pdfsToDelete.map(p => p.id));
 
-  // Purge each child PDF modularly
+  // Purge each child PDF modularly (only delete Drive file if not a shortcut to a surviving PDF)
   for (const pdf of pdfsToDelete) {
-    await purgePdfData(pdf.id, pdf.drive_file_id);
+    const stillUsedOutside = pdf.drive_file_id && S.pdfs.some(
+      other => !deletingIds.has(other.id) && other.drive_file_id === pdf.drive_file_id
+    );
+    await purgePdfData(pdf.id, (!pdf.linked_pdf_id && !stillUsedOutside) ? pdf.drive_file_id : null);
   }
 
   // Delete child folders and the subject itself
@@ -210,6 +222,7 @@ export async function dbDelSubject(id) {
   S.folders  = S.folders.filter(f => f.subject_id !== cleanId);
   S.subjects = S.subjects.filter(x => x.id !== cleanId);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(600);
 }
 
 // ── Folders ──
@@ -246,6 +259,7 @@ export async function dbCreateFolder(subject_id, name, folder_type = 'custom', p
   }
 
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  driveResolveFolderPath(id).catch(() => {});
   return id;
 }
 
@@ -254,6 +268,7 @@ export async function dbRenameFolder(id, name) {
   const fold = S.folders.find(f => f.id === id);
   if (fold) fold.name = name;
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(600);
 }
 
 export async function dbReorderFolder(id, sort_order) {
@@ -282,10 +297,14 @@ export async function dbDelFolder(id) {
   }
   const allFoldIds = collectFolderIds(cleanId);
   const pdfsToDelete = S.pdfs.filter(p => allFoldIds.includes(p.folder_id));
+  const deletingIds = new Set(pdfsToDelete.map(p => p.id));
 
   // Purge each child PDF modularly
   for (const pdf of pdfsToDelete) {
-    await purgePdfData(pdf.id, pdf.drive_file_id);
+    const stillUsedOutside = pdf.drive_file_id && S.pdfs.some(
+      other => !deletingIds.has(other.id) && other.drive_file_id === pdf.drive_file_id
+    );
+    await purgePdfData(pdf.id, (!pdf.linked_pdf_id && !stillUsedOutside) ? pdf.drive_file_id : null);
   }
 
   // Delete all descendant folders (deepest first) + self
@@ -296,6 +315,7 @@ export async function dbDelFolder(id) {
   S.pdfs    = S.pdfs.filter(p => !allFoldIds.includes(p.folder_id));
   S.folders = S.folders.filter(f => !allFoldIds.includes(f.id));
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(600);
 }
 
 // ── PDFs (using Google Drive file ID instead of Supabase storage) ──
@@ -314,20 +334,30 @@ export async function dbRegisterPDF(folder_id, name, drive_file_id, linked_pdf_i
   await safeDbWrite(db, 'pdf_files', 'upsert', rec);
   S.pdfs.push(rec);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  if (linked_pdf_id) {
+    driveSyncPdfLocation(rec).catch(() => {});
+  }
   return rec;
 }
 
 export async function dbRenamePDF(id, name) {
   await safeDbWrite(db, 'pdf_files', 'update', { name }, { id });
   const pdf = S.pdfs.find(p => p.id === id);
-  if (pdf) pdf.name = name;
+  if (pdf) {
+    pdf.name = name;
+    driveSyncPdfLocation(pdf).catch(() => {});
+  }
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
 export async function dbMovePDF(id, folder_id) {
   await safeDbWrite(db, 'pdf_files', 'update', { folder_id }, { id });
   const p = S.pdfs.find(x => x.id === id);
-  if (p) p.folder_id = folder_id;
+  if (p) {
+    p.folder_id = folder_id;
+    driveSyncPdfLocation(p).catch(() => {});
+    scheduleDriveOrganize(1200);
+  }
   broadcastSync({ type: 'LIBRARY_CHANGED' });
 }
 
@@ -337,8 +367,21 @@ export async function dbMoveFolder(id, parent_folder_id, subject_id) {
   if (f) {
     f.parent_folder_id = parent_folder_id;
     f.subject_id = subject_id;
+
+    // Also propagate subject_id to any nested subfolders inside this folder
+    const propagateSubj = (parentId) => {
+      for (const child of S.folders) {
+        if (child.parent_folder_id === parentId && child.subject_id !== subject_id) {
+          child.subject_id = subject_id;
+          safeDbWrite(db, 'folders', 'update', { subject_id }, { id: child.id }).catch(() => {});
+          propagateSubj(child.id);
+        }
+      }
+    };
+    if (subject_id) propagateSubj(id);
   }
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(800);
 }
 
 export async function dbReorderPDF(id, sort_order) {
@@ -351,12 +394,20 @@ export async function dbReorderPDF(id, sort_order) {
 export async function dbDelPDF(id) {
   if (!id || typeof id !== 'string') return;
   const cleanId = id.trim();
+  const target = S.pdfs.find(p => p.id === cleanId);
 
-  await purgePdfData(cleanId);
+  // Also remove any shortcuts that point to this master PDF
+  const linkedShortcuts = S.pdfs.filter(p => p.linked_pdf_id === cleanId);
+  for (const sc of linkedShortcuts) {
+    await purgePdfData(sc.id, null);
+  }
 
-  // Also remove from memory any shortcuts that point to this PDF
+  await purgePdfData(cleanId, (!target?.linked_pdf_id && target?.drive_file_id) ? target.drive_file_id : null);
+
+  // Remove from memory
   S.pdfs = S.pdfs.filter(p => p.id !== cleanId && p.linked_pdf_id !== cleanId);
   broadcastSync({ type: 'LIBRARY_CHANGED' });
+  scheduleDriveOrganize(800);
 }
 
 // ── Annotations ──

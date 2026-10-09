@@ -206,43 +206,536 @@ export function driveSignOut() {
 function updateDriveBar() {
   const userEl = document.getElementById('drive-user');
   const btnEl  = document.getElementById('drive-sign-btn');
+  const orgBtn = document.getElementById('drive-organize-btn');
   if (S.driveUser) {
     userEl.textContent = S.driveUser;
     btnEl.textContent  = 'Sign out';
     btnEl.onclick = driveSignOut;
+    if (orgBtn) {
+      orgBtn.style.display = 'inline-flex';
+      orgBtn.onclick = () => driveOrganizeAll({ silent: false });
+    }
   } else {
     userEl.textContent = 'Not connected';
     btnEl.textContent  = 'Sign in';
     btnEl.onclick = async () => {
-      try { await driveSignIn(); toast('Google Drive connected!'); }
-      catch { toast('Drive sign-in failed'); }
+      try {
+        await driveSignIn();
+        toast('Google Drive connected!');
+        driveOrganizeAll({ silent: true }).catch(() => {});
+      } catch {
+        toast('Drive sign-in failed');
+      }
     };
+    if (orgBtn) orgBtn.style.display = 'none';
   }
 }
 
 // ── Ensure "Legal Annotator" folder exists in Drive ──
-async function ensureAppFolder() {
+export async function ensureAppFolder() {
+  if (!S.driveToken) throw new Error('Not signed in to Google Drive');
+  if (S.driveFolderId) {
+    try {
+      const check = await driveGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(S.driveFolderId)}?fields=id,trashed`);
+      if (check && check.id && !check.trashed) return S.driveFolderId;
+    } catch {
+      S.driveFolderId = null;
+    }
+  }
+
   const q = `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const resp = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
-  if (resp.files && resp.files.length > 0) return resp.files[0].id;
+  const resp = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,createdTime)&orderBy=createdTime`);
+  if (resp.files && resp.files.length > 0) {
+    S.driveFolderId = resp.files[0].id;
+    safeStorageSet('driveFolderId', S.driveFolderId);
+    return S.driveFolderId;
+  }
 
   // Create it
   const meta = { name: FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' };
   const created = await drivePost('https://www.googleapis.com/drive/v3/files?fields=id', meta);
+  S.driveFolderId = created.id;
+  safeStorageSet('driveFolderId', S.driveFolderId);
   return created.id;
 }
 
+// ── Sanitize folder/file name for Drive queries ──
+function _cleanDriveName(name) {
+  return String(name || 'Untitled').trim().replace(/\s+/g, ' ');
+}
+
+function _escapeDriveQueryStr(str) {
+  return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 // ── Ensure a named subfolder exists inside a parent Drive folder ──
-export async function driveEnsureSubFolder(name, parentId) {
-  const safeParent = parentId || S.driveFolderId;
-  const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${safeParent}' in parents and trashed=false`;
-  const resp = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
-  if (resp.files && resp.files.length > 0) return resp.files[0].id;
+export async function driveEnsureSubFolder(name, parentId, folderCache = null) {
+  const cleanName = _cleanDriveName(name);
+  const safeParent = parentId || S.driveFolderId || (await ensureAppFolder());
+  const cacheKey = `${safeParent}::${cleanName.toLowerCase()}`;
+
+  if (folderCache && folderCache.has(cacheKey)) {
+    return folderCache.get(cacheKey);
+  }
+
+  const q = `name='${_escapeDriveQueryStr(cleanName)}' and mimeType='application/vnd.google-apps.folder' and '${_escapeDriveQueryStr(safeParent)}' in parents and trashed=false`;
+  const resp = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=createdTime`);
+  if (resp.files && resp.files.length > 0) {
+    const foundId = resp.files[0].id;
+    if (folderCache) folderCache.set(cacheKey, foundId);
+    return foundId;
+  }
 
   // Create it
-  const meta = { name, mimeType: 'application/vnd.google-apps.folder', parents: [safeParent] };
+  const meta = { name: cleanName, mimeType: 'application/vnd.google-apps.folder', parents: [safeParent] };
   const created = await drivePost('https://www.googleapis.com/drive/v3/files?fields=id', meta);
+  if (folderCache) folderCache.set(cacheKey, created.id);
   return created.id;
+}
+
+// ── Resolve the full ancestor chain [Subject -> Root Folder -> Subfolder -> ... -> Target Folder] ──
+export function getLibraryFolderChain(folderId) {
+  const folder = S.folders.find(f => f.id === folderId);
+  if (!folder) return { subject: null, chain: [] };
+
+  const chain = [folder];
+  const seen = new Set([folder.id]);
+  let curr = folder;
+  while (curr.parent_folder_id) {
+    if (seen.has(curr.parent_folder_id)) break; // prevent circular loop
+    seen.add(curr.parent_folder_id);
+    const parent = S.folders.find(f => f.id === curr.parent_folder_id);
+    if (!parent) break;
+    chain.unshift(parent);
+    curr = parent;
+  }
+
+  // Find subject from the folder or its root ancestor
+  const subjId = folder.subject_id || chain[0]?.subject_id;
+  const subject = subjId ? S.subjects.find(s => s.id === subjId) : null;
+  return { subject, chain };
+}
+
+// ── Ensure the complete Subject / Folder / Subfolder / ... path exists in Google Drive ──
+export async function driveResolveFolderPath(folderId, folderCache = null) {
+  if (!S.driveToken) throw new Error('Not signed in to Google Drive');
+  const rootId = await ensureAppFolder();
+  if (!folderId) return rootId;
+
+  const { subject, chain } = getLibraryFolderChain(folderId);
+  if (chain.length === 0) return rootId;
+
+  let currentParentId = rootId;
+  if (subject) {
+    currentParentId = await driveEnsureSubFolder(subject.name, currentParentId, folderCache);
+  }
+  for (const fold of chain) {
+    currentParentId = await driveEnsureSubFolder(fold.name, currentParentId, folderCache);
+  }
+  return currentParentId;
+}
+
+// ── Ensure a Subject's root folder exists in Google Drive ──
+export async function driveResolveSubjectPath(subjectId, folderCache = null) {
+  if (!S.driveToken) return null;
+  const rootId = await ensureAppFolder();
+  const subject = S.subjects.find(s => s.id === subjectId);
+  if (!subject) return rootId;
+  return driveEnsureSubFolder(subject.name, rootId, folderCache);
+}
+
+// ── Sync a single PDF's location and filename in Google Drive after move/rename ──
+export async function driveSyncPdfLocation(pdf, folderCache = null) {
+  if (!S.driveToken || !pdf) return;
+  try {
+    const targetDriveFolderId = await driveResolveFolderPath(pdf.folder_id, folderCache);
+    if (!targetDriveFolderId) return;
+
+    const desiredName = pdf.name.toLowerCase().endsWith('.pdf') ? _cleanDriveName(pdf.name) : `${_cleanDriveName(pdf.name)}.pdf`;
+
+    // If this is a master PDF (or owns a drive_file_id without linked_pdf_id)
+    if (!pdf.linked_pdf_id && pdf.drive_file_id) {
+      const info = await driveGet(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(pdf.drive_file_id)}?fields=id,name,parents,trashed`
+      );
+      if (!info || info.trashed) return;
+
+      const parents = info.parents || [];
+      const needsMove = !parents.includes(targetDriveFolderId) || parents.length !== 1;
+      const needsRename = info.name !== desiredName;
+
+      if (needsMove || needsRename) {
+        const params = new URLSearchParams({ fields: 'id,name,parents' });
+        if (needsMove) {
+          params.set('addParents', targetDriveFolderId);
+          const toRemove = parents.filter(p => p !== targetDriveFolderId).join(',');
+          if (toRemove) params.set('removeParents', toRemove);
+        }
+        await drivePatch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(pdf.drive_file_id)}?${params.toString()}`,
+          needsRename ? { name: desiredName } : {}
+        );
+      }
+    } else if (pdf.linked_pdf_id) {
+      // It's a shortcut in the library — ensure a Drive shortcut exists in targetDriveFolderId
+      const master = S.pdfs.find(p => p.id === pdf.linked_pdf_id);
+      const targetFileId = pdf.drive_file_id || master?.drive_file_id;
+      if (!targetFileId) return;
+
+      const q = `mimeType='application/vnd.google-apps.shortcut' and '${_escapeDriveQueryStr(targetDriveFolderId)}' in parents and trashed=false`;
+      const existing = await driveGet(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,shortcutDetails)`);
+      const match = (existing.files || []).find(f => f.shortcutDetails?.targetId === targetFileId);
+      if (!match) {
+        await drivePost('https://www.googleapis.com/drive/v3/files?fields=id', {
+          name: desiredName,
+          mimeType: 'application/vnd.google-apps.shortcut',
+          parents: [targetDriveFolderId],
+          shortcutDetails: { targetId: targetFileId }
+        }).catch(() => {});
+      } else if (match.name !== desiredName) {
+        await drivePatch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(match.id)}?fields=id`, {
+          name: desiredName
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    console.warn('[Drive] driveSyncPdfLocation error:', e);
+  }
+}
+
+// ── Full Google Drive Organizer: Mirrors the exact App Library structure in Google Drive ──
+let _isOrganizingDrive = false;
+let _pendingOrganize = false;
+let _organizeDebounceTimer = null;
+
+export function scheduleDriveOrganize(delayMs = 1500) {
+  if (!S.driveToken) return;
+  if (_organizeDebounceTimer) clearTimeout(_organizeDebounceTimer);
+  _organizeDebounceTimer = setTimeout(() => {
+    _organizeDebounceTimer = null;
+    driveOrganizeAll({ silent: true }).catch(() => {});
+  }, delayMs);
+}
+
+export async function driveOrganizeAll({ silent = false } = {}) {
+  if (!S.driveToken) {
+    if (!silent) toast('⚠️ Sign in to Google Drive first to organize your Drive folders.');
+    return { ok: false, reason: 'not_signed_in' };
+  }
+  if (_isOrganizingDrive) {
+    _pendingOrganize = true;
+    if (!silent) toast('⏳ Google Drive organization is already in progress…');
+    return { ok: false, reason: 'busy' };
+  }
+  if (!S.subjects?.length && !S.folders?.length && !S.pdfs?.length) {
+    return { ok: false, reason: 'empty_library' };
+  }
+
+  _isOrganizingDrive = true;
+  const orgBtn = document.getElementById('drive-organize-btn');
+  if (orgBtn) {
+    orgBtn.disabled = true;
+    orgBtn.textContent = '⏳ Organizing…';
+  }
+  if (!silent) {
+    syncSpin('Organizing Google Drive folders…');
+    toast('📁 Organizing Google Drive to match your library structure…');
+  }
+
+  try {
+    const rootId = await ensureAppFolder();
+
+    // 1. Fetch all non-trashed files & folders visible to this app in Google Drive
+    const allDriveItems = await driveListAll(
+      'trashed=false',
+      'id,name,mimeType,parents,createdTime,shortcutDetails'
+    );
+
+    const FOLDER_MIME = 'application/vnd.google-apps.folder';
+    const SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
+
+    const driveFolders = allDriveItems.filter(f => f.mimeType === FOLDER_MIME);
+    const driveShortcuts = allDriveItems.filter(f => f.mimeType === SHORTCUT_MIME);
+    const driveFiles = allDriveItems.filter(f => f.mimeType !== FOLDER_MIME && f.mimeType !== SHORTCUT_MIME);
+
+    const fileById = new Map(driveFiles.map(f => [f.id, f]));
+
+    // Prime folderCache with existing Drive folders (oldest first so canonical folders win)
+    driveFolders.sort((a, b) => String(a.createdTime || '').localeCompare(String(b.createdTime || '')));
+    const folderCache = new Map();
+    for (const df of driveFolders) {
+      if (df.id === rootId) continue;
+      for (const pid of (df.parents || [])) {
+        const key = `${pid}::${_cleanDriveName(df.name).toLowerCase()}`;
+        if (!folderCache.has(key)) {
+          folderCache.set(key, df.id);
+        }
+      }
+    }
+
+    // Track all Drive folder IDs that belong to the active library structure
+    const activeDriveFolderIds = new Set([rootId]);
+
+    // 2. Ensure every Subject folder exists under "Legal Annotator"
+    const subjDriveMap = new Map();
+    for (const subj of S.subjects) {
+      const sDriveId = await driveEnsureSubFolder(subj.name, rootId, folderCache);
+      subjDriveMap.set(subj.id, sDriveId);
+      activeDriveFolderIds.add(sDriveId);
+    }
+
+    // 3. Ensure every Folder & Subfolder (at any depth) exists in the exact hierarchy
+    const foldDriveMap = new Map();
+    for (const fold of S.folders) {
+      const fDriveId = await driveResolveFolderPath(fold.id, folderCache);
+      foldDriveMap.set(fold.id, fDriveId);
+      activeDriveFolderIds.add(fDriveId);
+
+      // Also mark any intermediate folders along its chain as active
+      const { subject, chain } = getLibraryFolderChain(fold.id);
+      let currParent = rootId;
+      if (subject) {
+        const sid = folderCache.get(`${currParent}::${_cleanDriveName(subject.name).toLowerCase()}`);
+        if (sid) { activeDriveFolderIds.add(sid); currParent = sid; }
+      }
+      for (const c of chain) {
+        const cid = folderCache.get(`${currParent}::${_cleanDriveName(c.name).toLowerCase()}`);
+        if (cid) { activeDriveFolderIds.add(cid); currParent = cid; }
+      }
+    }
+
+    // 4. Group library PDFs by drive_file_id so we know each file's primary folder & shortcut folders
+    let movedFiles = 0;
+    let renamedFiles = 0;
+    let shortcutsSynced = 0;
+    let cleanedFolders = 0;
+
+    // Identify primary owner record for each drive_file_id
+    const primaryByDriveId = new Map();
+    const shortcutsByDriveId = new Map();
+
+    // First pass: master PDFs (!linked_pdf_id)
+    for (const pdf of S.pdfs) {
+      const driveId = pdf.drive_file_id || (pdf.linked_pdf_id ? S.pdfs.find(p => p.id === pdf.linked_pdf_id)?.drive_file_id : null);
+      if (!driveId) continue;
+      if (!pdf.linked_pdf_id && !primaryByDriveId.has(driveId)) {
+        primaryByDriveId.set(driveId, pdf);
+      }
+    }
+    // Second pass: if a drive_file_id only had linked_pdf_id entries, promote the first one as primary owner, rest as shortcuts
+    for (const pdf of S.pdfs) {
+      const driveId = pdf.drive_file_id || (pdf.linked_pdf_id ? S.pdfs.find(p => p.id === pdf.linked_pdf_id)?.drive_file_id : null);
+      if (!driveId) continue;
+      if (!primaryByDriveId.has(driveId)) {
+        primaryByDriveId.set(driveId, pdf);
+      } else if (primaryByDriveId.get(driveId).id !== pdf.id) {
+        if (!shortcutsByDriveId.has(driveId)) shortcutsByDriveId.set(driveId, []);
+        shortcutsByDriveId.get(driveId).push(pdf);
+      }
+    }
+
+    // 5. Move & rename every active PDF file into its exact folder in Google Drive
+    for (const [driveId, pdf] of primaryByDriveId.entries()) {
+      const targetFolderId = foldDriveMap.get(pdf.folder_id) || (await driveResolveFolderPath(pdf.folder_id, folderCache));
+      if (!targetFolderId) continue;
+      activeDriveFolderIds.add(targetFolderId);
+
+      const desiredName = pdf.name.toLowerCase().endsWith('.pdf') ? _cleanDriveName(pdf.name) : `${_cleanDriveName(pdf.name)}.pdf`;
+
+      let dFile = fileById.get(driveId);
+      if (!dFile) {
+        // File might not have been in initial list if created earlier; fetch directly
+        try {
+          dFile = await driveGet(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveId)}?fields=id,name,parents,trashed`);
+          if (dFile && !dFile.trashed) fileById.set(driveId, dFile);
+        } catch {
+          dFile = null;
+        }
+      }
+      if (!dFile || dFile.trashed) continue;
+
+      const currentParents = dFile.parents || [];
+      const needsMove = !currentParents.includes(targetFolderId) || currentParents.length !== 1;
+      const needsRename = dFile.name !== desiredName;
+
+      if (needsMove || needsRename) {
+        const params = new URLSearchParams({ fields: 'id,name,parents' });
+        if (needsMove) {
+          params.set('addParents', targetFolderId);
+          const removeList = currentParents.filter(p => p !== targetFolderId).join(',');
+          if (removeList) params.set('removeParents', removeList);
+        }
+        try {
+          const updated = await drivePatch(
+            `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveId)}?${params.toString()}`,
+            needsRename ? { name: desiredName } : {}
+          );
+          dFile.parents = updated.parents || [targetFolderId];
+          dFile.name = updated.name || desiredName;
+          if (needsMove) movedFiles++;
+          if (needsRename) renamedFiles++;
+        } catch (e) {
+          console.warn(`[Drive Organize] Failed to move/rename file ${pdf.name}:`, e);
+        }
+      }
+    }
+
+    // 6. Sync Google Drive shortcuts for cross-folder shortcuts in the library
+    const validShortcutKeys = new Set();
+    for (const [driveId, scList] of shortcutsByDriveId.entries()) {
+      for (const scPdf of scList) {
+        const targetFolderId = foldDriveMap.get(scPdf.folder_id) || (await driveResolveFolderPath(scPdf.folder_id, folderCache));
+        if (!targetFolderId) continue;
+        activeDriveFolderIds.add(targetFolderId);
+
+        const desiredName = scPdf.name.toLowerCase().endsWith('.pdf') ? _cleanDriveName(scPdf.name) : `${_cleanDriveName(scPdf.name)}.pdf`;
+        const key = `${targetFolderId}::${driveId}`;
+        validShortcutKeys.add(key);
+
+        const existingSc = driveShortcuts.find(
+          s => s.shortcutDetails?.targetId === driveId && (s.parents || []).includes(targetFolderId)
+        );
+        if (!existingSc) {
+          try {
+            await drivePost('https://www.googleapis.com/drive/v3/files?fields=id', {
+              name: desiredName,
+              mimeType: SHORTCUT_MIME,
+              parents: [targetFolderId],
+              shortcutDetails: { targetId: driveId }
+            });
+            shortcutsSynced++;
+          } catch {}
+        } else if (existingSc.name !== desiredName) {
+          try {
+            await drivePatch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(existingSc.id)}?fields=id`, {
+              name: desiredName
+            });
+          } catch {}
+        }
+      }
+    }
+
+    // Remove obsolete Drive shortcuts that no longer correspond to any library shortcut
+    for (const sc of driveShortcuts) {
+      const parentId = (sc.parents || [])[0];
+      const targetId = sc.shortcutDetails?.targetId;
+      const key = `${parentId}::${targetId}`;
+      if (!validShortcutKeys.has(key)) {
+        await driveDeleteFile(sc.id);
+      }
+    }
+
+    // 7. Handle any stray/unlinked PDF files sitting loose in root "Legal Annotator" or old obsolete folders
+    let archiveFolderId = null;
+    for (const dFile of driveFiles) {
+      if (primaryByDriveId.has(dFile.id)) continue; // Already organized!
+
+      // Check if an unlinked library PDF with no drive_file_id matches this file by name
+      const normDriveName = _cleanDriveName(dFile.name).replace(/\.pdf$/i, '').toLowerCase();
+      const matchingLibPdf = S.pdfs.find(
+        p => !p.drive_file_id && !p.linked_pdf_id && _cleanDriveName(p.name).replace(/\.pdf$/i, '').toLowerCase() === normDriveName
+      );
+      if (matchingLibPdf) {
+        // Re-link and move to its library folder!
+        matchingLibPdf.drive_file_id = dFile.id;
+        import('./db.js').then(m => m.db.from('pdf_files').update({ drive_file_id: dFile.id }).eq('id', matchingLibPdf.id)).catch(() => {});
+        const targetFolderId = foldDriveMap.get(matchingLibPdf.folder_id) || (await driveResolveFolderPath(matchingLibPdf.folder_id, folderCache));
+        if (targetFolderId) {
+          const removeList = (dFile.parents || []).filter(p => p !== targetFolderId).join(',');
+          const params = new URLSearchParams({ addParents: targetFolderId, fields: 'id,parents' });
+          if (removeList) params.set('removeParents', removeList);
+          await drivePatch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(dFile.id)}?${params.toString()}`, {}).catch(() => {});
+          dFile.parents = [targetFolderId];
+          movedFiles++;
+          continue;
+        }
+      }
+
+      // Otherwise, this file is not in the active library (e.g., old duplicate or orphaned upload).
+      // Move it out of the active folders / root into "_Unlinked Archive" so the main folders stay 100% clean without deleting user files.
+      if (!archiveFolderId) {
+        archiveFolderId = await driveEnsureSubFolder('_Unlinked Archive', rootId, folderCache);
+        activeDriveFolderIds.add(archiveFolderId);
+      }
+      const currentParents = dFile.parents || [];
+      if (!currentParents.includes(archiveFolderId) || currentParents.length !== 1) {
+        const removeList = currentParents.filter(p => p !== archiveFolderId).join(',');
+        const params = new URLSearchParams({ addParents: archiveFolderId, fields: 'id,parents' });
+        if (removeList) params.set('removeParents', removeList);
+        try {
+          await drivePatch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(dFile.id)}?${params.toString()}`, {});
+          dFile.parents = [archiveFolderId];
+          movedFiles++;
+        } catch {}
+      }
+    }
+
+    // 8. Clean up all obsolete/empty Drive folders that are NOT in activeDriveFolderIds
+    // Re-fetch current folders & files to be 100% certain a folder is empty before deleting it
+    const finalItems = await driveListAll('trashed=false', 'id,name,mimeType,parents');
+    const finalFolders = finalItems.filter(f => f.mimeType === FOLDER_MIME && f.id !== rootId);
+    const nonFolderItems = finalItems.filter(f => f.mimeType !== FOLDER_MIME);
+
+    // Iteratively delete inactive folders that have 0 files and 0 child folders
+    const deletedFolderIds = new Set();
+    let madeProgress = true;
+    while (madeProgress) {
+      madeProgress = false;
+      for (const folder of finalFolders) {
+        if (deletedFolderIds.has(folder.id)) continue;
+        if (activeDriveFolderIds.has(folder.id)) continue;
+
+        const hasFilesInside = nonFolderItems.some(item => (item.parents || []).includes(folder.id));
+        const hasSubfoldersInside = finalFolders.some(
+          sub => !deletedFolderIds.has(sub.id) && (sub.parents || []).includes(folder.id)
+        );
+
+        if (!hasFilesInside && !hasSubfoldersInside) {
+          await driveDeleteFile(folder.id);
+          deletedFolderIds.add(folder.id);
+          cleanedFolders++;
+          madeProgress = true;
+        }
+      }
+    }
+
+    safeStorageSet('last_drive_organize_ts', Date.now());
+    const summaryParts = [];
+    if (movedFiles > 0) summaryParts.push(`${movedFiles} PDF${movedFiles === 1 ? '' : 's'} moved`);
+    if (renamedFiles > 0) summaryParts.push(`${renamedFiles} renamed`);
+    if (shortcutsSynced > 0) summaryParts.push(`${shortcutsSynced} shortcut${shortcutsSynced === 1 ? '' : 's'} synced`);
+    if (cleanedFolders > 0) summaryParts.push(`${cleanedFolders} old folder${cleanedFolders === 1 ? '' : 's'} cleaned`);
+
+    const msg = summaryParts.length > 0
+      ? `✅ Drive organized (${summaryParts.join(', ')})!`
+      : '✅ Google Drive is 100% organized and in sync with your library!';
+
+    if (!silent) {
+      syncOK('Drive Organized');
+      toast(msg);
+    } else if (summaryParts.length > 0) {
+      console.log('[Drive Auto-Organize]', msg);
+    }
+
+    return { ok: true, movedFiles, renamedFiles, shortcutsSynced, cleanedFolders };
+  } catch (e) {
+    console.error('[Drive Organize Error]', e);
+    if (!silent) {
+      syncErr('Drive organize failed');
+      toast(`❌ Could not organize Google Drive: ${e.message || 'Unknown error'}`);
+    }
+    return { ok: false, error: e };
+  } finally {
+    _isOrganizingDrive = false;
+    if (orgBtn) {
+      orgBtn.disabled = false;
+      orgBtn.textContent = '📁 Organize';
+    }
+    if (_pendingOrganize) {
+      _pendingOrganize = false;
+      scheduleDriveOrganize(800);
+    }
+  }
 }
 
 // ── Upload PDF to Drive ──
@@ -384,6 +877,26 @@ export async function driveDeleteFile(drive_file_id) {
   }).catch(() => {}); // best-effort
 }
 
+// ── Helper: Paginated list of all files matching query ──
+async function driveListAll(q, fields = 'id,name,mimeType,parents') {
+  const results = [];
+  let pageToken = null;
+  do {
+    const params = new URLSearchParams({
+      q,
+      pageSize: '1000',
+      fields: `nextPageToken,files(${fields})`,
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const data = await driveGet(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
+    if (data.files && data.files.length) {
+      results.push(...data.files);
+    }
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return results;
+}
+
 // ── Helper: authenticated GET ──
 async function driveGet(url) {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${S.driveToken}` } });
@@ -404,6 +917,21 @@ async function drivePost(url, body) {
   });
   if (r.status === 401) { _onSessionExpired(); throw new Error('Drive session expired'); }
   if (!r.ok) throw new Error(`Drive request failed (${r.status})`);
+  return r.json();
+}
+
+// ── Helper: authenticated PATCH with JSON body ──
+async function drivePatch(url, body = {}) {
+  const r = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${S.driveToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 401) { _onSessionExpired(); throw new Error('Drive session expired'); }
+  if (!r.ok) throw new Error(`Drive PATCH failed (${r.status})`);
   return r.json();
 }
 

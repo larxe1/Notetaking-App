@@ -1715,6 +1715,19 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
       toast(`⚠️ Force Sync finished with ${failCount} error${failCount === 1 ? '' : 's'} (${uploadedNotes} uploaded, ${verifiedNotes} verified). Check Error Log.`);
     }
 
+    // 11. Also ensure Google Drive folder structure mirrors the library
+    if (S.driveToken) {
+      import('./drive.js').then(async (m) => {
+        if (isFullApp) {
+          await m.driveOrganizeAll({ silent: true });
+        } else {
+          for (const p of pdfsToSync) {
+            await m.driveSyncPdfLocation(p);
+          }
+        }
+      }).catch(() => {});
+    }
+
     return { ok: failCount === 0, uploadedNotes, pulledNotes, verifiedNotes, syncedFolders, syncedPdfs, failCount };
   } catch (err) {
     console.error('[ForceSync] Fatal error:', err);

@@ -77,7 +77,8 @@
     <!-- Google Drive auth bar -->
     <div id="drive-bar">
       <span class="drive-icon">🔗</span>
-      <span id="drive-user">Not connected</span>
+      <span id="drive-user" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Not connected</span>
+      <button id="drive-organize-btn" title="Organize Google Drive folders &amp; PDFs to match your exact Library structure" style="display:none;background:rgba(201,168,76,0.16);border:1px solid var(--gold);color:var(--gold);border-radius:4px;padding:3px 7px;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;align-items:center;gap:3px;flex-shrink:0;">📁 Organize</button>
       <button id="drive-sign-btn">Sign in</button>
     </div>
 
@@ -1062,9 +1063,10 @@
       <!-- System Diagnostics & Error Logs -->
       <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:12px;">
         <div style="font-size:13px; font-weight:600; color:#e8e4db; margin-bottom:4px;">🛠 System & Sync Diagnostics</div>
-        <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Force-sync all folders, PDFs, notes &amp; Case Digests with Supabase, or inspect connection logs.</div>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Force-sync all folders, PDFs, notes &amp; Case Digests with Supabase, organize Google Drive to match your library tree, or inspect connection logs.</div>
         <div style="display:flex; flex-direction:column; gap:6px;">
           <button class="btn-gold" id="settings-btn-force-sync" style="width:100%; padding:8px 10px; font-size:12px; font-weight:700;">☁️ Force Sync Entire App Now</button>
+          <button class="btn-sec" id="settings-btn-organize-drive" style="width:100%; padding:7px 10px; font-size:12px; font-weight:600; color:var(--gold); border-color:rgba(201,168,76,0.4);">📁 Organize Google Drive Folders Now</button>
           <button class="btn-sec" onclick="window.openSyncDiagnostics && window.openSyncDiagnostics()" style="width:100%; padding:7px 10px; font-size:12px;">Open Diagnostics &amp; Logs</button>
         </div>
       </div>

@@ -64,6 +64,9 @@ async function init() {
   // 4. Render library (guarded)
   try { renderLibrary(); } catch (e) { console.error('[Init] Library render error:', e); }
 
+  // 4b. Automatically organize Google Drive folder structure in background to mirror library
+  import('./drive.js').then(m => m.scheduleDriveOrganize?.(3000)).catch(() => {});
+
   // 5. Active color (guarded)
   try {
     if (S.colorCats.length) S.activeColor = S.colorCats[0].hex_color;
@@ -579,6 +582,11 @@ RULES:
   document.getElementById('btn-open-keys')?.addEventListener('click', () => {
     closeModal('mo-settings');
     openModal('mo-keys');
+  });
+  document.getElementById('settings-btn-organize-drive')?.addEventListener('click', async () => {
+    closeModal('mo-settings');
+    const { driveOrganizeAll } = await import('./drive.js');
+    await driveOrganizeAll({ silent: false });
   });
 
   // Custom Cache Folder Picker (File System Access API)
