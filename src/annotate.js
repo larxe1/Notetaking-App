@@ -148,7 +148,8 @@ function showTip(e, html) {
   if (navigator.maxTouchPoints > 0) return;
   if (!tip) {
     tip = document.createElement('div');
-    tip.style.cssText = 'position:fixed;background:#1a2540;border:1px solid #c9a84c;border-radius:8px;padding:9px 13px;font-size:12px;max-width:240px;line-height:1.5;z-index:700;pointer-events:none;color:#e8e4db;box-shadow:0 6px 20px rgba(0,0,0,.4)';
+    tip.className = 'ann-hover-tip note-body';
+    tip.style.cssText = 'position:fixed;background:#1a2540;border:1px solid #c9a84c;border-radius:10px;padding:14px 18px;font-size:13.5px;min-width:260px;width:max-content;max-width:min(520px,85vw);max-height:80vh;overflow-y:auto;line-height:1.6;z-index:700;pointer-events:none;color:#e8e4db;box-shadow:0 8px 28px rgba(0,0,0,.5);word-break:break-word;';
     document.body.appendChild(tip);
   }
   tip.innerHTML = html;
@@ -157,9 +158,18 @@ function showTip(e, html) {
 }
 function moveTip(e) {
   if (!tip) return;
-  let x = e.clientX + 12, y = e.clientY - 10;
-  if (x + 250 > window.innerWidth)  x = e.clientX - 254;
-  if (y + 100 > window.innerHeight) y = e.clientY - 110;
+  const pad = 12;
+  const w = tip.offsetWidth || 420;
+  const h = tip.offsetHeight || 160;
+  let x = e.clientX + 14;
+  let y = e.clientY - 10;
+  if (x + w + pad > window.innerWidth) {
+    x = Math.max(pad, e.clientX - w - 14);
+  }
+  if (y + h + pad > window.innerHeight) {
+    y = Math.max(pad, window.innerHeight - h - pad);
+  }
+  if (y < pad) y = pad;
   tip.style.left = x + 'px';
   tip.style.top  = y + 'px';
 }

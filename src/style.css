@@ -435,10 +435,11 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 .fmt-bar { display: flex; gap: 3px; margin-bottom: 6px; }
 .fmt-btn, .folder-fmt-btn, .np-fmt-btn { background: rgba(255,255,255,.06); border: 1px solid var(--navy-b); color: #b0aaa0; border-radius: 4px; padding: 3px 8px; font-size: 12px; cursor: pointer; transition: all .15s; font-family: 'Inter', sans-serif; min-width: 28px; text-align: center; }
 .fmt-btn:hover, .folder-fmt-btn:hover, .np-fmt-btn:hover { background: var(--gold-bg); border-color: var(--gold); color: var(--gold); }
-#note-editor { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 9px 10px; font-size: 13px; line-height: 1.6; color: #e8e4db; min-height: 75px; max-height: 240px; overflow-y: auto; overflow-x: auto; resize: vertical; outline: none; transition: border-color .15s; }
+#note-editor { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 6px; padding: 10px 12px; font-size: 13.5px; line-height: 1.6; color: #e8e4db; min-height: 110px; max-height: 300px; overflow-y: auto; overflow-x: auto; resize: vertical; outline: none; transition: border-color .15s; }
 #note-editor:focus { border-color: var(--gold); }
 #note-editor:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
 #note-editor.shake { animation: shake .3s ease; }
+.ann-hover-tip { min-width: 260px; width: max-content; max-width: min(520px, 85vw); max-height: 80vh; font-size: 13.5px; line-height: 1.6; padding: 14px 18px; }
 @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 75%{transform:translateX(5px)} }
 .ann-btns { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; }
 .btn-gold { background: var(--gold); color: var(--navy); border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: background .15s; }
