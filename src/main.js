@@ -64,8 +64,10 @@ async function init() {
   // 4. Render library (guarded)
   try { renderLibrary(); } catch (e) { console.error('[Init] Library render error:', e); }
 
-  // 4b. Automatically organize Google Drive folder structure in background to mirror library
-  import('./drive.js').then(m => m.scheduleDriveOrganize?.(3000)).catch(() => {});
+  // 4b. Automatically organize Google Drive folder structure once in background if not yet migrated
+  if (!safeStorageGet('drive_organized_v2')) {
+    import('./drive.js').then(m => m.scheduleDriveOrganize?.(3000)).catch(() => {});
+  }
 
   // 5. Active color (guarded)
   try {
