@@ -2,7 +2,19 @@
 // NOTEPAD — per-PDF general notes with auto-save
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { dbLoadNotepad, dbSaveNotepad, dbFetchCloudNotepadRaw } from './db.js';
+import {
+  db,
+  dbLoad,
+  dbLoadAnnCounts,
+  dbLoadNotepad,
+  dbSaveNotepad,
+  dbFetchCloudNotepadRaw,
+  ensurePdfExistsInCloud,
+  dbLoadAnnotations,
+  dbLoadDrawings,
+  dbLoadBookmarks,
+} from './db.js';
+import { replayOutbox } from './outbox.js';
 import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
@@ -35,6 +47,9 @@ const _notepadCache = new Map();
 
 // Active loaded PDF ID currently bound to editor UI
 let _activePdfId = null;
+
+// PDF ID whose content is currently mounted in #np-editor / #np-digest-editor DOM
+let _domBoundPdfId = null;
 
 // Debounce timer for auto-saving
 let _saveTimer = null;
@@ -209,27 +224,26 @@ function _showSaveErrorBanner(count, lastCode, lastTime) {
 // when a user purposely clears their notes.
 function _readEditorContent(pdfId) {
   const entry = _notepadCache.get(pdfId);
-  const isActiveOpen = (_activePdfId === pdfId) && $panel()?.classList.contains('open');
+  const isDomBound = (_domBoundPdfId === pdfId) && (_activePdfId === pdfId);
 
-  if (isActiveOpen) {
-    // Panel is open → DOM editors are live. Both are always in the DOM even if one is
-    // display:none, so innerHTML is reliable regardless of which tab is active.
+  if (isDomBound) {
+    // DOM editors are bound to this PDF. Both are always in the DOM even if one is
+    // display:none, so innerHTML is reliable regardless of which tab is active or if .open was just removed.
     const notesEl  = $notesEditor();
     const digestEl = $digestEditor();
     const domContent = notesEl  ? (notesEl.innerHTML  ?? '') : null;
     const domDigest  = digestEl ? (digestEl.innerHTML ?? '') : null;
 
-    // If the DOM element exists, trust it completely (even if empty = user cleared it).
-    // Only fall back to cache when the DOM element itself is missing (shouldn't happen).
     const content = domContent !== null ? domContent : (entry?.content ?? safeStorageGet('local_notepad_' + pdfId, '') ?? '');
     const digest  = domDigest  !== null ? domDigest  : (entry?.digest  ?? safeStorageGet('local_digest_'  + pdfId, '') ?? '');
 
     return { content, digest, wasDirty: entry ? !!entry.dirty : true };
   } else {
-    // Panel is NOT open → DOM editors are not live for this PDF. Use cache (captured on
-    // close/switch) as the most reliable source, then localStorage as fallback.
-    const content = entry?.content ?? safeStorageGet('local_notepad_' + pdfId, '') ?? '';
-    const digest  = entry?.digest  ?? safeStorageGet('local_digest_'  + pdfId, '') ?? '';
+    // DOM editors are not bound to this PDF. Use cache if dirty, otherwise prefer non-empty cache or localStorage.
+    const storedC = safeStorageGet('local_notepad_' + pdfId, '') ?? '';
+    const storedD = safeStorageGet('local_digest_'  + pdfId, '') ?? '';
+    const content = entry ? (entry.dirty ? (entry.content ?? '') : (entry.content || storedC)) : storedC;
+    const digest  = entry ? (entry.dirty ? (entry.digest  ?? '') : (entry.digest  || storedD)) : storedD;
     return { content, digest, wasDirty: entry ? !!entry.dirty : false };
   }
 }
@@ -302,24 +316,32 @@ function updateSaveStatusLabel(targetPdfId, res) {
 async function executeSaveForPdf(targetPdfId) {
   if (!targetPdfId) return;
 
-  // DOM-first when panel is open, cache/localStorage when closed
-  const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
+  // DOM-first when bound, cache/localStorage when closed
+  let { content, digest, wasDirty } = _readEditorContent(targetPdfId);
 
   // Mark cache clean (no longer dirty now that we're saving)
   const entry = _notepadCache.get(targetPdfId);
   if (entry) entry.dirty = false;
 
-  // ANTI-WIPE SAFETY GUARD:
-  // If attempting to save empty notes + digest without an active user edit,
-  // and local storage has existing content, ABORT to prevent wiping!
-  if (!content && !digest && !wasDirty) {
-    const existingC = safeStorageGet('local_notepad_' + targetPdfId, '');
-    const existingD = safeStorageGet('local_digest_' + targetPdfId, '');
-    if (existingC || existingD) {
+  // ANTI-WIPE SAFETY GUARD (per field):
+  // If not dirty, never allow an empty content or empty digest to overwrite non-empty local storage!
+  const existingC = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
+  const existingD = safeStorageGet('local_digest_' + targetPdfId, '') || '';
+  if (!wasDirty) {
+    if (!content && existingC) content = existingC;
+    if (!digest && existingD) digest = existingD;
+    if (!content && !digest && (existingC || existingD)) {
       console.warn(`[Notepad Safety] Blocked accidental wipe in executeSaveForPdf for ${targetPdfId}`);
       return;
     }
   }
+
+  _notepadCache.set(targetPdfId, {
+    content,
+    digest,
+    dirty: false,
+    timestamp: Date.now(),
+  });
 
   try {
     const savedWriteTs = getWriteTs(targetPdfId);
@@ -328,8 +350,11 @@ async function executeSaveForPdf(targetPdfId) {
     await saveHistorySnapshot(targetPdfId, content, digest);
     const res = await dbSaveNotepad(targetPdfId, content, digest);
     // Only mark synced if Supabase confirmed AND no new writes arrived during the save
-    if (res?.saved && getWriteTs(targetPdfId) === savedWriteTs) {
+    if (res?.saved && !res?.localOnly && !res?.queued && getWriteTs(targetPdfId) === savedWriteTs) {
       setSyncTs(targetPdfId);
+    } else if (!res?.saved) {
+      const cur = _notepadCache.get(targetPdfId);
+      if (cur) cur.dirty = true;
     }
 
     updateSaveStatusLabel(targetPdfId, res);
@@ -338,6 +363,8 @@ async function executeSaveForPdf(targetPdfId) {
       checkAndAlertSaveErrors();
     }
   } catch (err) {
+    const cur = _notepadCache.get(targetPdfId);
+    if (cur) cur.dirty = true;
     console.error(`[Notepad] Save failed for ${targetPdfId}:`, err);
     logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'FAIL',
       `Save exception: ${err?.message || String(err)}.`, { error: String(err) });
@@ -393,21 +420,42 @@ export async function flushNotepadSave(specificPdfId = null) {
 
   if (targetPdfId) {
     const entry = _notepadCache.get(targetPdfId);
-    // If not dirty and no save timer was active, nothing was changed — skip saving!
-    if (entry && !entry.dirty && !hadTimer) {
+
+    // Check if the live DOM editors have uncaptured edits compared to the cached entry
+    let domDiffers = false;
+    if (_domBoundPdfId === targetPdfId && _activePdfId === targetPdfId) {
+      const domC = $notesEditor()?.innerHTML ?? '';
+      const domD = $digestEditor()?.innerHTML ?? '';
+      const prevC = entry ? (entry.content ?? '') : (safeStorageGet('local_notepad_' + targetPdfId, '') ?? '');
+      const prevD = entry ? (entry.digest  ?? '') : (safeStorageGet('local_digest_'  + targetPdfId, '') ?? '');
+      if (domC !== prevC || domD !== prevD) {
+        domDiffers = true;
+        setWriteTs(targetPdfId);
+        if (entry) {
+          entry.content = domC;
+          entry.digest = domD;
+          entry.dirty = true;
+        }
+      }
+    }
+
+    // If not dirty, no save timer was active, and DOM matches cache, nothing was changed — skip saving!
+    if (entry && !entry.dirty && !hadTimer && !domDiffers) {
       return;
     }
 
-    // Use the shared helper: DOM-first when panel is open, cache/localStorage when closed
-    const { content, digest, wasDirty } = _readEditorContent(targetPdfId);
+    // Use the shared helper: DOM-first when bound, cache/localStorage when closed
+    let { content, digest, wasDirty } = _readEditorContent(targetPdfId);
+    if (domDiffers) wasDirty = true;
     if (entry) entry.dirty = false;
 
-    // ANTI-WIPE SAFETY GUARD:
-    // Do not save 0 chars if not dirty and local storage already has notes!
-    if (!content && !digest && !wasDirty) {
-      const existingC = safeStorageGet('local_notepad_' + targetPdfId, '');
-      const existingD = safeStorageGet('local_digest_' + targetPdfId, '');
-      if (existingC || existingD) {
+    // ANTI-WIPE SAFETY GUARD (per field):
+    const existingC = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
+    const existingD = safeStorageGet('local_digest_' + targetPdfId, '') || '';
+    if (!wasDirty) {
+      if (!content && existingC) content = existingC;
+      if (!digest && existingD) digest = existingD;
+      if (!content && !digest && (existingC || existingD)) {
         console.warn(`[Notepad Safety] Blocked accidental wipe in flushNotepadSave for ${targetPdfId}`);
         return;
       }
@@ -427,11 +475,18 @@ export async function flushNotepadSave(specificPdfId = null) {
     await saveHistorySnapshot(targetPdfId, content, digest);
 
     try {
+      const savedWriteTs = getWriteTs(targetPdfId);
       const res = await dbSaveNotepad(targetPdfId, content, digest);
-      if (res?.saved) setSyncTs(targetPdfId);
+      if (res?.saved && !res?.localOnly && !res?.queued && getWriteTs(targetPdfId) === savedWriteTs) {
+        setSyncTs(targetPdfId);
+      } else if (!res?.saved) {
+        const cur = _notepadCache.get(targetPdfId);
+        if (cur) cur.dirty = true;
+      }
       updateSaveStatusLabel(targetPdfId, res);
     } catch (err) {
-      if (entry) entry.dirty = true;
+      const cur = _notepadCache.get(targetPdfId);
+      if (cur) cur.dirty = true;
       // Flush errors must NEVER be silent — log to diag and show in UI
       logNotepadDiagnostic(targetPdfId, 'SAVE', 'ERR', err?.code || 'ERR_FLUSH',
         `flushNotepadSave exception: ${err?.message || String(err)}. Data is safe in localStorage + history.`,
@@ -453,6 +508,7 @@ export async function flushNotepadSave(specificPdfId = null) {
 // ── Open notepad for a specific PDF with atomic sequencing & cache priming ──
 export async function openNotepad(pdfId) {
   if (!pdfId) {
+    _domBoundPdfId = null;
     if ($notesEditor()) $notesEditor().innerHTML = '';
     if ($digestEditor()) $digestEditor().innerHTML = '';
     const lbl = $saveLbl();
@@ -494,17 +550,21 @@ export async function openNotepad(pdfId) {
   let initialContent = '';
   let initialDigest = '';
 
+  const storedC = safeStorageGet('local_notepad_' + pdfId, '') || '';
+  const storedD = safeStorageGet('local_digest_' + pdfId, '') || '';
+
   if (_notepadCache.has(pdfId)) {
     const entry = _notepadCache.get(pdfId);
-    initialContent = entry.content || '';
-    initialDigest = entry.digest || '';
+    initialContent = entry.dirty ? (entry.content || '') : (entry.content || storedC);
+    initialDigest  = entry.dirty ? (entry.digest  || '') : (entry.digest  || storedD);
   } else {
-    initialContent = safeStorageGet('local_notepad_' + pdfId, '') || '';
-    initialDigest = safeStorageGet('local_digest_' + pdfId, '') || '';
+    initialContent = storedC;
+    initialDigest  = storedD;
   }
 
   if (notesEd) notesEd.innerHTML = initialContent;
   if (digestEd) digestEd.innerHTML = initialDigest;
+  _domBoundPdfId = pdfId;
 
   const activeEd = $currentEditor();
   if (activeEd) {
@@ -521,65 +581,88 @@ export async function openNotepad(pdfId) {
 
   // 3. Load latest data from database
   try {
-    const { content: remoteContent, digest: remoteDigest } = await dbLoadNotepad(pdfId);
+    const {
+      content: remoteContent,
+      digest: remoteDigest,
+      cloudContent = '',
+      cloudDigest = '',
+      cloudExists = false,
+      cloudOk = false,
+    } = await dbLoadNotepad(pdfId);
 
     // Sequence check: discard if user hopped to another PDF while loading
     if (_loadSeq !== seq || _activePdfId !== pdfId) return;
 
     const currentEntry = _notepadCache.get(pdfId);
-    // Don't overwrite if user is actively typing right now
-    if (currentEntry?.dirty) return;
+    // If user typed while cloud load was in flight, merge their live edits with any newly arrived cloud data
+    if (currentEntry?.dirty) {
+      const liveC = notesEd ? (notesEd.innerHTML ?? '') : (currentEntry.content || '');
+      const liveD = digestEd ? (digestEd.innerHTML ?? '') : (currentEntry.digest || '');
+      const mergedC = (!initialContent && cloudContent && liveC !== cloudContent)
+        ? mergeNoteHtml(liveC, cloudContent)
+        : (liveC || cloudContent);
+      const mergedD = (!initialDigest && cloudDigest && liveD !== cloudDigest)
+        ? mergeNoteHtml(liveD, cloudDigest)
+        : (liveD || cloudDigest);
+      if (notesEd && notesEd.innerHTML !== mergedC) notesEd.innerHTML = mergedC;
+      if (digestEd && digestEd.innerHTML !== mergedD) digestEd.innerHTML = mergedD;
+      _notepadCache.set(pdfId, { content: mergedC, digest: mergedD, dirty: true, timestamp: Date.now() });
+      safeStorageSet('local_notepad_' + pdfId, mergedC);
+      safeStorageSet('local_digest_' + pdfId, mergedD);
+      setWriteTs(pdfId);
+      scheduleSaveForPdf(pdfId);
+      return;
+    }
 
-    const localContent = initialContent || '';
-    const localDigest  = initialDigest  || '';
-    const remC = remoteContent || '';
-    const remD = remoteDigest  || '';
+    // Use raw cloudContent/cloudDigest when cloud query succeeded so local fallback never masks missing cloud data!
+    const localContent = initialContent || (!cloudContent && remoteContent ? remoteContent : '');
+    const localDigest  = initialDigest  || (!cloudDigest  && remoteDigest  ? remoteDigest  : '');
+    const remC = cloudOk ? (cloudContent || '') : (remoteContent || '');
+    const remD = cloudOk ? (cloudDigest  || '') : (remoteDigest  || '');
 
     // ── Conflict detection: did this device have unsynced local writes? ──
     const writeTs = getWriteTs(pdfId);
     const syncTs  = getSyncTs(pdfId);
     const hasLocalUnsaved = writeTs > 0 && writeTs > syncTs;
-
-    // Edge case: pre-v55 notes — write_ts was never set (writeTs === 0), BUT local content
-    // exists and differs from Supabase. This means the PC had notes that were saved to
-    // localStorage but never assigned a write_ts. Treat these as potentially unsaved so
-    // we don't silently overwrite them.
-    const hasLegacyLocal = writeTs === 0 && syncTs === 0 && !!(localContent || localDigest) && (localContent !== remC || localDigest !== remD);
-
-    const contentDiffers  = localContent !== remC || localDigest !== remD;
+    const hasLegacyLocal  = writeTs === 0 && syncTs === 0 && !!(localContent || localDigest) && (localContent !== remC || localDigest !== remD);
 
     let finalContent = remC;
     let finalDigest  = remD;
     let didMerge = false;
     let pushLocal = false;
 
-    if (!remC && !remD && (localContent || localDigest)) {
-      // Remote is completely blank (0 chars), but local device has saved notes!
-      // NEVER wipe local notes with an empty cloud response — restore local notes and push to cloud!
+    // Resolve Notes (content) independently
+    if (localContent && !remC) {
       finalContent = localContent;
-      finalDigest  = localDigest;
-      pushLocal = true;
-    } else if ((hasLocalUnsaved || hasLegacyLocal) && contentDiffers) {
-      if ((localContent || localDigest) && (remC || remD)) {
-        // Both devices have content — MERGE so nothing is lost
+      if (cloudOk) pushLocal = true;
+    } else if (!localContent && remC) {
+      finalContent = remC;
+    } else if (localContent && remC && localContent !== remC) {
+      if (hasLocalUnsaved || hasLegacyLocal) {
         finalContent = mergeNoteHtml(localContent, remC);
-        finalDigest  = mergeNoteHtml(localDigest,  remD);
         didMerge = true;
-      } else if ((localContent || localDigest) && !(remC || remD)) {
-        // Only local has content — push local up to Supabase
-        finalContent = localContent;
-        finalDigest  = localDigest;
-        pushLocal = true;
       } else {
         finalContent = remC;
-        finalDigest  = remD;
       }
-    } else if (remC || remD) {
-      finalContent = remC;
-      finalDigest  = remD;
     } else {
-      finalContent = '';
-      finalDigest  = '';
+      finalContent = remC || localContent || '';
+    }
+
+    // Resolve Case Digest (digest) independently
+    if (localDigest && !remD) {
+      finalDigest = localDigest;
+      if (cloudOk) pushLocal = true;
+    } else if (!localDigest && remD) {
+      finalDigest = remD;
+    } else if (localDigest && remD && localDigest !== remD) {
+      if (hasLocalUnsaved || hasLegacyLocal) {
+        finalDigest = mergeNoteHtml(localDigest, remD);
+        didMerge = true;
+      } else {
+        finalDigest = remD;
+      }
+    } else {
+      finalDigest = remD || localDigest || '';
     }
 
     _notepadCache.set(pdfId, {
@@ -589,18 +672,24 @@ export async function openNotepad(pdfId) {
       timestamp: Date.now()
     });
 
+    safeStorageSet('local_notepad_' + pdfId, finalContent);
+    safeStorageSet('local_digest_'  + pdfId, finalDigest);
+
     if (notesEd) notesEd.innerHTML = finalContent;
     if (digestEd) digestEd.innerHTML = finalDigest;
+    _domBoundPdfId = pdfId;
 
     if (didMerge || pushLocal) {
-      // Push the merged/recovered version to Supabase immediately
+      // Push the merged/recovered local notes or digest to Supabase immediately
+      setWriteTs(pdfId);
       executeSaveForPdf(pdfId);
       if (didMerge) toast('⚠️ Notes from two devices were merged — please review and clean up.');
-      else if (pushLocal) toast('☁️ Recovered notes synced to cloud.');
+      else if (pushLocal) toast('☁️ Local notes/digest synced to cloud.');
     } else {
-      // Clean remote load: this device is confirmed in sync with the cloud.
-      // Stamp sync_ts so the background sweep doesn't re-upload on next startup.
-      if (remC !== undefined || remD !== undefined) setSyncTs(pdfId);
+      // Only stamp sync_ts when Supabase was actually queried and matches both finalContent and finalDigest
+      if (cloudOk && (cloudExists || (!finalContent && !finalDigest)) && remC === finalContent && remD === finalDigest) {
+        setSyncTs(pdfId);
+      }
       const curLbl = $saveLbl();
       if (curLbl && !currentEntry?.dirty) {
         curLbl.textContent = '';
@@ -624,6 +713,8 @@ export async function openNotepad(pdfId) {
 }
 
 export async function closeNotepad() {
+  // Flush BEFORE removing .open so DOM editors are guaranteed to be read
+  await flushNotepadSave();
   $panel()?.classList.remove('open');
   const lbl = $saveLbl();
   if (lbl && (lbl.textContent === 'Unsaved…' || lbl.className === 'saving')) {
@@ -631,25 +722,32 @@ export async function closeNotepad() {
     lbl.className = '';
     lbl.title = '';
   }
-  await flushNotepadSave();
 }
 
 // ── Switch between Notes and Digest tabs ──
 export function switchNotepadTab(tab) {
-  // Capture latest text from both editors before switching tabs
-  if (_activePdfId) {
+  // Capture latest text from both editors into cache if dirty, but do NOT mark dirty
+  // merely from clicking tabs (prevents empty tab clicks during load from overwriting cloud data).
+  if (_activePdfId && _domBoundPdfId === _activePdfId) {
     const curContent = $notesEditor()?.innerHTML ?? '';
-    const curDigest = $digestEditor()?.innerHTML ?? '';
-    _notepadCache.set(_activePdfId, {
-      content: curContent,
-      digest: curDigest,
-      dirty: true,
-      timestamp: Date.now()
-    });
-    safeStorageSet('local_notepad_' + _activePdfId, curContent);
-    safeStorageSet('local_digest_' + _activePdfId, curDigest);
-    setWriteTs(_activePdfId);
-    scheduleSaveForPdf(_activePdfId);
+    const curDigest  = $digestEditor()?.innerHTML ?? '';
+    const existing   = _notepadCache.get(_activePdfId);
+    const hasChanged = existing
+      ? (curContent !== (existing.content ?? '') || curDigest !== (existing.digest ?? ''))
+      : false;
+
+    if (hasChanged) {
+      _notepadCache.set(_activePdfId, {
+        content: curContent,
+        digest: curDigest,
+        dirty: true,
+        timestamp: Date.now(),
+      });
+      safeStorageSet('local_notepad_' + _activePdfId, curContent);
+      safeStorageSet('local_digest_' + _activePdfId, curDigest);
+      setWriteTs(_activePdfId);
+      scheduleSaveForPdf(_activePdfId);
+    }
   }
 
   _activeTab = tab;
@@ -675,15 +773,13 @@ export function switchNotepadTab(tab) {
 export async function notepadOnPDFChange(newPdfId) {
   const oldPdfId = _activePdfId;
 
-  // 1. Immediately flush old PDF data if it has an active timer or dirty changes
+  // 1. Immediately flush old PDF data before clearing editor DOM
   if (oldPdfId && oldPdfId !== newPdfId) {
-    const oldEntry = _notepadCache.get(oldPdfId);
-    if (_saveTimer || oldEntry?.dirty) {
-      await flushNotepadSave(oldPdfId);
-    }
+    await flushNotepadSave(oldPdfId);
   }
 
   // 2. Clear editor DOM and save label immediately
+  _domBoundPdfId = null;
   const notesEd = $notesEditor();
   const digestEd = $digestEditor();
   if (notesEd) notesEd.innerHTML = '';
@@ -969,28 +1065,33 @@ export function updateNotepadCacheFromRemote(pdfId, content, digest) {
   const existing = _notepadCache.get(pdfId);
   // Don't overwrite if the user has unsaved (dirty) local changes
   if (existing?.dirty) return;
+
+  const localC = existing?.content || safeStorageGet('local_notepad_' + pdfId, '') || '';
+  const localD = existing?.digest  || safeStorageGet('local_digest_'  + pdfId, '') || '';
+
   // ANTI-WIPE GUARD: Don't overwrite non-empty local data with empty remote data.
-  // This prevents a 0-char accidental save on one device from wiping notes on another.
-  if (!content && !digest) {
-    const localC = existing?.content || safeStorageGet('local_notepad_' + pdfId, '') || '';
-    const localD = existing?.digest  || safeStorageGet('local_digest_'  + pdfId, '') || '';
-    if (localC || localD) {
-      logNotepadDiagnostic(pdfId, 'SYNC', 'WARN', 'SYNC_BLOCKED_EMPTY_REMOTE',
-        `Blocked empty remote sync from overwriting local data (Notes: ${localC.length} chars, Digest: ${localD.length} chars).`);
-      return;
-    }
+  if (!content && !digest && (localC || localD)) {
+    logNotepadDiagnostic(pdfId, 'SYNC', 'WARN', 'SYNC_BLOCKED_EMPTY_REMOTE',
+      `Blocked empty remote sync from overwriting local data (Notes: ${localC.length} chars, Digest: ${localD.length} chars).`);
+    return;
   }
+
+  // Per-field protection if local has unsynced writes or remote field is unexpectedly empty
+  const hasUnsaved = getWriteTs(pdfId) > getSyncTs(pdfId);
+  const safeContent = (content || (hasUnsaved ? localC : '') || localC) ? (content || localC) : '';
+  const safeDigest  = (digest  || (hasUnsaved ? localD : '') || localD) ? (digest  || localD) : '';
+
   _notepadCache.set(pdfId, {
-    content: content || '',
-    digest: digest || '',
+    content: safeContent,
+    digest: safeDigest,
     dirty: false,
     timestamp: Date.now()
   });
   // Keep localStorage in sync too
-  safeStorageSet('local_notepad_' + pdfId, content || '');
-  safeStorageSet('local_digest_' + pdfId, digest || '');
+  safeStorageSet('local_notepad_' + pdfId, safeContent);
+  safeStorageSet('local_digest_' + pdfId, safeDigest);
   logNotepadDiagnostic(pdfId, 'SYNC', 'OK', 'SYNC_CACHE_UPDATED',
-    `In-memory cache updated from realtime sync (Notes: ${(content||'').length} chars, Digest: ${(digest||'').length} chars)`);
+    `In-memory cache updated from realtime sync (Notes: ${safeContent.length} chars, Digest: ${safeDigest.length} chars)`);
 }
 
 // ── Random spot-check: verify a few notes against the REAL cloud row and repair drift ──
@@ -1003,14 +1104,24 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
   const allPdfs = S.pdfs || [];
   if (allPdfs.length === 0) return;
 
-  // Candidates: notes that have local content and are NOT currently being edited
+  // Candidates: unique canonical PDFs that have local content and are NOT currently being edited
   const now = Date.now();
-  const candidates = allPdfs.filter(p => {
-    if (!p.id) return false;
-    if (p.id === _activePdfId && _notepadCache.get(p.id)?.dirty) return false;
-    if (now - getWriteTs(p.id) < 15_000) return false; // too fresh, auto-save still in flight
-    return !!(safeStorageGet('local_notepad_' + p.id, '') || safeStorageGet('local_digest_' + p.id, ''));
-  });
+  const seenIds = new Set();
+  const candidates = [];
+  for (const p of allPdfs) {
+    const id = p.linked_pdf_id || p.id;
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+    if (id === _activePdfId && _notepadCache.get(id)?.dirty) continue;
+    if (now - getWriteTs(id) < 15_000) continue; // too fresh, auto-save still in flight
+    const hasLocal = !!(
+      safeStorageGet('local_notepad_' + id, '') ||
+      safeStorageGet('local_digest_'  + id, '') ||
+      safeStorageGet('local_notepad_' + p.id, '') ||
+      safeStorageGet('local_digest_'  + p.id, '')
+    );
+    if (hasLocal) candidates.push(p);
+  }
   if (candidates.length === 0) return;
 
   // Fisher–Yates partial shuffle → random sample
@@ -1024,10 +1135,10 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
   let repaired = 0, adopted = 0, errors = 0;
   try {
     for (const pdf of sample) {
-      const id = pdf.id;
+      const id = pdf.linked_pdf_id || pdf.id;
       try {
-        const localC = safeStorageGet('local_notepad_' + id, '') || '';
-        const localD = safeStorageGet('local_digest_'  + id, '') || '';
+        const localC = safeStorageGet('local_notepad_' + id, '') || safeStorageGet('local_notepad_' + pdf.id, '') || '';
+        const localD = safeStorageGet('local_digest_'  + id, '') || safeStorageGet('local_digest_'  + pdf.id, '') || '';
         const cloud = await dbFetchCloudNotepadRaw(id);
         if (!cloud.ok) {
           errors++;
@@ -1041,28 +1152,32 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
         }
 
         const cloudEmpty = !cloud.exists || (!cloud.content && !cloud.digest);
-        const localDirty = getWriteTs(id) > getSyncTs(id);
+        const missingCloudC = !!(localC && !cloud.content);
+        const missingCloudD = !!(localD && cloud.digestKnown !== false && !cloud.digest);
+        const localDirty = getWriteTs(id) > getSyncTs(id) || getSyncTs(id) === 0;
 
-        if (cloudEmpty || localDirty) {
-          // Cloud lost it / never got it, or we have newer local edits → push local up
-          const res = await dbSaveNotepad(id, localC, localD);
+        if (cloudEmpty || missingCloudC || missingCloudD || localDirty) {
+          // Cloud is missing Notes or Digest that exist locally, or local has newer edits → push combined up!
+          const uploadC = localC || cloud.content || '';
+          const uploadD = localD || cloud.digest  || '';
+          const res = await dbSaveNotepad(id, uploadC, uploadD);
           const re = res?.saved && !res?.localOnly ? await dbFetchCloudNotepadRaw(id) : null;
-          const ok = re?.ok && re.exists && re.content === localC && (re.digestKnown === false || re.digest === localD);
+          const ok = re?.ok && re.exists && re.content === uploadC && (re.digestKnown === false || re.digest === uploadD);
           if (ok) {
             setSyncTs(id);
             repaired++;
             logNotepadDiagnostic(id, 'VERIFY', 'WARN', 'VERIFY_REPAIRED_CLOUD',
-              `Spot-check found cloud ${cloudEmpty ? 'missing/empty' : 'behind local'} — re-uploaded from this device and verified.`);
+              `Spot-check found cloud ${cloudEmpty ? 'missing/empty' : (missingCloudD ? 'missing digest' : 'behind local')} — re-uploaded from this device and verified.`);
           } else {
             errors++;
             logNotepadDiagnostic(id, 'VERIFY', 'ERR', 'ERR_VERIFY_REPAIR_FAILED',
               `Spot-check found cloud out of date and re-upload could not be verified (${res?.error || 'read-back mismatch'}).`);
           }
         } else if (id !== _activePdfId) {
-          // Local is clean (was synced) but cloud differs and has content → another device
-          // updated it. Adopt the cloud version locally (never touch the open note).
-          safeStorageSet('local_notepad_' + id, cloud.content);
-          if (cloud.digestKnown !== false) safeStorageSet('local_digest_' + id, cloud.digest);
+          // Local is clean (was synced) and cloud has non-empty content/digest from another device.
+          // NEVER overwrite a non-empty local field with an empty cloud field!
+          if (cloud.content) safeStorageSet('local_notepad_' + id, cloud.content);
+          if (cloud.digestKnown !== false && cloud.digest) safeStorageSet('local_digest_' + id, cloud.digest);
           _notepadCache.delete(id);
           setSyncTs(id);
           adopted++;
@@ -1080,13 +1195,13 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
 
   if (errors > 0) checkAndAlertSaveErrors();
   if (!silent || repaired || adopted) {
-    if (repaired) toast(`☁️ Sync check: re-uploaded ${repaired} note${repaired === 1 ? '' : 's'} missing from the cloud.`);
+    if (repaired) toast(`☁️ Sync check: re-uploaded ${repaired} note${repaired === 1 ? '' : 's'}/digest${repaired === 1 ? '' : 's'} missing from cloud.`);
     else if (adopted) toast(`☁️ Sync check: updated ${adopted} note${adopted === 1 ? '' : 's'} from another device.`);
     else if (!errors) toast('☁️ Sync check passed — cloud matches this device.');
   }
 }
 
-// ── Background sync: push any notes whose local write_ts > sync_ts to the cloud ──
+// ── Background sync: push any notes whose local write_ts > sync_ts (or never synced) to the cloud ──
 // This is the "belt-and-suspenders" safeguard: even if an individual auto-save or
 // manual save silently failed to reach Supabase, this sweep catches it on the next
 // startup, tab-resume, or 3-minute tick and re-uploads from localStorage.
@@ -1098,25 +1213,29 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   const allPdfs = S.pdfs || [];
   if (allPdfs.length === 0) return;
 
-  // Collect every pdfId where local write is newer than last confirmed cloud sync.
-  // Minimum age guard: only pick up writes that are at least 10 seconds old so we
-  // don't race with the auto-save debounce that's about to fire on its own.
+  // Collect every canonical pdfId where local write is newer than last confirmed cloud sync
+  // OR where local notes/digest exist but sync_ts is 0 (never confirmed synced).
   const now = Date.now();
   const MIN_AGE_MS = 10_000;
+  const seenIds = new Set();
   const toSync = [];
   for (const pdf of allPdfs) {
-    // NOTE: write_ts / sync_ts / local_* keys are all keyed by pdf.id (same as the
-    // normal save path). dbSaveNotepad resolves linked_pdf_id itself for the cloud row.
-    const id = pdf.id;
-    if (!id) continue;
-    const wt = getWriteTs(id);
-    const st = getSyncTs(id);
-    if (wt > 0 && wt > st && (now - wt) >= MIN_AGE_MS) {
-      const content = safeStorageGet('local_notepad_' + id, '') || '';
-      const digest  = safeStorageGet('local_digest_'  + id, '') || '';
-      if (content || digest) {
-        toSync.push({ trueId: id, content, digest, wtAtStart: wt });
-      }
+    const id = pdf.linked_pdf_id || pdf.id;
+    if (!id || seenIds.has(id)) continue;
+    seenIds.add(id);
+
+    const wt = Math.max(getWriteTs(id), getWriteTs(pdf.id));
+    const st = Math.max(getSyncTs(id), getSyncTs(pdf.id));
+    const content = safeStorageGet('local_notepad_' + id, '') || safeStorageGet('local_notepad_' + pdf.id, '') || '';
+    const digest  = safeStorageGet('local_digest_'  + id, '') || safeStorageGet('local_digest_'  + pdf.id, '') || '';
+
+    if (!content && !digest) continue;
+
+    const isUnsyncedEdit = wt > 0 && wt > st && (now - wt) >= MIN_AGE_MS;
+    const isNeverSynced  = st === 0 && (wt === 0 || (now - wt) >= MIN_AGE_MS);
+
+    if (isUnsyncedEdit || isNeverSynced) {
+      toSync.push({ trueId: id, content, digest, wtAtStart: wt });
     }
   }
 
@@ -1136,15 +1255,26 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   try {
     for (const { trueId, content, digest, wtAtStart } of toSync) {
       try {
-        const res = await dbSaveNotepad(trueId, content, digest);
+        // Ensure we don't overwrite a non-empty cloud field if one local field is empty
+        let finalC = content;
+        let finalD = digest;
+        if (!finalC || !finalD) {
+          const existingCloud = await dbFetchCloudNotepadRaw(trueId);
+          if (existingCloud.ok && existingCloud.exists) {
+            if (!finalC && existingCloud.content) finalC = existingCloud.content;
+            if (!finalD && existingCloud.digest)  finalD = existingCloud.digest;
+          }
+        }
+
+        const res = await dbSaveNotepad(trueId, finalC, finalD);
         if (res?.saved && !res?.localOnly) {
           // Read the row back from Supabase and confirm it really matches before
           // declaring this note synced. If it doesn't, leave sync_ts alone so the
           // next sweep retries.
           const check = await dbFetchCloudNotepadRaw(trueId);
-          const digestOk = check.digestKnown === false || check.digest === digest;
-          if (check.ok && check.exists && check.content === content && digestOk) {
-            if (getWriteTs(trueId) === wtAtStart) setSyncTs(trueId);
+          const digestOk = check.digestKnown === false || check.digest === finalD;
+          if (check.ok && check.exists && check.content === finalC && digestOk) {
+            if (getWriteTs(trueId) <= wtAtStart) setSyncTs(trueId);
             successCount++;
           } else {
             failCount++;
@@ -1154,7 +1284,7 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
           }
         } else if (res?.localOnly || res?.queued) {
           // Not confirmed in cloud (FK error / queued in outbox) — don't stamp sync_ts
-          successCount++;
+          failCount++;
         } else {
           failCount++;
           logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', res?.code || 'ERR_BGSYNC',
@@ -1192,6 +1322,483 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FORCE SYNC TO SUPABASE (Single PDF, Folder & Subtree, or Entire App)
+// ═══════════════════════════════════════════════════════════════════════════
+let _isForceSyncing = false;
+
+function _setForceSyncUiState(active, statusText = '') {
+  const stxt = document.getElementById('stxt');
+  const sdot = document.getElementById('sdot');
+  const btnBar = document.getElementById('btn-force-sync-all');
+  const btnDiag = document.getElementById('diag-btn-force-sync');
+  const btnSet = document.getElementById('settings-btn-force-sync');
+
+  [btnBar, btnDiag, btnSet].forEach(b => {
+    if (!b) return;
+    b.disabled = active;
+    b.style.opacity = active ? '0.65' : '';
+    if (b === btnBar) {
+      b.textContent = active ? '⏳ Syncing…' : '☁️ Force Sync';
+    } else {
+      b.textContent = active ? '⏳ Force Syncing with Supabase…' : '☁️ Force Sync Entire App Now';
+    }
+  });
+
+  if (active) {
+    if (stxt && statusText) stxt.textContent = statusText;
+    if (sdot) { sdot.className = 'sdot spin'; sdot.style.background = 'var(--gold)'; }
+  }
+}
+
+// Helper: Read best local content & digest for a PDF (DOM -> cache -> localStorage -> IDB snapshot)
+async function _getBestLocalNotepadData(trueId, aliasId = null) {
+  let localC = '';
+  let localD = '';
+
+  if (_domBoundPdfId === trueId && _activePdfId === trueId) {
+    localC = $notesEditor()?.innerHTML ?? '';
+    localD = $digestEditor()?.innerHTML ?? '';
+  }
+
+  const cached = _notepadCache.get(trueId) || (aliasId ? _notepadCache.get(aliasId) : null);
+  const storedC = safeStorageGet('local_notepad_' + trueId, '') || (aliasId ? safeStorageGet('local_notepad_' + aliasId, '') : '') || '';
+  const storedD = safeStorageGet('local_digest_'  + trueId, '') || (aliasId ? safeStorageGet('local_digest_'  + aliasId, '') : '') || '';
+
+  if (!localC) localC = cached?.content || storedC || '';
+  if (!localD) localD = cached?.digest  || storedD || '';
+
+  // If local storage was cleared or quota-blocked, check IndexedDB snapshot history
+  if (!localC && !localD) {
+    try {
+      let hist = await getNotepadHistoryIDB(trueId);
+      if ((!Array.isArray(hist) || hist.length === 0) && aliasId) {
+        hist = await getNotepadHistoryIDB(aliasId);
+      }
+      if (Array.isArray(hist) && hist.length > 0) {
+        for (let i = hist.length - 1; i >= 0; i--) {
+          const snap = hist[i];
+          if (snap && (snap.content || snap.digest)) {
+            localC = snap.content || '';
+            localD = snap.digest || '';
+            break;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return { localC, localD };
+}
+
+// Helper: Resolve local vs cloud field without EVER losing non-empty content on either side
+function _resolveFieldForForceSync(localVal, cloudVal, hasLocalUnsaved) {
+  const l = localVal || '';
+  const c = cloudVal || '';
+  if (l === c) return { finalVal: l, action: 'match' };
+  if (l && !c) return { finalVal: l, action: 'push' };
+  if (!l && c) return { finalVal: c, action: 'pull' };
+
+  // Both l and c are non-empty and differ:
+  if (hasLocalUnsaved) {
+    return { finalVal: l, action: 'push' };
+  }
+  // If local contains all of cloud plus additions, push local
+  if (l.includes(c) && l.length > c.length) {
+    return { finalVal: l, action: 'push' };
+  }
+  // If cloud contains all of local plus additions from another device, pull cloud
+  if (c.includes(l) && c.length > l.length) {
+    return { finalVal: c, action: 'pull' };
+  }
+  // Default when both modified on different devices without clear timestamp superiority:
+  // If this device never synced or has writeTs > 0, push local; otherwise pull cloud
+  return { finalVal: l, action: 'push' };
+}
+
+// Helper: Core batch sync for a set of PDFs and Folders
+async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], scopeLabel = 'App', isFullApp = false }) {
+  if (_isForceSyncing) {
+    toast('⏳ Force Sync is already in progress…');
+    return { ok: false, busy: true };
+  }
+  if (!navigator.onLine) {
+    toast('⚠️ You are offline. Connect to the internet to Force Sync with Supabase.');
+    return { ok: false, offline: true };
+  }
+
+  _isForceSyncing = true;
+  _setForceSyncUiState(true, `☁️ Force syncing ${scopeLabel}…`);
+  toast(`☁️ Force syncing ${scopeLabel} with Supabase…`);
+
+  let uploadedNotes = 0;
+  let pulledNotes = 0;
+  let verifiedNotes = 0;
+  let syncedFolders = 0;
+  let syncedPdfs = 0;
+  let failCount = 0;
+
+  try {
+    // 1. Flush active editors first (Notepad + Folder Doc)
+    await flushNotepadSave();
+    try {
+      const { flushFolderDoc } = await import('./viewer.js');
+      await flushFolderDoc();
+    } catch {}
+
+    // 2. Replay any queued offline outbox writes
+    try {
+      await replayOutbox(db);
+    } catch (e) {
+      console.warn('[ForceSync] Outbox replay warning:', e);
+    }
+
+    // 3. Collect all ancestor folders & subjects needed for foreign-key integrity
+    const folderMap = new Map();
+    const addFolderWithAncestors = (fold) => {
+      let cur = fold;
+      const chain = [];
+      const seen = new Set();
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        chain.unshift(cur);
+        cur = cur.parent_folder_id ? S.folders?.find(f => f.id === cur.parent_folder_id) : null;
+      }
+      for (const f of chain) {
+        if (!folderMap.has(f.id)) folderMap.set(f.id, f);
+      }
+    };
+
+    for (const f of foldersToSync) addFolderWithAncestors(f);
+    for (const p of pdfsToSync) {
+      const parentFold = S.folders?.find(f => f.id === p.folder_id);
+      if (parentFold) addFolderWithAncestors(parentFold);
+      if (p.linked_pdf_id) {
+        const masterPdf = S.pdfs?.find(mp => mp.id === p.linked_pdf_id);
+        const masterFold = masterPdf ? S.folders?.find(f => f.id === masterPdf.folder_id) : null;
+        if (masterFold) addFolderWithAncestors(masterFold);
+      }
+    }
+
+    const orderedFolders = Array.from(folderMap.values());
+    const subjectIds = new Set(orderedFolders.map(f => f.subject_id).filter(Boolean));
+    if (isFullApp) {
+      for (const s of (S.subjects || [])) subjectIds.add(s.id);
+    }
+
+    // 4. Upsert Subjects
+    for (const sid of subjectIds) {
+      const subj = S.subjects?.find(s => s.id === sid);
+      if (!subj) continue;
+      await db.from('subjects').upsert({
+        id: subj.id,
+        name: subj.name,
+        color: subj.color || '#6366f1',
+        sort_order: subj.sort_order ?? 0,
+      }, { onConflict: 'id' });
+    }
+
+    // 5. Upsert Folders (root-to-leaf) & sync Folder Notes
+    for (const fold of orderedFolders) {
+      const localFoldNotes = safeStorageGet('local_folder_notes_' + fold.id, '') || '';
+      const bestNotes = fold.notes || localFoldNotes || '';
+      if (bestNotes && !fold.notes) fold.notes = bestNotes;
+      if (bestNotes) safeStorageSet('local_folder_notes_' + fold.id, bestNotes);
+
+      const foldPayload = {
+        id: fold.id,
+        subject_id: fold.subject_id,
+        name: fold.name,
+        parent_folder_id: fold.parent_folder_id || null,
+        sort_order: fold.sort_order ?? 0,
+        notes: bestNotes,
+      };
+      const { error: foldErr } = await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+      if (foldErr && foldPayload.notes !== undefined) {
+        delete foldPayload.notes;
+        await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+      }
+      syncedFolders++;
+    }
+
+    // 6. Upsert PDF records (master PDFs first, then shortcuts)
+    const pdfMap = new Map();
+    for (const p of pdfsToSync) {
+      if (p.linked_pdf_id) {
+        const master = S.pdfs?.find(mp => mp.id === p.linked_pdf_id);
+        if (master && !pdfMap.has(master.id)) pdfMap.set(master.id, master);
+      }
+      if (!pdfMap.has(p.id)) pdfMap.set(p.id, p);
+    }
+
+    for (const pdf of pdfMap.values()) {
+      const pdfPayload = {
+        id: pdf.id,
+        folder_id: pdf.folder_id,
+        name: pdf.name,
+        drive_file_id: pdf.drive_file_id || '',
+        linked_pdf_id: pdf.linked_pdf_id || null,
+        storage_path: pdf.storage_path || '',
+        sort_order: pdf.sort_order ?? 0,
+      };
+      const { error: pErr } = await db.from('pdf_files').upsert(pdfPayload, { onConflict: 'id' });
+      if (!pErr) syncedPdfs++;
+    }
+
+    // 7. Batch-fetch existing cloud pdf_notes for all canonical PDF IDs in scope
+    const canonicalMap = new Map(); // trueId -> pdf
+    for (const p of pdfsToSync) {
+      const trueId = p.linked_pdf_id || p.id;
+      if (trueId && !canonicalMap.has(trueId)) canonicalMap.set(trueId, p);
+    }
+    const canonicalIds = Array.from(canonicalMap.keys());
+
+    const cloudNotesMap = new Map(); // trueId -> { exists, content, digest }
+    const CHUNK = 80;
+    for (let i = 0; i < canonicalIds.length; i += CHUNK) {
+      const slice = canonicalIds.slice(i, i + CHUNK);
+      const { data, error } = await db.from('pdf_notes').select('pdf_id, content, digest').in('pdf_id', slice);
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          cloudNotesMap.set(row.pdf_id, {
+            exists: true,
+            content: row.content || '',
+            digest: row.digest || '',
+          });
+        }
+      } else {
+        // Fallback per-PDF if batch select failed
+        for (const tid of slice) {
+          const raw = await dbFetchCloudNotepadRaw(tid);
+          if (raw.ok && raw.exists) {
+            cloudNotesMap.set(tid, {
+              exists: true,
+              content: raw.content || '',
+              digest: raw.digest || '',
+            });
+          }
+        }
+      }
+    }
+
+    // 8. Sync Notes & Case Digests for every canonical PDF in scope
+    let idx = 0;
+    for (const [trueId, pdfObj] of canonicalMap.entries()) {
+      idx++;
+      if (canonicalIds.length > 3 && idx % 3 === 0) {
+        _setForceSyncUiState(true, `☁️ Syncing PDF ${idx}/${canonicalIds.length}…`);
+      }
+
+      try {
+        const { localC, localD } = await _getBestLocalNotepadData(trueId, pdfObj.id);
+        const cloudRow = cloudNotesMap.get(trueId) || { exists: false, content: '', digest: '' };
+
+        // Skip completely empty PDFs that have no local or cloud notes/digest
+        if (!localC && !localD && !cloudRow.exists) {
+          continue;
+        }
+
+        const wt = Math.max(getWriteTs(trueId), getWriteTs(pdfObj.id));
+        const st = Math.max(getSyncTs(trueId), getSyncTs(pdfObj.id));
+        const hasLocalUnsaved = (wt > 0 && wt > st) || st === 0 || (_activePdfId === trueId);
+
+        const cRes = _resolveFieldForForceSync(localC, cloudRow.content, hasLocalUnsaved);
+        const dRes = _resolveFieldForForceSync(localD, cloudRow.digest, hasLocalUnsaved);
+
+        const finalC = cRes.finalVal;
+        const finalD = dRes.finalVal;
+
+        const needsUpload = !cloudRow.exists || finalC !== cloudRow.content || finalD !== cloudRow.digest || cRes.action === 'push' || dRes.action === 'push';
+        const needsPull   = finalC !== localC || finalD !== localD || cRes.action === 'pull' || dRes.action === 'pull';
+
+        // Always keep local storage & cache updated with the combined best content + digest
+        safeStorageSet('local_notepad_' + trueId, finalC);
+        safeStorageSet('local_digest_'  + trueId, finalD);
+        if (pdfObj.id !== trueId) {
+          safeStorageSet('local_notepad_' + pdfObj.id, finalC);
+          safeStorageSet('local_digest_'  + pdfObj.id, finalD);
+        }
+        _notepadCache.set(trueId, {
+          content: finalC,
+          digest: finalD,
+          dirty: false,
+          timestamp: Date.now(),
+        });
+
+        // If this PDF is currently open in the Notepad panel, refresh its live DOM editors too
+        if (_activePdfId === trueId) {
+          if ($notesEditor() && $notesEditor().innerHTML !== finalC) $notesEditor().innerHTML = finalC;
+          if ($digestEditor() && $digestEditor().innerHTML !== finalD) $digestEditor().innerHTML = finalD;
+          _domBoundPdfId = trueId;
+        }
+
+        if (needsUpload && (finalC || finalD || cloudRow.exists)) {
+          const saveRes = await dbSaveNotepad(trueId, finalC, finalD);
+          if (saveRes?.saved && !saveRes?.localOnly) {
+            const verify = await dbFetchCloudNotepadRaw(trueId);
+            const digestOk = verify.digestKnown === false || verify.digest === finalD;
+            if (verify.ok && verify.exists && verify.content === finalC && digestOk) {
+              setSyncTs(trueId);
+              if (pdfObj.id !== trueId) setSyncTs(pdfObj.id);
+              uploadedNotes++;
+              verifiedNotes++;
+              if (_activePdfId === trueId) updateSaveStatusLabel(trueId, { saved: true, code: '200_OK' });
+            } else {
+              failCount++;
+              logNotepadDiagnostic(trueId, 'FORCESYNC', 'ERR', 'ERR_FORCESYNC_VERIFY',
+                `Force Sync read-back mismatch for "${pdfObj.name}" (${trueId}).`,
+                { verify });
+            }
+          } else {
+            failCount++;
+            logNotepadDiagnostic(trueId, 'FORCESYNC', 'ERR', saveRes?.code || 'ERR_FORCESYNC_SAVE',
+              `Force Sync failed to save "${pdfObj.name}" (${trueId}): ${saveRes?.error || 'unknown'}`);
+          }
+        } else {
+          if (needsPull) pulledNotes++;
+          setSyncTs(trueId);
+          if (pdfObj.id !== trueId) setSyncTs(pdfObj.id);
+          verifiedNotes++;
+        }
+      } catch (pdfErr) {
+        failCount++;
+        logNotepadDiagnostic(trueId, 'FORCESYNC', 'ERR', 'ERR_FORCESYNC_EX',
+          `Force Sync error on "${pdfObj?.name || trueId}": ${pdfErr?.message || String(pdfErr)}`);
+      }
+    }
+
+    // 9. If full app sync (or active PDF in scope), refresh library & active PDF annotations from cloud
+    if (isFullApp) {
+      await dbLoad();
+      await dbLoadAnnCounts();
+      // Pull any newly discovered folders' notes into local cache
+      for (const f of (S.folders || [])) {
+        if (f.notes) safeStorageSet('local_folder_notes_' + f.id, f.notes);
+      }
+      try {
+        const { renderLibrary } = await import('./library.js');
+        renderLibrary();
+      } catch {}
+    }
+
+    if (S.currentPdfId && canonicalMap.has(S.currentPdfId)) {
+      await Promise.all([
+        dbLoadAnnotations(S.currentPdfId),
+        dbLoadDrawings(S.currentPdfId),
+        dbLoadBookmarks(S.currentPdfId),
+      ]);
+      try {
+        const { renderAllAnnotations, renderAllDrawings } = await import('./viewer.js');
+        const { updateAnnotBadge } = await import('./annotations.js');
+        renderAllAnnotations();
+        renderAllDrawings();
+        updateAnnotBadge();
+      } catch {}
+    }
+
+    // 10. Report status in UI
+    const stxt = document.getElementById('stxt');
+    const sdot = document.getElementById('sdot');
+    if (failCount === 0) {
+      if (stxt) stxt.textContent = `✓ Force Sync OK (${uploadedNotes} pushed, ${pulledNotes} pulled, ${verifiedNotes} verified)`;
+      if (sdot) { sdot.className = 'sdot ok'; sdot.style.background = ''; }
+      setTimeout(() => {
+        if (stxt && stxt.textContent.startsWith('✓')) {
+          stxt.textContent = 'DB Sync Active';
+        }
+      }, 5000);
+      toast(`✅ Force Sync complete for ${scopeLabel}! (${uploadedNotes} uploaded, ${pulledNotes} pulled from cloud, ${verifiedNotes} notes/digests verified)`);
+    } else {
+      if (stxt) stxt.textContent = `⚠️ Force Sync: ${failCount} failed (${uploadedNotes} synced)`;
+      if (sdot) { sdot.className = 'sdot'; sdot.style.background = '#ef4444'; }
+      checkAndAlertSaveErrors();
+      toast(`⚠️ Force Sync finished with ${failCount} error${failCount === 1 ? '' : 's'} (${uploadedNotes} uploaded, ${verifiedNotes} verified). Check Error Log.`);
+    }
+
+    return { ok: failCount === 0, uploadedNotes, pulledNotes, verifiedNotes, syncedFolders, syncedPdfs, failCount };
+  } catch (err) {
+    console.error('[ForceSync] Fatal error:', err);
+    toast(`❌ Force Sync error: ${err?.message || String(err)}`);
+    return { ok: false, error: err?.message || String(err) };
+  } finally {
+    _isForceSyncing = false;
+    _setForceSyncUiState(false);
+  }
+}
+
+// ── Public 1: Force Sync a single PDF (from right-click context menu or notepad) ──
+export async function forceSyncPdf(pdfOrId) {
+  const pdfObj = typeof pdfOrId === 'string'
+    ? S.pdfs?.find(p => p.id === pdfOrId || p.linked_pdf_id === pdfOrId)
+    : pdfOrId;
+  if (!pdfObj) {
+    toast('⚠️ Could not find PDF to sync.');
+    return;
+  }
+  const fold = S.folders?.find(f => f.id === pdfObj.folder_id);
+  return _executeForceSyncScope({
+    foldersToSync: fold ? [fold] : [],
+    pdfsToSync: [pdfObj],
+    scopeLabel: `"${pdfObj.name}"`,
+    isFullApp: false,
+  });
+}
+
+// ── Public 2: Force Sync one or more Folders + all their descendant subfolders & PDFs ──
+export async function forceSyncFolders(foldersOrIds) {
+  const rawList = Array.isArray(foldersOrIds) ? foldersOrIds : [foldersOrIds];
+  const rootFolders = rawList
+    .map(item => (typeof item === 'string' ? S.folders?.find(f => f.id === item) : item))
+    .filter(Boolean);
+
+  if (rootFolders.length === 0) {
+    toast('⚠️ No folder selected to sync.');
+    return;
+  }
+
+  // Recursively collect all descendant folders in root-to-leaf order
+  const collectedIds = new Set();
+  const collectedFolders = [];
+  function collectSubtree(fold) {
+    if (!fold || collectedIds.has(fold.id)) return;
+    collectedIds.add(fold.id);
+    collectedFolders.push(fold);
+    const children = (S.folders || []).filter(f => f.parent_folder_id === fold.id);
+    for (const child of children) collectSubtree(child);
+  }
+  for (const rf of rootFolders) collectSubtree(rf);
+
+  // Collect all PDFs inside any of these folders
+  const pdfsInScope = (S.pdfs || []).filter(p => collectedIds.has(p.folder_id));
+
+  const label = rootFolders.length === 1
+    ? `folder "${rootFolders[0].name}" (${pdfsInScope.length} PDF${pdfsInScope.length === 1 ? '' : 's'})`
+    : `${rootFolders.length} folders (${pdfsInScope.length} PDF${pdfsInScope.length === 1 ? '' : 's'})`;
+
+  return _executeForceSyncScope({
+    foldersToSync: collectedFolders,
+    pdfsToSync: pdfsInScope,
+    scopeLabel: label,
+    isFullApp: false,
+  });
+}
+
+// ── Public 3: Force Sync the ENTIRE app (all subjects, folders, PDFs, notes & digests) ──
+export async function forceSyncAll() {
+  return _executeForceSyncScope({
+    foldersToSync: S.folders || [],
+    pdfsToSync: S.pdfs || [],
+    scopeLabel: `Entire App (${(S.pdfs || []).length} PDFs)`,
+    isFullApp: true,
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.forceSyncAll = forceSyncAll;
+  window.forceSyncFolders = forceSyncFolders;
+  window.forceSyncPdf = forceSyncPdf;
+}
+
 // ── Manual save: force an immediate cloud save regardless of dirty state ──
 // Called by the "Save Now" button and Ctrl+S shortcut.
 async function _manualSave() {
@@ -1224,7 +1831,7 @@ async function _manualSave() {
       _timerPdfId = null;
     }
 
-    // Read best available content from DOM + cache + localStorage (picks longest = most complete)
+    // Read best available content from DOM + cache + localStorage
     const { content, digest } = _readEditorContent(pdfId);
 
     // Update cache and localStorage first (synchronous, always safe)
@@ -1441,25 +2048,34 @@ export function initNotepad() {
     });
   }
 
-  // Setup input, keydown, paste for both editors
+  // Setup input, keydown, paste, cut, drop, and blur for both editors
+  const captureEditorChange = () => {
+    if (_activePdfId && _domBoundPdfId === _activePdfId) {
+      const content = $notesEditor()?.innerHTML ?? '';
+      const digest = $digestEditor()?.innerHTML ?? '';
+      const existing = _notepadCache.get(_activePdfId);
+      if (!existing || existing.content !== content || existing.digest !== digest) {
+        _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
+        setWriteTs(_activePdfId); // record that this device has local unsaved changes
+        safeStorageSet('local_notepad_' + _activePdfId, content);
+        safeStorageSet('local_digest_' + _activePdfId, digest);
+        updateLocalSaveLabel('saved');
+        scheduleSaveForPdf(_activePdfId);
+      }
+    }
+  };
+
   [$notesEditor(), $digestEditor()].forEach(ed => {
     if (!ed) return;
     ed.addEventListener('keydown', e => {
       handleEditorKeyDown(e, ed);
     });
 
-    ed.addEventListener('input', () => {
-      if (_activePdfId) {
-        const content = $notesEditor()?.innerHTML ?? '';
-        const digest = $digestEditor()?.innerHTML ?? '';
-        _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
-        setWriteTs(_activePdfId); // record that this device has local unsaved changes
-        safeStorageSet('local_notepad_' + _activePdfId, content);
-        safeStorageSet('local_digest_' + _activePdfId, digest);
-        // ✅ Local save always succeeds synchronously — show confirmation immediately
-        updateLocalSaveLabel('saved');
-        scheduleSaveForPdf(_activePdfId);
-      }
+    ed.addEventListener('input', captureEditorChange);
+    ed.addEventListener('cut', () => setTimeout(captureEditorChange, 0));
+    ed.addEventListener('drop', () => setTimeout(captureEditorChange, 0));
+    ed.addEventListener('blur', () => {
+      captureEditorChange();
     });
     
     ed.addEventListener('paste', handlePaste);

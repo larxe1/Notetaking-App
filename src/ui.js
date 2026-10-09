@@ -94,6 +94,10 @@ export function openModal(id)  { document.getElementById(id)?.classList.add('ope
 export function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
 
 export function closeOtherPanels(exceptId = null) {
+  if (exceptId !== 'notepad-panel') {
+    import('./notepad.js').then(m => m.flushNotepadSave?.()).catch(() => {});
+  }
+
   const panelIds = ['notepad-panel', 'ann-panel', 'search-panel'];
   panelIds.forEach(id => {
     if (id !== exceptId) {
@@ -107,9 +111,6 @@ export function closeOtherPanels(exceptId = null) {
   }
   if (exceptId !== 'search-panel') {
     import('./search.js').then(m => m.closeSearch?.()).catch(() => {});
-  }
-  if (exceptId !== 'notepad-panel') {
-    import('./notepad.js').then(m => m.flushNotepadSave?.()).catch(() => {});
   }
 }
 
@@ -162,8 +163,20 @@ window.openSyncDiagnostics = openSyncDiagnosticsModal;
 export function initSyncDiagnostics() {
   const syncBar = document.getElementById('sync-bar');
   if (syncBar) {
-    syncBar.addEventListener('click', openSyncDiagnosticsModal);
+    syncBar.addEventListener('click', (e) => {
+      if (e.target.closest('#btn-force-sync-all')) return;
+      openSyncDiagnosticsModal();
+    });
   }
+
+  // Force Sync buttons (Sidebar sync bar, Diagnostics modal, Settings modal)
+  ['btn-force-sync-all', 'diag-btn-force-sync', 'settings-btn-force-sync'].forEach(btnId => {
+    document.getElementById(btnId)?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { forceSyncAll } = await import('./notepad.js');
+      await forceSyncAll();
+    });
+  });
 
   // Copy Error button
   document.getElementById('diag-btn-copy')?.addEventListener('click', () => {
@@ -601,7 +614,9 @@ export function initKeyboard(deps) {
       deps.closeAnnPanel();
       deps.closeSearch();
       closeModal('mo-keys');
-      document.getElementById('notepad-panel')?.classList.remove('open');
+      import('./notepad.js').then(m => m.closeNotepad?.()).catch(() => {
+        document.getElementById('notepad-panel')?.classList.remove('open');
+      });
     }
     else if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
       e.preventDefault();

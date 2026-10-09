@@ -29,6 +29,7 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   _ctxIsFolder = isFolder;
 
   const exportBtn = document.getElementById('lib-ctx-export-pdf');
+  const forceSyncBtn = document.getElementById('lib-ctx-force-sync');
   let isMultiFolder = false;
 
   // Check if multiple folders are currently selected and the clicked item is among them
@@ -40,11 +41,18 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
       target = selectedFolders; // Retains exact insertion/selection order
       isMultiFolder = true;
       if (exportBtn) exportBtn.textContent = `📥 Export ${selectedFolders.length} Folders to PDF`;
-    } else if (exportBtn) {
-      exportBtn.textContent = '📥 Export Notes to PDF';
+      if (forceSyncBtn) forceSyncBtn.textContent = `☁️ Force Sync ${selectedFolders.length} Folders & PDFs`;
+    } else {
+      if (exportBtn) exportBtn.textContent = '📥 Export Notes to PDF';
+      if (forceSyncBtn) forceSyncBtn.textContent = '☁️ Force Sync Folder & PDFs';
     }
-  } else if (exportBtn) {
-    exportBtn.textContent = '📥 Export Notes to PDF';
+  } else {
+    if (exportBtn) exportBtn.textContent = '📥 Export Notes to PDF';
+    if (forceSyncBtn) {
+      forceSyncBtn.textContent = isFolder
+        ? '☁️ Force Sync Folder & PDFs'
+        : '☁️ Force Sync PDF to Cloud';
+    }
   }
 
   _ctxTarget = target;
@@ -59,6 +67,7 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   document.getElementById('lib-ctx-download').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-gdrive').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-export-pdf').style.display = (isFolder || isMultiFolder) ? 'block' : 'none';
+  if (forceSyncBtn) forceSyncBtn.style.display = 'block';
 
   // Position off-screen first so we can measure actual rendered dimensions
   menu.style.left = '-9999px';
@@ -272,6 +281,20 @@ export function initContextMenu() {
     const folder = _ctxTarget;
     hideLibCtxMenu();
     showExportOptsModal(folder);
+  });
+
+  // "Force Sync to Cloud" (Folder + all child PDFs/Notes/Digests, or Single PDF)
+  document.getElementById('lib-ctx-force-sync')?.addEventListener('click', async () => {
+    if (!_ctxTarget) return;
+    const target = _ctxTarget;
+    const isFolder = _ctxIsFolder;
+    hideLibCtxMenu();
+    const { forceSyncFolders, forceSyncPdf } = await import('./notepad.js');
+    if (isFolder) {
+      await forceSyncFolders(target);
+    } else {
+      await forceSyncPdf(target);
+    }
   });
 
   // Dismiss on outside click

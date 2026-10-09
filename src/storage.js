@@ -1,4 +1,4 @@
-﻿// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
 // STORAGE — Safe LocalStorage Manager & Quota Recovery
 // Handles quota errors, automatic cache pruning, and persistent storage safety
 // ═══════════════════════════════════════════════
@@ -89,7 +89,14 @@ export function pruneLocalStorage() {
       if (!k) continue;
 
       if (k.startsWith('notepad_history_')) {
-        historyKeysToTrim.push(k);
+        if (!curPdfId || !k.endsWith(curPdfId)) {
+          // Full 50-snapshot history is stored in IndexedDB; free localStorage space for inactive PDFs
+          keysToRemove.push(k);
+        } else {
+          historyKeysToTrim.push(k);
+        }
+      } else if (k.startsWith('notepad_diag_log_') && (!curPdfId || !k.endsWith(curPdfId))) {
+        keysToRemove.push(k);
       } else if (k.startsWith('local_draws_') && (!curPdfId || !k.endsWith(curPdfId))) {
         // Inactive PDF drawings cache (authoritative copy is in DB)
         keysToRemove.push(k);
@@ -104,24 +111,35 @@ export function pruneLocalStorage() {
       }
     }
 
-    // 1. Remove non-active drawings, annotations, and bookmark list caches
+    // 1. Remove non-active drawings, annotations, history, diag logs, and bookmark list caches
     keysToRemove.forEach(k => safeStorageRemove(k));
 
-    // 2. Trim notepad_history to at most 3 snapshots per PDF in localStorage
+    // 2. Trim active notepad_history to at most 1 snapshot in localStorage (full history in IndexedDB)
     historyKeysToTrim.forEach(k => {
       try {
         const raw = localStorage.getItem(k);
         if (raw) {
           const arr = JSON.parse(raw);
-          if (Array.isArray(arr) && arr.length > 3) {
-            const trimmed = arr.slice(-3);
+          if (Array.isArray(arr) && arr.length > 1) {
+            const trimmed = arr.slice(-1);
             localStorage.setItem(k, JSON.stringify(trimmed));
           }
         }
       } catch {}
     });
 
-    // 3. Keep only the 30 most recently saved page bookmarks
+    // 3. Trim global diagnostic log to 30 entries
+    try {
+      const rawGlobal = localStorage.getItem('notepad_global_diag_log');
+      if (rawGlobal) {
+        const gArr = JSON.parse(rawGlobal);
+        if (Array.isArray(gArr) && gArr.length > 30) {
+          localStorage.setItem('notepad_global_diag_log', JSON.stringify(gArr.slice(0, 30)));
+        }
+      }
+    } catch {}
+
+    // 4. Keep only the 30 most recently saved page bookmarks
     if (bookmarkKeys.length > 30) {
       bookmarkKeys.slice(0, bookmarkKeys.length - 30).forEach(k => {
         if (!curPdfId || !k.endsWith(curPdfId)) {

@@ -8,7 +8,7 @@ import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
-import { safeStorageGet } from './storage.js';
+import { safeStorageGet, safeStorageSet } from './storage.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
 const _boxDone  = new Set();
@@ -26,6 +26,7 @@ export async function flushFolderDoc() {
       const prevId = _currentFolderDocId;
       const f = S.folders.find(x => x.id === prevId);
       if (f) f.notes = text;
+      safeStorageSet('local_folder_notes_' + prevId, text);
       
       if (_folderDocDebounce) {
         clearTimeout(_folderDocDebounce);
@@ -41,8 +42,13 @@ export async function flushFolderDoc() {
 }
 
 export async function openFolderDoc(fold) {
-  // 1. Flush any pending notes from previously open folder first!
+  // 1. Flush any pending notes from previously open folder and active PDF notepad first!
   await flushFolderDoc();
+  try {
+    const { flushNotepadSave, notepadOnPDFChange } = await import('./notepad.js');
+    await flushNotepadSave();
+    await notepadOnPDFChange(null);
+  } catch {}
 
   S.curPDF = null;
   updateActivePDF();
@@ -63,7 +69,10 @@ export async function openFolderDoc(fold) {
 
   document.getElementById('folder-doc-title').textContent = liveFold.name;
   const ed = document.getElementById('folder-doc-editor');
-  ed.innerHTML = liveFold.notes || '';
+  const localNotes = safeStorageGet('local_folder_notes_' + liveFold.id, '') || '';
+  const initialNotes = liveFold.notes || localNotes || '';
+  if (initialNotes && !liveFold.notes) liveFold.notes = initialNotes;
+  ed.innerHTML = initialNotes;
   _currentFolderDocId = liveFold.id;
 
   // Add listener only once
@@ -78,11 +87,12 @@ export async function openFolderDoc(fold) {
       const { autosave } = await import('./ui.js');
       autosave('saving');
 
-      // Update in-memory state immediately so folder switching never loses keystrokes
+      // Update in-memory state and localStorage immediately so folder switching never loses keystrokes
       const currentId = _currentFolderDocId;
       const currentText = ed.innerHTML;
       const f = S.folders.find(x => x.id === currentId);
       if (f) f.notes = currentText;
+      if (currentId) safeStorageSet('local_folder_notes_' + currentId, currentText);
 
       clearTimeout(_folderDocDebounce);
       _folderDocDebounce = setTimeout(async () => {

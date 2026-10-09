@@ -100,6 +100,7 @@ function insertTable(rows, cols, editorElement) {
   
   editorElement.focus();
   document.execCommand('insertHTML', false, html);
+  editorElement.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // ───────────────────────────────────────────────
@@ -185,6 +186,7 @@ function parseTextToList(text) {
 export function handlePaste(e) {
   const html = e.clipboardData.getData('text/html');
   const text = e.clipboardData.getData('text/plain');
+  const targetEl = e.currentTarget || document.activeElement;
   
   // If plain text represents a tabular copy or bullet list
   if (!html && text) {
@@ -192,12 +194,14 @@ export function handlePaste(e) {
     if (tableHtml) {
       e.preventDefault();
       document.execCommand('insertHTML', false, tableHtml);
+      targetEl?.dispatchEvent(new Event('input', { bubbles: true }));
       return;
     }
     const listHtml = parseTextToList(text);
     if (listHtml) {
       e.preventDefault();
       document.execCommand('insertHTML', false, listHtml);
+      targetEl?.dispatchEvent(new Event('input', { bubbles: true }));
       return;
     }
     return; // Allow native plain text paste
@@ -218,6 +222,7 @@ export function handlePaste(e) {
     const tableFromText = parseTextToTable(text);
     if (tableFromText) {
       document.execCommand('insertHTML', false, tableFromText);
+      targetEl?.dispatchEvent(new Event('input', { bubbles: true }));
       return;
     }
   }
@@ -325,6 +330,7 @@ export function handlePaste(e) {
   let cleanHtml = cleanNode(doc.body);
   cleanHtml = cleanHtml.replace(/(?:<br\s*\/?>\s*)+$/i, '');
   document.execCommand('insertHTML', false, cleanHtml || text.replace(/\n/g, '<br>'));
+  targetEl?.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // ───────────────────────────────────────────────
