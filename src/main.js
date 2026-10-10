@@ -13,7 +13,7 @@ import { initDrawControls, initPinchZoom } from './draw.js';
 import {
   initModals, initSidebar, initZoom, initNavButtons,
   initKeyboard, exportAnnotations, toast, syncErr,
-  openModal, closeModal, autosave, updateAppTitle, openGoogleCompanion
+  openModal, closeModal, autosave, updateAppTitle
 } from './ui.js';
 import { initNotepad } from './notepad.js';
 import { initTableContextMenu, initTableLightbox } from './tablepicker.js';
@@ -153,12 +153,6 @@ async function init() {
   document.querySelectorAll('.mode-btn').forEach(btn =>
     btn.addEventListener('click', () => setMode(btn.dataset.mode))
   );
-
-  // Google Law Companion button
-  document.getElementById('btn-google')?.addEventListener('click', () => {
-    openGoogleCompanion();
-  });
-
 
   // Add custom bookmark
   document.getElementById('btn-add-bm').addEventListener('click', async () => {
