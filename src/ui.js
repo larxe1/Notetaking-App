@@ -478,44 +478,26 @@ export function initNavButtons() {
     if (_scrollTimer) return;
     _scrollTimer = setTimeout(() => {
       _scrollTimer = null;
-      if (_isJumping) return;
+      if (_isJumping || !S.totalPages) return;
 
-      const scrollRect = scrollEl.getBoundingClientRect();
-      const targetY = scrollRect.top + 80;
+      // ── Zero-Layout Algebraic Page Detection ──
+      // Pure mathematical calculation in O(1) time — eliminates all getBoundingClientRect() layout thrashing
+      const targetY = scrollEl.scrollTop + 80;
+      const vpHeight = S.pages?.[1]?.viewport?.height || 1000;
+      const slotHeight = vpHeight + 24;
 
-      // Find the page wrap currently visible at targetY
-      let foundPage = null;
-      let minDistance = Infinity;
+      // Estimated page based on uniform slot height
+      let foundPage = Math.max(1, Math.min(S.totalPages, Math.floor((targetY - 28) / slotHeight) + 1));
 
-      // Fast-path: search in local window around S.curPage
-      const searchStart = Math.max(1, (S.curPage || 1) - 15);
-      const searchEnd = Math.min(S.totalPages || 1, (S.curPage || 1) + 15);
-
-      for (let p = searchStart; p <= searchEnd; p++) {
-        const wrap = S.pages?.[p]?.wrap;
-        if (!wrap) continue;
-        const rect = wrap.getBoundingClientRect();
-        if (rect.top <= targetY && rect.bottom >= targetY) {
-          foundPage = p;
-          break;
-        }
-        const dist = Math.abs(rect.top - targetY);
-        if (dist < minDistance) {
-          minDistance = dist;
-          foundPage = p;
-        }
-      }
-
-      // Fallback: full document scan if user jumped/dragged scrollbar across hundreds of pages
-      if (!foundPage || minDistance > 1500) {
-        for (let p = 1; p <= (S.totalPages || 1); p++) {
-          const wrap = S.pages?.[p]?.wrap;
-          if (!wrap) continue;
-          const rect = wrap.getBoundingClientRect();
-          if (rect.top <= targetY && rect.bottom >= targetY) {
-            foundPage = p;
-            break;
-          }
+      // Fast verification with target page element's relative offsetTop (0 layout reflow since #canvas-scroll is position:relative)
+      const wrap = S.pages?.[foundPage]?.wrap;
+      if (wrap) {
+        const top = wrap.offsetTop;
+        const bottom = top + (wrap.offsetHeight || vpHeight) + 24;
+        if (targetY < top && foundPage > 1) {
+          foundPage--;
+        } else if (targetY > bottom && foundPage < S.totalPages) {
+          foundPage++;
         }
       }
 
@@ -528,9 +510,17 @@ export function initNavButtons() {
           const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
           _scheduleCloudBookmarkSave(trueId, foundPage);
         }
-        document.querySelectorAll('.thumb-item').forEach(th =>
-          th.classList.toggle('active', parseInt(th.dataset.page) === foundPage)
-        );
+
+        // Efficient thumbnail highlight: only toggle previous and current thumbnail instead of scanning all items
+        const prevThumb = document.querySelector('.thumb-item.active');
+        if (prevThumb && parseInt(prevThumb.dataset.page) !== foundPage) {
+          prevThumb.classList.remove('active');
+        }
+        const newThumb = document.querySelector(`.thumb-item[data-page="${foundPage}"]`);
+        if (newThumb) {
+          newThumb.classList.add('active');
+        }
+
         updateAppTitle();
       }
     }, 60);
@@ -548,9 +538,16 @@ export async function jumpToPage(pg, smooth = false) {
     _scheduleCloudBookmarkSave(trueId, pg);
   }
 
-  document.querySelectorAll('.thumb-item').forEach(el =>
-    el.classList.toggle('active', parseInt(el.dataset.page) === pg)
-  );
+  // Efficient thumbnail highlight
+  const prevThumb = document.querySelector('.thumb-item.active');
+  if (prevThumb && parseInt(prevThumb.dataset.page) !== pg) {
+    prevThumb.classList.remove('active');
+  }
+  const newThumb = document.querySelector(`.thumb-item[data-page="${pg}"]`);
+  if (newThumb) {
+    newThumb.classList.add('active');
+  }
+
   updateAppTitle();
   
   const pageState = S.pages?.[pg];
