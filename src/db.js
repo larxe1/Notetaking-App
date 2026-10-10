@@ -81,6 +81,15 @@ export async function dbLoad(retries = 3) {
       saved_at: Date.now()
     }));
 
+    // In background, sync cloud default pages into local cache
+    db.from('app_settings').select('key, value').like('key', 'default_page_%').then(({ data }) => {
+      if (data) {
+        data.forEach(row => {
+          if (row.value) safeStorageSet(row.key, row.value);
+        });
+      }
+    }).catch(() => {});
+
     syncOK('DB Sync Active');
   } catch (e) {
     if (retries > 0) {

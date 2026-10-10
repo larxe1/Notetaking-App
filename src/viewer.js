@@ -360,6 +360,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     dbLoadBookmarks(trueId),
     dbLoadAnnotations(trueId),
     dbLoadDrawings(trueId),
+    dbGetSetting('default_page_' + pdfFile.id).catch(() => null),
     dbGetSetting('read_pos_' + trueId).catch(() => null),
   ]);
 
@@ -404,9 +405,26 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
       S.pages[p] = { wrap, rendered: false, rendering: false, viewport: vp1, textItems: [] };
     }
 
-    // Determine starting page (saved bookmark or page 1)
+    // Determine starting page:
+    // Manual folder-specific default page OVERRIDES automatic last-read bookmark!
+    const manualDefault = safeStorageGet('default_page_' + pdfFile.id)
+      || (pdfFile.folder_id ? safeStorageGet('default_page_f_' + pdfFile.folder_id + '_' + trueId) : null);
+
+    let startPage;
+    let hasManualDefault = false;
+
+    if (manualDefault) {
+      const parsedDef = parseInt(manualDefault);
+      if (parsedDef >= 1) {
+        startPage = Math.min(S.totalPages, parsedDef);
+        hasManualDefault = true;
+      }
+    }
+
     const savedStart = safeStorageGet('bookmark_' + trueId) || safeStorageGet('bookmark_' + pdfFile.id);
-    const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
+    if (!hasManualDefault) {
+      startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
+    }
 
     S.curPage = startPage;
     document.getElementById('pg-input').value = startPage;
@@ -466,11 +484,17 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     }, 400);
 
     // Await parallel DB data queries
-    const [, , , cloudReadPos] = await dbDataPromise;
+    const [, , , cloudDefaultPage, cloudReadPos] = await dbDataPromise;
 
-    // Cross-device sync fallback: if no local bookmark was found on this device,
-    // but cloud saved a reading position and user is still on page 1, jump to it
-    if (!savedStart && cloudReadPos) {
+    // Cross-device sync fallback:
+    if (!hasManualDefault && cloudDefaultPage) {
+      const parsedCloudDef = parseInt(cloudDefaultPage);
+      if (parsedCloudDef >= 1 && parsedCloudDef <= S.totalPages && S.curPage !== parsedCloudDef) {
+        safeStorageSet('default_page_' + pdfFile.id, parsedCloudDef);
+        if (pdfFile.folder_id) safeStorageSet('default_page_f_' + pdfFile.folder_id + '_' + trueId, parsedCloudDef);
+        jumpToPage(parsedCloudDef, false);
+      }
+    } else if (!hasManualDefault && !savedStart && cloudReadPos) {
       const cPage = parseInt(cloudReadPos);
       if (cPage > 1 && cPage <= S.totalPages && S.curPage === 1) {
         safeStorageSet('bookmark_' + trueId, cPage);

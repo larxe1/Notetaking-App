@@ -11,8 +11,9 @@ import {
   dbCreateSubject, dbRenameSubject, dbDelSubject,
   dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder, dbMoveFolder,
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
-  dbLoadAnnCounts, dbUpdateFolderNotes
+  dbLoadAnnCounts, dbUpdateFolderNotes, dbSetSetting, dbGetSetting
 } from './db.js';
+import { safeStorageGet, safeStorageSet, safeStorageRemove } from './storage.js';
 import { driveUploadPDF, driveDeleteFile, driveEnsureSubFolder, driveResolveFolderPath, scheduleDriveOrganize } from './drive.js';
 import { openPDFFromLibrary, updateActivePDF, openFolderDoc } from './viewer.js';
 import { closeSidebar } from './ui.js';
@@ -62,6 +63,8 @@ function showLibCtxMenu(item, x, y, isFolder = false) {
   // Toggle visibility of context items
   document.getElementById('lib-ctx-open').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-reference').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
+  const setPageBtn = document.getElementById('lib-ctx-set-page');
+  if (setPageBtn) setPageBtn.style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-link').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-offline').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
   document.getElementById('lib-ctx-download').style.display = (isFolder || isMultiFolder) ? 'none' : 'block';
@@ -195,6 +198,14 @@ export function initContextMenu() {
     const { openPDFInPaneB } = await import('./dualview.js');
     openPDFInPaneB(pdf);
     closeSidebar();
+  });
+
+  // "Set Default Opening Page"
+  document.getElementById('lib-ctx-set-page')?.addEventListener('click', () => {
+    if (!_ctxTarget || _ctxIsFolder) return;
+    const pdf = _ctxTarget;
+    hideLibCtxMenu();
+    openDefaultPageModal(pdf);
   });
 
   // "Create Shortcut"
@@ -763,12 +774,18 @@ function buildPdfEl(pdf) {
   el.draggable  = true;
 
   const count = S.annCounts[pdf.id] || 0;
+  const trueId = pdf.linked_pdf_id || pdf.id;
+  const defPage = safeStorageGet('default_page_' + pdf.id)
+    || (pdf.folder_id ? safeStorageGet('default_page_f_' + pdf.folder_id + '_' + trueId) : null);
+  const defBadgeHtml = defPage ? `<span class="def-page-badge" title="Opens at page ${defPage} by default (Click to change)">p.${defPage}</span>` : '';
+
   el.innerHTML = `
     <span>📄</span>
     <span class="li-pdf-name" title="${pdf.name.replace(/"/g, '&quot;')}">
       ${pdf.linked_pdf_id ? '<span style="color:var(--gold);margin-right:4px" title="Shortcut">🔗</span>' : ''}
       ${pdf.name}
     </span>
+    ${defBadgeHtml}
     <span class="ann-badge" style="${count ? '' : 'display:none'}">${count}</span>
     <div class="li-acts">
       <button class="li-act-btn" title="Create Shortcut in another folder" data-act="link">🔗</button>
@@ -841,6 +858,14 @@ function buildPdfEl(pdf) {
     e.stopPropagation();
     showLibCtxMenu(pdf, e.clientX, e.clientY);
   });
+
+  const defBadgeEl = el.querySelector('.def-page-badge');
+  if (defBadgeEl) {
+    defBadgeEl.addEventListener('click', e => {
+      e.stopPropagation();
+      openDefaultPageModal(pdf);
+    });
+  }
 
   el.querySelector('[data-act="link"]').addEventListener('click', e => {
     e.stopPropagation();
@@ -1335,6 +1360,115 @@ export function initLibraryModals() {
     }
     this.value = '';
   });
+
+  // Default Opening Page Modal wiring
+  document.getElementById('btn-save-default-page')?.addEventListener('click', async () => {
+    if (!_pdfForDefaultPage) return;
+    const inp = document.getElementById('inp-default-page-num');
+    const val = parseInt(inp?.value?.trim() || '');
+    if (!val || isNaN(val) || val < 1) {
+      toast('Please enter a valid page number (1 or greater)');
+      return;
+    }
+
+    const pdf = _pdfForDefaultPage;
+    const trueId = pdf.linked_pdf_id || pdf.id;
+
+    safeStorageSet('default_page_' + pdf.id, val);
+    if (pdf.folder_id) safeStorageSet('default_page_f_' + pdf.folder_id + '_' + trueId, val);
+
+    dbSetSetting('default_page_' + pdf.id, String(val)).catch(() => {});
+    if (pdf.folder_id) dbSetSetting('default_page_f_' + pdf.folder_id + '_' + trueId, String(val)).catch(() => {});
+
+    closeModal('mo-default-page');
+    renderLibrary();
+
+    const folder = S.folders.find(f => f.id === pdf.folder_id);
+    const folderName = folder ? folder.name : 'folder';
+    toast(`Default opening page set to ${val} for "${folderName}"`);
+
+    // If this PDF is already open in the viewer, jump to the newly set page immediately
+    if (S.curPDF && (S.curPDF.id === pdf.id || S.curPDF.id === trueId || S.curPDF.linked_pdf_id === trueId)) {
+      const { jumpToPage } = await import('./ui.js');
+      jumpToPage(val);
+    }
+  });
+
+  document.getElementById('btn-clear-default-page')?.addEventListener('click', async () => {
+    if (!_pdfForDefaultPage) return;
+    const pdf = _pdfForDefaultPage;
+    const trueId = pdf.linked_pdf_id || pdf.id;
+
+    safeStorageRemove('default_page_' + pdf.id);
+    if (pdf.folder_id) safeStorageRemove('default_page_f_' + pdf.folder_id + '_' + trueId);
+
+    dbSetSetting('default_page_' + pdf.id, '').catch(() => {});
+    if (pdf.folder_id) dbSetSetting('default_page_f_' + pdf.folder_id + '_' + trueId, '').catch(() => {});
+
+    closeModal('mo-default-page');
+    renderLibrary();
+
+    const folder = S.folders.find(f => f.id === pdf.folder_id);
+    const folderName = folder ? folder.name : 'folder';
+    toast(`Reset to automatic last-read resume for "${folderName}"`);
+  });
+
+  document.getElementById('inp-default-page-num')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('btn-save-default-page')?.click();
+    }
+  });
+}
+
+// ── Open Set Default Opening Page Modal ──
+let _pdfForDefaultPage = null;
+
+export function openDefaultPageModal(pdf) {
+  if (!pdf) return;
+  _pdfForDefaultPage = pdf;
+
+  const trueId = pdf.linked_pdf_id || pdf.id;
+  const folder = S.folders.find(f => f.id === pdf.folder_id);
+  const folderName = folder ? folder.name : 'Root Library';
+
+  const nameEl = document.getElementById('def-page-pdf-name');
+  const folderEl = document.getElementById('def-page-folder-name');
+  const statusEl = document.getElementById('def-page-current-status');
+  const inputEl = document.getElementById('inp-default-page-num');
+  const curPageBtn = document.getElementById('btn-use-cur-page');
+  const clearBtn = document.getElementById('btn-clear-default-page');
+
+  if (nameEl) nameEl.textContent = pdf.name;
+  if (folderEl) folderEl.textContent = `📁 Folder: ${folderName}`;
+
+  const currentVal = safeStorageGet('default_page_' + pdf.id)
+    || (pdf.folder_id ? safeStorageGet('default_page_f_' + pdf.folder_id + '_' + trueId) : null);
+
+  if (currentVal) {
+    if (statusEl) statusEl.textContent = `Currently set to: Page ${currentVal} (Overrides last-read)`;
+    if (inputEl) inputEl.value = currentVal;
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+  } else {
+    if (statusEl) statusEl.textContent = 'Currently: Automatic (resumes where you last left reading)';
+    if (inputEl) inputEl.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+
+  // Check if this PDF is currently open in the viewer
+  const isThisOpen = S.curPDF && (S.curPDF.id === pdf.id || S.curPDF.id === trueId || S.curPDF.linked_pdf_id === trueId);
+  if (curPageBtn) {
+    if (isThisOpen && S.curPage) {
+      curPageBtn.style.display = 'inline-block';
+      curPageBtn.textContent = `Use Current Page (${S.curPage})`;
+      curPageBtn.onclick = () => { if (inputEl) inputEl.value = S.curPage; };
+    } else {
+      curPageBtn.style.display = 'none';
+    }
+  }
+
+  openModal('mo-default-page');
+  setTimeout(() => { if (inputEl) { inputEl.focus(); inputEl.select(); } }, 50);
 }
 
 // ── Open Link PDF (Create Shortcut) Modal with structured folder tree ──

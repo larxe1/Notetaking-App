@@ -176,6 +176,8 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 }
 .li-pdf-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-badge { background: var(--gold-bg); border: 1px solid var(--gold); color: var(--gold); font-size: 9px; border-radius: 10px; padding: 1px 5px; flex-shrink: 0; font-weight: 600; }
+.def-page-badge { background: rgba(201, 168, 76, 0.16); border: 1px solid rgba(201, 168, 76, 0.4); color: var(--gold); font-size: 9.5px; border-radius: 4px; padding: 1px 5px; flex-shrink: 0; font-weight: 600; cursor: pointer; transition: background .12s, border-color .12s; }
+.def-page-badge:hover { background: rgba(201, 168, 76, 0.3); border-color: var(--gold); }
 
 /* Inline rename */
 .rename-input { background: var(--navy-b); border: 1px solid var(--gold); border-radius: 3px; color: #e8e4db; font-size: 12px; font-family: 'Inter', sans-serif; padding: 2px 5px; flex: 1; outline: none; }

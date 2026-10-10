@@ -735,6 +735,42 @@
   </div>
 </div>
 
+<!-- Set Default Opening Page Modal -->
+<div class="modal-ov" id="mo-default-page">
+  <div class="modal-box" style="width:430px; max-width:92vw;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h3 style="margin:0; font-family:'Libre Baskerville',serif; font-size:16px; color:var(--gold);">📌 Set Default Opening Page</h3>
+      <button class="btn-sec" data-close="mo-default-page" style="padding:4px 8px;">✕</button>
+    </div>
+
+    <div style="font-size:12px; color:var(--muted); margin-bottom:12px; line-height:1.5;">
+      Set which page this PDF will always open to from this folder. This overrides your automatic last-left-read position.
+    </div>
+
+    <div style="background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; padding:10px 12px; margin-bottom:14px; font-size:12px;">
+      <div style="font-weight:600; color:#e8e4db; margin-bottom:4px;" id="def-page-pdf-name">File Name</div>
+      <div style="color:var(--muted); font-size:11px;" id="def-page-folder-name">📁 Folder: ...</div>
+      <div style="margin-top:6px; color:var(--gold); font-size:11px; font-weight:500;" id="def-page-current-status">Currently: Automatic (resumes where last left)</div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
+      <label for="inp-default-page-num" style="font-size:12px; font-weight:500; color:#e8e4db;">Default Opening Page:</label>
+      <div style="display:flex; gap:8px;">
+        <input type="number" id="inp-default-page-num" min="1" max="9999" placeholder="e.g. 36" style="flex:1; background:var(--navy); border:1px solid var(--navy-b); border-radius:6px; color:#e8e4db; font-size:13px; padding:7px 10px; outline:none;" />
+        <button class="btn-sec" id="btn-use-cur-page" style="font-size:11px; padding:6px 10px; white-space:nowrap; display:none;" title="Use the page currently open in the viewer">Use Current Page</button>
+      </div>
+    </div>
+
+    <div class="modal-acts" style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; margin-bottom:0;">
+      <button class="btn-sec" id="btn-clear-default-page" style="color:var(--red); font-size:12px; display:none;">Reset to Automatic</button>
+      <div style="display:flex; gap:8px; margin-left:auto;">
+        <button class="btn-sec" data-close="mo-default-page">Cancel</button>
+        <button class="btn-gold" id="btn-save-default-page">Save Page</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Duplicate Upload Resolution Modal -->
 <div class="modal-ov" id="mo-dup-upload">
   <div class="modal-box" style="width:480px; max-width:92vw;">
@@ -1194,6 +1230,7 @@
 <div id="lib-ctx-menu">
   <div class="ctx-item" id="lib-ctx-open">📖 Open</div>
   <div class="ctx-item" id="lib-ctx-reference">📑 Open as Reference</div>
+  <div class="ctx-item" id="lib-ctx-set-page">📌 Set Default Opening Page…</div>
   <div class="ctx-item" id="lib-ctx-link">🔗 Create Shortcut…</div>
   <div class="ctx-item" id="lib-ctx-offline">💾 Save for Offline</div>
   <div class="ctx-item" id="lib-ctx-download">⬇ Download to PC</div>
