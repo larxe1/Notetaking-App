@@ -141,6 +141,11 @@ async function init() {
   const _saveReadingPos = () => {
     if (S.curPDF && S.curPage) {
       safeStorageSet('bookmark_' + S.curPDF.id, S.curPage);
+      if (S.curPDF.linked_pdf_id) {
+        safeStorageSet('bookmark_' + S.curPDF.linked_pdf_id, S.curPage);
+      }
+      const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
+      dbSetSetting('read_pos_' + trueId, String(S.curPage)).catch(() => {});
     }
   };
   document.addEventListener('visibilitychange', () => {

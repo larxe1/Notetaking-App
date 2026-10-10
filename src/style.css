@@ -246,6 +246,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; b
 
 /* ── Canvas Scroll ── */
 #canvas-scroll {
+  position: relative;
   flex: 1;
   overflow-y: scroll; /* always reserve scrollbar track on right */
   overflow-x: auto;
@@ -698,7 +699,7 @@ kbd { background: var(--navy); border: 1px solid var(--navy-b); border-radius: 4
 #dual-divider:hover, #dual-divider.dragging { background: var(--gold); }
 
 /* Pane B scroll area — read-only (no text selection, no pointer events on PDF elements) */
-#canvas-scroll-b { flex: 1; overflow-y: auto; overflow-x: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 20px; gap: 24px; background: #2a2a2c; -webkit-overflow-scrolling: touch; }
+#canvas-scroll-b { position: relative; flex: 1; overflow-y: auto; overflow-x: auto; display: flex; flex-direction: column; align-items: center; padding: 28px 20px; gap: 24px; background: #2a2a2c; -webkit-overflow-scrolling: touch; }
 #canvas-scroll-b .txt-layer { pointer-events: none !important; user-select: none !important; -webkit-user-select: none !important; }
 #canvas-scroll-b .hi-grp { pointer-events: none !important; }
 #canvas-scroll-b .draw-canvas { pointer-events: none !important; }

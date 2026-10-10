@@ -2,8 +2,8 @@
 // VIEWER — PDF rendering + page management
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { syncOK, syncSpin, jumpToPage } from './ui.js';
-import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks } from './db.js';
+import { syncOK, syncSpin, jumpToPage, setIsJumping } from './ui.js';
+import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks, dbGetSetting } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
 import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
@@ -360,6 +360,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
     dbLoadBookmarks(trueId),
     dbLoadAnnotations(trueId),
     dbLoadDrawings(trueId),
+    dbGetSetting('read_pos_' + trueId).catch(() => null),
   ]);
 
   try {
@@ -403,6 +404,32 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
       S.pages[p] = { wrap, rendered: false, rendering: false, viewport: vp1, textItems: [] };
     }
 
+    // Determine starting page (saved bookmark or page 1)
+    const savedStart = safeStorageGet('bookmark_' + trueId) || safeStorageGet('bookmark_' + pdfFile.id);
+    const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
+
+    S.curPage = startPage;
+    document.getElementById('pg-input').value = startPage;
+    document.getElementById('pg-input').max = S.totalPages;
+
+    // Lock scroll watcher so initial scroll/layout doesn't overwrite bookmark with page 1
+    setIsJumping(true);
+
+    // ── INSTANT RESUME: jump to saved page before any rendering happens ──
+    // All placeholders are uniform height (vp1.height) so scrollTop can be calculated
+    // algebraically in 0ms — no page render required, no layout reflow needed.
+    if (startPage > 1) {
+      const pageHeightWithGap = vp1.height + 24;
+      scroll.scrollTop = 28 + (startPage - 1) * pageHeightWithGap;
+
+      const targetWrap = S.pages[startPage]?.wrap;
+      if (targetWrap) {
+        targetWrap.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+    } else {
+      scroll.scrollTop = 0;
+    }
+
     // IntersectionObserver renders pages as they scroll into view (with 1500px pre-render margin)
     _pageObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -420,35 +447,37 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
       _pageObserver.observe(S.pages[p].wrap);
     }
 
-    // Determine starting page (saved bookmark or page 1)
-    const savedStart = safeStorageGet('bookmark_' + pdfFile.id);
-    const startPage = savedStart ? Math.min(S.totalPages, Math.max(1, parseInt(savedStart))) : 1;
+    // Eagerly render just the target page so it appears as fast as possible
+    await ensurePageRendered(startPage);
+    if (startPage > 1) ensurePageRendered(startPage - 1);
+    if (startPage < S.totalPages) ensurePageRendered(startPage + 1);
 
-    S.curPage = startPage;
-    document.getElementById('pg-input').value = startPage;
-    document.getElementById('pg-input').max = S.totalPages;
-
-    // ── INSTANT RESUME: jump to saved page before any rendering happens ──
-    // All placeholders are uniform height (vp1.height) so scrollTop can be calculated
-    // algebraically in 0ms — no page render required, no layout reflow needed.
+    // Re-verify alignment once target page is rendered to absorb any subpixel variance
     if (startPage > 1) {
-      // Each page wrap is vp1.height tall; CSS gap between pages is handled by the
-      // .pg-wrap margin. Use the actual offsetTop of the target element to be layout-exact.
       const targetWrap = S.pages[startPage]?.wrap;
       if (targetWrap) {
-        // Force synchronous layout read then jump — this is instant (<1ms)
-        scroll.scrollTop = targetWrap.offsetTop;
+        targetWrap.scrollIntoView({ behavior: 'auto', block: 'start' });
       }
     }
 
-    // Let IntersectionObserver fire naturally for the now-visible pages (triggered by scrollTop above).
-    // Also eagerly render just the target page so it appears as fast as possible.
-    ensurePageRendered(startPage);
-    if (startPage > 1) ensurePageRendered(startPage - 1);
-    ensurePageRendered(startPage + 1);
+    // Release _isJumping lock once initial layout and scroll have fully settled
+    setTimeout(() => {
+      setIsJumping(false);
+    }, 400);
 
     // Await parallel DB data queries
-    await dbDataPromise;
+    const [, , , cloudReadPos] = await dbDataPromise;
+
+    // Cross-device sync fallback: if no local bookmark was found on this device,
+    // but cloud saved a reading position and user is still on page 1, jump to it
+    if (!savedStart && cloudReadPos) {
+      const cPage = parseInt(cloudReadPos);
+      if (cPage > 1 && cPage <= S.totalPages && S.curPage === 1) {
+        safeStorageSet('bookmark_' + trueId, cPage);
+        if (pdfFile.linked_pdf_id) safeStorageSet('bookmark_' + pdfFile.id, cPage);
+        jumpToPage(cPage, false);
+      }
+    }
 
     // Redraw on any already rendered page
     const { redrawAllAnnotations } = await import('./annotate.js');

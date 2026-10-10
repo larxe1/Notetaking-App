@@ -446,6 +446,19 @@ export function initZoom() {
 let _scrollTimer = null;
 let _isJumping = false;
 
+export function setIsJumping(val) {
+  _isJumping = !!val;
+}
+
+let _cloudBmTimer = null;
+function _scheduleCloudBookmarkSave(trueId, pg) {
+  if (_cloudBmTimer) clearTimeout(_cloudBmTimer);
+  _cloudBmTimer = setTimeout(() => {
+    _cloudBmTimer = null;
+    import('./db.js').then(m => m.dbSetSetting?.('read_pos_' + trueId, String(pg))).catch(() => {});
+  }, 1000);
+}
+
 // ── Page navigation ──
 export function initNavButtons() {
   document.getElementById('btn-prev').addEventListener('click', () => {
@@ -509,7 +522,12 @@ export function initNavButtons() {
       if (foundPage && foundPage !== S.curPage && foundPage >= 1 && foundPage <= S.totalPages) {
         S.curPage = foundPage;
         document.getElementById('pg-input').value = foundPage;
-        if (S.curPDF) safeStorageSet('bookmark_' + S.curPDF.id, foundPage);
+        if (S.curPDF) {
+          safeStorageSet('bookmark_' + S.curPDF.id, foundPage);
+          if (S.curPDF.linked_pdf_id) safeStorageSet('bookmark_' + S.curPDF.linked_pdf_id, foundPage);
+          const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
+          _scheduleCloudBookmarkSave(trueId, foundPage);
+        }
         document.querySelectorAll('.thumb-item').forEach(th =>
           th.classList.toggle('active', parseInt(th.dataset.page) === foundPage)
         );
@@ -523,7 +541,12 @@ export async function jumpToPage(pg, smooth = false) {
   if (!S.totalPages || pg < 1 || pg > S.totalPages) return;
   S.curPage = pg;
   document.getElementById('pg-input').value = pg;
-  if (S.curPDF) safeStorageSet('bookmark_' + S.curPDF.id, pg);
+  if (S.curPDF) {
+    safeStorageSet('bookmark_' + S.curPDF.id, pg);
+    if (S.curPDF.linked_pdf_id) safeStorageSet('bookmark_' + S.curPDF.linked_pdf_id, pg);
+    const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
+    _scheduleCloudBookmarkSave(trueId, pg);
+  }
 
   document.querySelectorAll('.thumb-item').forEach(el =>
     el.classList.toggle('active', parseInt(el.dataset.page) === pg)
