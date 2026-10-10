@@ -6,8 +6,9 @@
 //   - Recent PDFs
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { toast, openModal, closeModal } from './ui.js';
+import { toast, openModal, closeModal, syncSpin, syncOK, syncErr } from './ui.js';
 import {
+  dbLoad,
   dbCreateSubject, dbRenameSubject, dbDelSubject,
   dbCreateFolder,  dbRenameFolder,  dbDelFolder, dbReorderFolder, dbMoveFolder,
   dbRegisterPDF,   dbRenamePDF,     dbDelPDF,    dbMovePDF, dbReorderPDF,
@@ -1048,6 +1049,7 @@ function promptDuplicateResolution(duplicateItems) {
 
 // ── Modal wiring (subjects, folders, upload) ──
 export function initLibraryModals() {
+  initRefreshButton();
   document.getElementById('new-subj-btn').addEventListener('click', () => {
     const inp = document.getElementById('subj-name');
     if (inp) {
@@ -1910,3 +1912,156 @@ window.addEventListener('keydown', e => {
     window.undoLastMove();
   }
 });
+
+// ── Smart Refresh & Hard Reload ──
+export async function forceHardReload() {
+  try {
+    toast('Purging cache & reloading…');
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister();
+      }
+    }
+  } catch (err) {
+    console.warn('[forceHardReload] cache purge notice:', err);
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('_reload', Date.now().toString());
+  window.location.href = url.toString();
+}
+
+let _isRefreshing = false;
+export async function smartRefresh(e, forceHard = false) {
+  if (forceHard || (e && (e.shiftKey || e.altKey))) {
+    return forceHardReload();
+  }
+
+  if (_isRefreshing) return;
+  _isRefreshing = true;
+
+  const btn = document.getElementById('refresh-btn');
+  if (btn) {
+    btn.classList.add('spinning');
+    btn.setAttribute('aria-busy', 'true');
+  }
+
+  const startTime = Date.now();
+  try {
+    syncSpin('Syncing library…');
+
+    // Trigger background Service Worker update check
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.update().catch(() => {});
+      }).catch(() => {});
+    }
+
+    // Re-fetch subjects, folders, PDFs, and categories from Supabase
+    await dbLoad();
+    await dbLoadAnnCounts();
+    renderLibrary();
+
+    // If an active PDF is currently open, quietly sync its annotations/drawings/bookmarks in background
+    if (S.currentPdfId) {
+      try {
+        const trueId = S.currentPdfId.startsWith('sc_')
+          ? (S.shortcuts?.find(s => s.id === S.currentPdfId)?.original_pdf_id || S.currentPdfId)
+          : S.currentPdfId;
+        const { dbLoadAnnotations, dbLoadBookmarks, dbLoadDrawings } = await import('./db.js');
+        await Promise.all([
+          dbLoadAnnotations(trueId),
+          dbLoadBookmarks(trueId),
+          dbLoadDrawings(trueId)
+        ]);
+        if (typeof window.renderAnnotations === 'function') window.renderAnnotations();
+        if (typeof window.renderBookmarks === 'function') window.renderBookmarks();
+      } catch (pdfErr) {
+        console.warn('[smartRefresh] active PDF sync skipped:', pdfErr);
+      }
+    }
+
+    syncOK('Synced');
+    toast('Library synced ✓');
+  } catch (err) {
+    console.error('[smartRefresh] Error syncing library:', err);
+    syncErr('Sync failed');
+    toast('Sync error: ' + (err.message || 'Check network connection'));
+  } finally {
+    // Keep spin animation visible for at least 450ms for positive visual confirmation
+    const elapsed = Date.now() - startTime;
+    const remainingDelay = Math.max(0, 450 - elapsed);
+    setTimeout(() => {
+      if (btn) {
+        btn.classList.remove('spinning');
+        btn.removeAttribute('aria-busy');
+      }
+      _isRefreshing = false;
+    }, remainingDelay);
+  }
+}
+
+export function initRefreshButton() {
+  const btn = document.getElementById('refresh-btn');
+  if (!btn) return;
+
+  // Expose globally so external scripts or fallbacks can invoke it
+  window.smartRefresh = smartRefresh;
+  window.forceHardReload = forceHardReload;
+
+  let pressTimer = null;
+  let startX = 0, startY = 0;
+  let didLongPress = false;
+
+  btn.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    didLongPress = false;
+
+    clearTimeout(pressTimer);
+    // Long press on touch / trackpad (650ms) triggers hard reload prompt
+    pressTimer = setTimeout(() => {
+      didLongPress = true;
+      if (confirm('Hard Reload App?\n\nThis will purge cached assets and reload the latest version from the server.')) {
+        forceHardReload();
+      }
+    }, 650);
+  });
+
+  btn.addEventListener('pointermove', e => {
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 8) {
+      clearTimeout(pressTimer);
+    }
+  });
+
+  btn.addEventListener('pointerup', () => {
+    clearTimeout(pressTimer);
+  });
+
+  btn.addEventListener('pointercancel', () => {
+    clearTimeout(pressTimer);
+  });
+
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    if (didLongPress) {
+      didLongPress = false;
+      return;
+    }
+    smartRefresh(e);
+  });
+
+  // Right-click: provide option to hard reload & purge cache
+  btn.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (confirm('Hard Reload & Purge Shell Cache?\n\nUse this if updates from GitHub are not appearing.')) {
+      forceHardReload();
+    }
+  });
+}
+
