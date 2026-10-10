@@ -2,7 +2,7 @@
 // VIEWER — PDF rendering + page management
 // ═══════════════════════════════════════════════
 import { S } from './state.js';
-import { syncOK, syncSpin, jumpToPage, setIsJumping } from './ui.js';
+import { syncOK, syncSpin, jumpToPage, setIsJumping, isUserScrolling, onScrollIdle } from './ui.js';
 import { dbLoadAnnotations, dbLoadDrawings, dbLoadBookmarks, dbGetSetting } from './db.js';
 import { driveFetchPDF } from './drive.js';
 import { renderColorDots } from './colors.js';
@@ -217,6 +217,25 @@ export function scheduleUnrenderFarPages() {
   // Intentionally disabled: user requested the full PDF to always load and stay rendered.
 }
 
+// Cooperative idle scheduler helper: uses requestIdleCallback if available, or polite 35ms timeout
+function scheduleIdleWork(fn) {
+  if (typeof window.requestIdleCallback === 'function') {
+    return window.requestIdleCallback(() => fn(), { timeout: 120 });
+  }
+  return setTimeout(fn, 35);
+}
+
+let _bgTriggerFn = null;
+
+// Wake up background renderer when user stops scrolling
+onScrollIdle(() => {
+  if (_bgTriggerFn) {
+    const fn = _bgTriggerFn;
+    _bgTriggerFn = null;
+    fn();
+  }
+});
+
 export function startBackgroundDocRenderer(docId) {
   const myGen = ++_bgRenderGen;
 
@@ -229,7 +248,7 @@ export function startBackgroundDocRenderer(docId) {
     let nextP = null;
     let minDiff = Infinity;
 
-    // Always render ALL pages of the PDF (no partial-load radius cap), starting closest to curPage
+    // Search for closest unrendered page to current reading position
     for (let p = 1; p <= S.totalPages; p++) {
       const pg = S.pages?.[p];
       if (pg && !pg.rendered && !pg.rendering) {
@@ -241,19 +260,37 @@ export function startBackgroundDocRenderer(docId) {
       }
     }
 
-    if (nextP !== null && _bgRenderGen === myGen) {
-      try {
-        await ensurePageRendered(nextP);
-      } catch (e) {
-        console.warn(`[Background Render] Page ${nextP} error:`, e);
-      }
-      if (_bgRenderGen === myGen) {
-        setTimeout(renderNextUnrendered, 0);
-      }
+    if (nextP === null || _bgRenderGen !== myGen) {
+      return;
+    }
+
+    // Priority-Tiered Strategy:
+    // If user is actively scrolling and next page is distant (> 2 pages away),
+    // yield and wait so visible and nearby lookahead pages get 100% of CPU and rendering bandwidth
+    if (isUserScrolling() && Math.abs(nextP - cur) > 2) {
+      _bgTriggerFn = () => {
+        if (_bgRenderGen === myGen) scheduleIdleWork(renderNextUnrendered);
+      };
+      return;
+    }
+
+    try {
+      await ensurePageRendered(nextP);
+    } catch (e) {
+      console.warn(`[Background Render] Page ${nextP} error:`, e);
+    }
+
+    if (_bgRenderGen === myGen) {
+      // Use cooperative idle scheduling instead of 0ms tight loop
+      scheduleIdleWork(renderNextUnrendered);
     }
   };
 
-  setTimeout(renderNextUnrendered, 0);
+  _bgTriggerFn = () => {
+    if (_bgRenderGen === myGen) scheduleIdleWork(renderNextUnrendered);
+  };
+
+  scheduleIdleWork(renderNextUnrendered);
 }
 
 // ── Smart Syllabus Pre-Fetching of Next PDF in Sequence ──
@@ -448,17 +485,26 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
       scroll.scrollTop = 0;
     }
 
-    // IntersectionObserver renders pages as they scroll into view (with 1500px pre-render margin)
+    // IntersectionObserver renders pages as they scroll into view (with 1200px pre-render margin)
     _pageObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const pNum = parseInt(entry.target.dataset.page);
         if (entry.isIntersecting) {
+          // Tier 1: Newly visible page (highest priority, immediate)
           ensurePageRendered(pNum);
+
+          // Tier 2: Lookahead buffer (prepare adjacent ±1 page so user never scrolls into blanks)
+          if (pNum < S.totalPages && !S.pages[pNum + 1]?.rendered && !S.pages[pNum + 1]?.rendering) {
+            ensurePageRendered(pNum + 1);
+          }
+          if (pNum > 1 && !S.pages[pNum - 1]?.rendered && !S.pages[pNum - 1]?.rendering) {
+            ensurePageRendered(pNum - 1);
+          }
         }
       }
     }, {
       root: scroll,
-      rootMargin: '1500px 0px 1500px 0px',
+      rootMargin: '1200px 0px 1200px 0px',
     });
 
     for (let p = 1; p <= S.totalPages; p++) {

@@ -445,6 +445,30 @@ export function initZoom() {
 
 let _scrollTimer = null;
 let _isJumping = false;
+let _isUserScrolling = false;
+let _scrollIdleTimer = null;
+const _scrollIdleCallbacks = new Set();
+
+export function isUserScrolling() {
+  return _isUserScrolling;
+}
+
+export function onScrollIdle(cb) {
+  _scrollIdleCallbacks.add(cb);
+  return () => _scrollIdleCallbacks.delete(cb);
+}
+
+function _markUserScrolling() {
+  _isUserScrolling = true;
+  if (_scrollIdleTimer) clearTimeout(_scrollIdleTimer);
+  _scrollIdleTimer = setTimeout(() => {
+    _scrollIdleTimer = null;
+    _isUserScrolling = false;
+    _scrollIdleCallbacks.forEach(cb => {
+      try { cb(); } catch (e) { console.warn(e); }
+    });
+  }, 220);
+}
 
 export function setIsJumping(val) {
   _isJumping = !!val;
@@ -473,7 +497,11 @@ export function initNavButtons() {
   });
 
   const scrollEl = document.getElementById('canvas-scroll');
+  scrollEl.addEventListener('wheel', _markUserScrolling, { passive: true });
+  scrollEl.addEventListener('touchmove', _markUserScrolling, { passive: true });
+
   scrollEl.addEventListener('scroll', function () {
+    _markUserScrolling();
     if (_isJumping) return;
     if (_scrollTimer) return;
     _scrollTimer = setTimeout(() => {
