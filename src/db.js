@@ -655,7 +655,7 @@ export async function dbLoadNotepad(pdf_id) {
       cloudExists = true;
       cloudOk = true;
       source = 'cloud';
-      logNotepadDiagnostic(truePdfId, 'LOAD', 'OK', '200_OK', `Successfully loaded from Supabase (Notes: ${content.length} chars, Digest: ${digest.length} chars)`, { contentLen: content.length, digestLen: digest.length });
+      logNotepadDiagnostic(truePdfId, 'LOAD', 'OK', '200_OK', `Successfully loaded from Supabase (Notes: ${content.length} chars, Digest: ${digest.length} chars) ← row ${truePdfId} "${S.pdfs?.find(p => p.id === pdf_id)?.name || ''}"`, { contentLen: content.length, digestLen: digest.length });
     } else {
       cloudOk = true;
       cloudExists = false;
@@ -789,17 +789,27 @@ export async function ensurePdfExistsInCloud(pdfId) {
         : null;
     }
 
-    // 2. Ensure Subject exists in Supabase
+    // This is a HEAL: it must only CREATE rows that are missing in Supabase. `ignoreDuplicates`
+    // guarantees it never overwrites a subject/folder/PDF (name, folder notes, order…) that
+    // another device has since changed with this device's possibly stale copy.
+    const createOnly = { onConflict: 'id', ignoreDuplicates: true };
+    const healFail = (what, id, err) => {
+      logNotepadDiagnostic(pdfId, 'HEAL', 'ERR', 'ERR_HEAL_' + what,
+        `Could not create missing ${what} "${id}" in Supabase: ${err?.message || String(err)} (${err?.code || 'no code'})`,
+        { error: err });
+    };
+
+    // 2. Ensure Subject exists in Supabase  (subjects table columns: id, name, hex_color)
     const subjectIds = new Set(folderChain.map(f => f.subject_id).filter(Boolean));
     for (const sid of subjectIds) {
       const subj = S.subjects?.find(s => s.id === sid);
       if (subj) {
-        await db.from('subjects').upsert({
+        const { error: subjErr } = await db.from('subjects').upsert({
           id: subj.id,
           name: subj.name,
-          color: subj.color || '#6366f1',
-          sort_order: subj.sort_order ?? 0,
-        }, { onConflict: 'id' });
+          hex_color: subj.hex_color || '#6366f1',
+        }, createOnly);
+        if (subjErr) healFail('SUBJECT', subj.id, subjErr);
       }
     }
 
@@ -816,11 +826,14 @@ export async function ensurePdfExistsInCloud(pdfId) {
       if (fold.notes || localFoldNotes) {
         foldPayload.notes = fold.notes || localFoldNotes;
       }
-      const { error: foldErr } = await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+      const { error: foldErr } = await db.from('folders').upsert(foldPayload, createOnly);
       if (foldErr && foldPayload.notes !== undefined) {
         // Fallback if 'notes' column does not exist on folders
         delete foldPayload.notes;
-        await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+        const { error: foldErr2 } = await db.from('folders').upsert(foldPayload, createOnly);
+        if (foldErr2) healFail('FOLDER', fold.id, foldErr2);
+      } else if (foldErr) {
+        healFail('FOLDER', fold.id, foldErr);
       }
     }
 
@@ -839,7 +852,8 @@ export async function ensurePdfExistsInCloud(pdfId) {
       storage_path: pdf.storage_path || '',
       sort_order: pdf.sort_order ?? 0,
     };
-    const { error: pdfErr } = await db.from('pdf_files').upsert(pdfPayload, { onConflict: 'id' });
+    const { error: pdfErr } = await db.from('pdf_files').upsert(pdfPayload, createOnly);
+    if (pdfErr) healFail('PDF', pdf.id, pdfErr);
     return !pdfErr;
   } catch (err) {
     console.warn('[DB] ensurePdfExistsInCloud failed:', err);
@@ -870,6 +884,9 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
 
   const cLen = payload.content?.length || 0;
   const dLen = payload.digest?.length || 0;
+  // Saves are field-level: a field that wasn't sent is "unchanged", not "0 chars"
+  const cTxt = payload.content === undefined ? 'unchanged' : `${cLen} chars`;
+  const dTxt = payload.digest  === undefined ? 'unchanged' : `${dLen} chars`;
 
   try {
     let { error } = await db.from('pdf_notes').upsert(payload, { onConflict: 'pdf_id' });
@@ -921,7 +938,8 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     }
 
     // Direct Success
-    logNotepadDiagnostic(truePdfId, 'SAVE', 'OK', '200_OK', `Successfully saved to Supabase (Notes: ${cLen} chars, Digest: ${dLen} chars)`, { payloadLength: { content: cLen, digest: dLen } });
+    const pdfName = S.pdfs?.find(p => p.id === pdf_id)?.name || '';
+    logNotepadDiagnostic(truePdfId, 'SAVE', 'OK', '200_OK', `Successfully saved to Supabase (Notes: ${cTxt}, Digest: ${dTxt}) → row ${truePdfId}${pdfName ? ` "${pdfName}"` : ''}`, { payloadLength: { content: cLen, digest: dLen } });
     broadcastSync({ type: 'NOTEPAD_CHANGED', pdfId: truePdfId, content: payload.content, digest: payload.digest });
     return { saved: true, code: '200_OK' };
   } catch (err) {

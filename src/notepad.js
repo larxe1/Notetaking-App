@@ -105,6 +105,59 @@ async function saveHistorySnapshot(pdfId, content, digest) {
 }
 
 
+// ── Last value this device KNOWS the cloud holds, per PDF (set on successful load/save) ──
+// A save only sends the field(s) the user actually changed relative to this baseline.
+// That stops a save from the Notes tab clobbering a Digest written by another device (and
+// vice versa), and guarantees an empty / not-yet-loaded field is never written over real
+// cloud data. When the cloud state is unknown (load failed/offline) blanks are never sent.
+const _cloudBase = new Map(); // canonical pdfId -> { content?: string, digest?: string }
+const _baseKey = (id) => S.pdfs?.find(p => p.id === id)?.linked_pdf_id || id;
+
+function _setCloudBase(pdfId, content, digest) {
+  if (!pdfId) return;
+  const k = _baseKey(pdfId);
+  const b = _cloudBase.get(k) || {};
+  if (content !== undefined) b.content = content;
+  if (digest  !== undefined) b.digest  = digest;
+  _cloudBase.set(k, b);
+}
+
+function _changedField(val, baseVal) {
+  if (baseVal === undefined) return val ? val : undefined; // cloud state unknown → never send a blank
+  return val !== baseVal ? val : undefined;
+}
+
+// Save only the changed field(s); returns the same shape as dbSaveNotepad().
+async function _saveChangedFields(pdfId, content, digest) {
+  const base = _cloudBase.get(_baseKey(pdfId)) || {};
+  const sendC = _changedField(content, base.content);
+  const sendD = _changedField(digest,  base.digest);
+  if (sendC === undefined && sendD === undefined) {
+    return { saved: true, code: '200_OK', noop: true }; // cloud already has exactly this
+  }
+  const res = await dbSaveNotepad(pdfId, sendC, sendD);
+  if (res?.saved && !res?.localOnly && !res?.queued) {
+    // Read the row back: an HTTP 200 only proves Supabase accepted the request, not that the row
+    // now holds what we sent. Skipped for huge payloads (embedded diagram/screenshot images).
+    const size = (sendC?.length || 0) + (sendD?.length || 0);
+    if (size <= 300_000 && res.code !== 'WARN_SAVED_WITHOUT_DIGEST') {
+      const chk = await dbFetchCloudNotepadRaw(pdfId);
+      const okC = sendC === undefined || chk.content === sendC;
+      const okD = sendD === undefined || chk.digestKnown === false || chk.digest === sendD;
+      if (chk.ok && (!chk.exists || !okC || !okD)) {
+        const why = !chk.exists ? 'row missing' : (!okC && !okD ? 'notes + digest differ' : (!okC ? 'notes differ' : 'digest differs'));
+        logNotepadDiagnostic(pdfId, 'SAVE', 'ERR', 'ERR_SAVE_NOT_PERSISTED',
+          `Supabase accepted the save but the row does not hold it (${why}; cloud now has Notes: ${chk.content?.length || 0}, Digest: ${chk.digest?.length || 0} chars). Another device may have overwritten it, or the write went to a different row. Local copy is safe.`,
+          { sent: { content: sendC?.length, digest: sendD?.length }, cloud: { exists: chk.exists, content: chk.content?.length, digest: chk.digest?.length } });
+        return { saved: false, error: `Save not persisted (${why})`, code: 'ERR_SAVE_NOT_PERSISTED' };
+      }
+    }
+    // Digest column missing → only the notes reached the cloud
+    _setCloudBase(pdfId, sendC, res.code === 'WARN_SAVED_WITHOUT_DIGEST' ? undefined : sendD);
+  }
+  return res;
+}
+
 // ── Startup / resume: alert user if any save errors happened while they were away ──
 // Uses a persistent sticky banner (not a 3s toast) so the warning stays visible.
 function checkAndAlertSaveErrors() {
@@ -358,7 +411,7 @@ async function executeSaveForPdf(targetPdfId) {
     // ── Snapshot BEFORE the cloud save: if DB throws or tab closes mid-flight,
     //    the content is already preserved in IndexedDB and localStorage history. ──
     await saveHistorySnapshot(targetPdfId, content, digest);
-    const res = await dbSaveNotepad(targetPdfId, content, digest);
+    const res = await _saveChangedFields(targetPdfId, content, digest);
     // Only mark synced if Supabase confirmed AND no new writes arrived during the save
     if (res?.saved && !res?.localOnly && !res?.queued && getWriteTs(targetPdfId) === savedWriteTs) {
       setSyncTs(targetPdfId);
@@ -492,7 +545,7 @@ export async function flushNotepadSave(specificPdfId = null) {
 
     try {
       const savedWriteTs = getWriteTs(targetPdfId);
-      const res = await dbSaveNotepad(targetPdfId, content, digest);
+      const res = await _saveChangedFields(targetPdfId, content, digest);
       if (res?.saved && !res?.localOnly && !res?.queued && getWriteTs(targetPdfId) === savedWriteTs) {
         setSyncTs(targetPdfId);
       } else if (!res?.saved) {
@@ -566,11 +619,16 @@ export async function openNotepad(pdfId) {
   let initialContent = '';
   let initialDigest = '';
 
-  const storedC = safeStorageGet('local_notepad_' + pdfId, '') || '';
-  const storedD = safeStorageGet('local_digest_' + pdfId, '') || '';
+  const truePdfId = S.pdfs?.find(p => p.id === pdfId)?.linked_pdf_id || pdfId;
+  const storedC = safeStorageGet('local_notepad_' + truePdfId, '') || (truePdfId !== pdfId ? safeStorageGet('local_notepad_' + pdfId, '') : '') || '';
+  const storedD = safeStorageGet('local_digest_'  + truePdfId, '') || (truePdfId !== pdfId ? safeStorageGet('local_digest_'  + pdfId, '') : '') || '';
 
   if (_notepadCache.has(pdfId)) {
     const entry = _notepadCache.get(pdfId);
+    initialContent = entry.dirty ? (entry.content || '') : (entry.content || storedC);
+    initialDigest  = entry.dirty ? (entry.digest  || '') : (entry.digest  || storedD);
+  } else if (_notepadCache.has(truePdfId)) {
+    const entry = _notepadCache.get(truePdfId);
     initialContent = entry.dirty ? (entry.content || '') : (entry.content || storedC);
     initialDigest  = entry.dirty ? (entry.digest  || '') : (entry.digest  || storedD);
   } else {
@@ -609,6 +667,10 @@ export async function openNotepad(pdfId) {
 
     // Sequence check: discard if user hopped to another PDF while loading
     if (_loadSeq !== seq || _activePdfId !== pdfId) return;
+
+    // Remember exactly what the CLOUD row holds (not the local fallback) so later saves
+    // only send what the user actually changes.
+    if (cloudOk) _setCloudBase(pdfId, cloudContent || '', cloudDigest || '');
 
     const currentEntry = _notepadCache.get(pdfId);
     // If user typed while cloud load was in flight, merge their live edits with any newly arrived cloud data
@@ -728,6 +790,11 @@ export async function openNotepad(pdfId) {
     }
   } finally {
     _loadingPdfIds.delete(pdfId);
+    // If the user typed and then switched away while the load lock was held, their save was
+    // skipped by the lock. Push it now instead of waiting for the next background sweep.
+    if (_activePdfId !== pdfId && _notepadCache.get(pdfId)?.dirty) {
+      executeSaveForPdf(pdfId).catch(() => {});
+    }
   }
 }
 
@@ -1183,6 +1250,7 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
           const re = res?.saved && !res?.localOnly ? await dbFetchCloudNotepadRaw(id) : null;
           const ok = re?.ok && re.exists && re.content === uploadC && (re.digestKnown === false || re.digest === uploadD);
           if (ok) {
+            _setCloudBase(id, uploadC, re.digestKnown === false ? undefined : uploadD);
             setSyncTs(id);
             repaired++;
             logNotepadDiagnostic(id, 'VERIFY', 'WARN', 'VERIFY_REPAIRED_CLOUD',
@@ -1195,9 +1263,12 @@ export async function verifyRandomNotesAgainstCloud({ sampleSize = 3, silent = t
         } else if (id !== _activePdfId) {
           // Local is clean (was synced) and cloud has non-empty content/digest from another device.
           // NEVER overwrite a non-empty local field with an empty cloud field!
+          // Keep a restorable copy of what we're about to replace (visible in 🕐 History → Snapshots)
+          await saveHistorySnapshot(id, localC, localD);
           if (cloud.content) safeStorageSet('local_notepad_' + id, cloud.content);
           if (cloud.digestKnown !== false && cloud.digest) safeStorageSet('local_digest_' + id, cloud.digest);
           _notepadCache.delete(id);
+          _setCloudBase(id, cloud.content, cloud.digestKnown === false ? undefined : cloud.digest);
           setSyncTs(id);
           adopted++;
           logNotepadDiagnostic(id, 'VERIFY', 'WARN', 'VERIFY_ADOPTED_CLOUD',
@@ -1274,14 +1345,38 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
   try {
     for (const { trueId, content, digest, wtAtStart } of toSync) {
       try {
-        // Ensure we don't overwrite a non-empty cloud field if one local field is empty
+        // Never let this device's copy silently overwrite what another device saved:
+        // read the real cloud row first and resolve each field loss-free.
         let finalC = content;
         let finalD = digest;
-        if (!finalC || !finalD) {
-          const existingCloud = await dbFetchCloudNotepadRaw(trueId);
-          if (existingCloud.ok && existingCloud.exists) {
-            if (!finalC && existingCloud.content) finalC = existingCloud.content;
-            if (!finalD && existingCloud.digest)  finalD = existingCloud.digest;
+        const existingCloud = await dbFetchCloudNotepadRaw(trueId);
+        if (!existingCloud.ok) {
+          failCount++;
+          logNotepadDiagnostic(trueId, 'BGSYNC', 'ERR', 'ERR_BGSYNC_READ',
+            `Background sync could not read the cloud row before uploading: ${existingCloud.error}. Will retry.`);
+          continue;
+        }
+        if (existingCloud.exists) {
+          const unsaved = wtAtStart > 0 && wtAtStart > getSyncTs(trueId);
+          const cRes = _resolveFieldForForceSync(content, existingCloud.content, unsaved);
+          const dRes = existingCloud.digestKnown === false
+            ? { finalVal: digest, action: 'push' }
+            : _resolveFieldForForceSync(digest, existingCloud.digest, unsaved);
+          finalC = cRes.finalVal;
+          finalD = dRes.finalVal;
+
+          // The open editor is refreshed by openNotepad/realtime, not by this sweep.
+          if (trueId === _activePdfId && [cRes.action, dRes.action].some(a => a === 'pull' || a === 'merge')) continue;
+
+          // Cloud already holds the resolved value → just adopt it locally, nothing to upload.
+          if (finalC === existingCloud.content && (existingCloud.digestKnown === false || finalD === existingCloud.digest)) {
+            safeStorageSet('local_notepad_' + trueId, finalC);
+            if (existingCloud.digestKnown !== false) safeStorageSet('local_digest_' + trueId, finalD);
+            _setCloudBase(trueId, existingCloud.content, existingCloud.digestKnown === false ? undefined : existingCloud.digest);
+            if (trueId !== _activePdfId) _notepadCache.delete(trueId);
+            if (getWriteTs(trueId) <= wtAtStart) setSyncTs(trueId);
+            successCount++;
+            continue;
           }
         }
 
@@ -1293,6 +1388,8 @@ export async function syncAllUnsyncedNotes({ silent = false } = {}) {
           const check = await dbFetchCloudNotepadRaw(trueId);
           const digestOk = check.digestKnown === false || check.digest === finalD;
           if (check.ok && check.exists && check.content === finalC && digestOk) {
+            _setCloudBase(trueId, finalC, check.digestKnown === false ? undefined : finalD);
+            if (trueId !== _activePdfId) _notepadCache.delete(trueId);
             if (getWriteTs(trueId) <= wtAtStart) setSyncTs(trueId);
             successCount++;
           } else {
@@ -1429,9 +1526,11 @@ function _resolveFieldForForceSync(localVal, cloudVal, hasLocalUnsaved) {
   if (c.includes(l) && c.length > l.length) {
     return { finalVal: c, action: 'pull' };
   }
-  // Default when both modified on different devices without clear timestamp superiority:
-  // If this device never synced or has writeTs > 0, push local; otherwise pull cloud
-  return { finalVal: l, action: 'push' };
+  // Truly divergent (neither contains the other) and this device has no unsaved edits:
+  // the cloud copy came from another device. The old code blindly pushed local over it
+  // (contradicting its own comment) which silently destroyed the other device's work.
+  // Merge instead so NOTHING is lost; the merged result is then written to both sides.
+  return { finalVal: mergeNoteHtml(l, c), action: 'merge' };
 }
 
 // Helper: Core batch sync for a set of PDFs and Folders
@@ -1506,19 +1605,30 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
       for (const s of (S.subjects || [])) subjectIds.add(s.id);
     }
 
-    // 4. Upsert Subjects
+    // Library rows are only CREATED here when missing (needed for foreign-key integrity of notes).
+    // `ignoreDuplicates` means a stale device can never overwrite a name / folder notes / location
+    // that another device changed. Failures are logged instead of silently ignored.
+    const createOnly = { onConflict: 'id', ignoreDuplicates: true };
+    const structErr = (what, id, err) => {
+      failCount++;
+      logNotepadDiagnostic(id, 'FORCESYNC', 'ERR', 'ERR_FORCESYNC_' + what,
+        `Force Sync could not create missing ${what} "${id}" in Supabase: ${err?.message || String(err)} (${err?.code || 'no code'})`,
+        { error: err });
+    };
+
+    // 4. Create missing Subjects  (subjects table columns: id, name, hex_color)
     for (const sid of subjectIds) {
       const subj = S.subjects?.find(s => s.id === sid);
       if (!subj) continue;
-      await db.from('subjects').upsert({
+      const { error: sErr } = await db.from('subjects').upsert({
         id: subj.id,
         name: subj.name,
-        color: subj.color || '#6366f1',
-        sort_order: subj.sort_order ?? 0,
-      }, { onConflict: 'id' });
+        hex_color: subj.hex_color || '#6366f1',
+      }, createOnly);
+      if (sErr) structErr('SUBJECT', subj.id, sErr);
     }
 
-    // 5. Upsert Folders (root-to-leaf) & sync Folder Notes
+    // 5. Create missing Folders (root-to-leaf) & sync Folder Notes
     for (const fold of orderedFolders) {
       const localFoldNotes = safeStorageGet('local_folder_notes_' + fold.id, '') || '';
       const bestNotes = fold.notes || localFoldNotes || '';
@@ -1533,15 +1643,16 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
         sort_order: fold.sort_order ?? 0,
         notes: bestNotes,
       };
-      const { error: foldErr } = await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+      let { error: foldErr } = await db.from('folders').upsert(foldPayload, createOnly);
       if (foldErr && foldPayload.notes !== undefined) {
         delete foldPayload.notes;
-        await db.from('folders').upsert(foldPayload, { onConflict: 'id' });
+        ({ error: foldErr } = await db.from('folders').upsert(foldPayload, createOnly));
       }
-      syncedFolders++;
+      if (foldErr) structErr('FOLDER', fold.id, foldErr);
+      else syncedFolders++;
     }
 
-    // 6. Upsert PDF records (master PDFs first, then shortcuts)
+    // 6. Create missing PDF records (master PDFs first, then shortcuts)
     const pdfMap = new Map();
     for (const p of pdfsToSync) {
       if (p.linked_pdf_id) {
@@ -1561,8 +1672,9 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
         storage_path: pdf.storage_path || '',
         sort_order: pdf.sort_order ?? 0,
       };
-      const { error: pErr } = await db.from('pdf_files').upsert(pdfPayload, { onConflict: 'id' });
-      if (!pErr) syncedPdfs++;
+      const { error: pErr } = await db.from('pdf_files').upsert(pdfPayload, createOnly);
+      if (pErr) structErr('PDF', pdf.id, pErr);
+      else syncedPdfs++;
     }
 
     // 7. Batch-fetch existing cloud pdf_notes for all canonical PDF IDs in scope
@@ -1658,6 +1770,7 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
             const verify = await dbFetchCloudNotepadRaw(trueId);
             const digestOk = verify.digestKnown === false || verify.digest === finalD;
             if (verify.ok && verify.exists && verify.content === finalC && digestOk) {
+              _setCloudBase(trueId, finalC, verify.digestKnown === false ? undefined : finalD);
               setSyncTs(trueId);
               if (pdfObj.id !== trueId) setSyncTs(pdfObj.id);
               uploadedNotes++;
@@ -1676,6 +1789,7 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
           }
         } else {
           if (needsPull) pulledNotes++;
+          _setCloudBase(trueId, cloudRow.content, cloudRow.digest);
           setSyncTs(trueId);
           if (pdfObj.id !== trueId) setSyncTs(pdfObj.id);
           verifiedNotes++;
