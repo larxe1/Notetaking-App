@@ -50,6 +50,7 @@ let _activePdfId = null;
 
 // PDF ID whose content is currently mounted in #np-editor / #np-digest-editor DOM
 let _domBoundPdfId = null;
+const _loadingPdfIds = new Set();
 
 // Debounce timer for auto-saving
 let _saveTimer = null;
@@ -234,10 +235,20 @@ function _readEditorContent(pdfId) {
     const domContent = notesEl  ? (notesEl.innerHTML  ?? '') : null;
     const domDigest  = digestEl ? (digestEl.innerHTML ?? '') : null;
 
-    const content = domContent !== null ? domContent : (entry?.content ?? safeStorageGet('local_notepad_' + pdfId, '') ?? '');
-    const digest  = domDigest  !== null ? domDigest  : (entry?.digest  ?? safeStorageGet('local_digest_'  + pdfId, '') ?? '');
+    const storedC = safeStorageGet('local_notepad_' + pdfId, '') ?? '';
+    const storedD = safeStorageGet('local_digest_'  + pdfId, '') ?? '';
 
-    return { content, digest, wasDirty: entry ? !!entry.dirty : true };
+    const isDirty = entry ? !!entry.dirty : false;
+    let content = domContent !== null ? domContent : (entry?.content ?? storedC);
+    let digest  = domDigest  !== null ? domDigest  : (entry?.digest  ?? storedD);
+
+    // Safety: if editor was NOT dirtied by actual user input, prefer non-empty stored/cached content
+    if (!isDirty) {
+      if (!content && (entry?.content || storedC)) content = entry?.content || storedC;
+      if (!digest && (entry?.digest || storedD))   digest  = entry?.digest  || storedD;
+    }
+
+    return { content, digest, wasDirty: isDirty };
   } else {
     // DOM editors are not bound to this PDF. Use cache if dirty, otherwise prefer non-empty cache or localStorage.
     const storedC = safeStorageGet('local_notepad_' + pdfId, '') ?? '';
@@ -314,7 +325,7 @@ function updateSaveStatusLabel(targetPdfId, res) {
 
 // ── Execute an explicit save for a specific PDF ID ──
 async function executeSaveForPdf(targetPdfId) {
-  if (!targetPdfId) return;
+  if (!targetPdfId || _loadingPdfIds.has(targetPdfId)) return;
 
   // DOM-first when bound, cache/localStorage when closed
   let { content, digest, wasDirty } = _readEditorContent(targetPdfId);
@@ -324,22 +335,21 @@ async function executeSaveForPdf(targetPdfId) {
   if (entry) entry.dirty = false;
 
   // ANTI-WIPE SAFETY GUARD (per field):
-  // If not dirty, never allow an empty content or empty digest to overwrite non-empty local storage!
+  // Never allow an empty editor to overwrite non-empty local storage unless user actively typed an edit!
   const existingC = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
   const existingD = safeStorageGet('local_digest_' + targetPdfId, '') || '';
-  if (!wasDirty) {
-    if (!content && existingC) content = existingC;
-    if (!digest && existingD) digest = existingD;
-    if (!content && !digest && (existingC || existingD)) {
-      console.warn(`[Notepad Safety] Blocked accidental wipe in executeSaveForPdf for ${targetPdfId}`);
-      return;
-    }
+  if (!content && existingC && !entry?.hadUserInput) content = existingC;
+  if (!digest && existingD && !entry?.hadUserInput)   digest = existingD;
+  if (!content && !digest && (existingC || existingD) && !entry?.hadUserInput) {
+    console.warn(`[Notepad Safety] Blocked accidental wipe in executeSaveForPdf for ${targetPdfId}`);
+    return;
   }
 
   _notepadCache.set(targetPdfId, {
     content,
     digest,
     dirty: false,
+    hadUserInput: false,
     timestamp: Date.now(),
   });
 
@@ -411,6 +421,8 @@ function scheduleSaveForPdf(pdfId) {
 // ── Immediately flush pending save for the active PDF ──
 export async function flushNotepadSave(specificPdfId = null) {
   const targetPdfId = specificPdfId || _timerPdfId || _activePdfId;
+  if (!targetPdfId || _loadingPdfIds.has(targetPdfId)) return;
+
   const hadTimer = !!_saveTimer;
   if (_saveTimer) {
     clearTimeout(_saveTimer);
@@ -435,36 +447,40 @@ export async function flushNotepadSave(specificPdfId = null) {
           entry.content = domC;
           entry.digest = domD;
           entry.dirty = true;
+          entry.hadUserInput = true;
         }
       }
     }
 
     // If not dirty, no save timer was active, and DOM matches cache, nothing was changed — skip saving!
-    if (entry && !entry.dirty && !hadTimer && !domDiffers) {
+    if (!entry?.dirty && !hadTimer && !domDiffers) {
       return;
     }
 
     // Use the shared helper: DOM-first when bound, cache/localStorage when closed
     let { content, digest, wasDirty } = _readEditorContent(targetPdfId);
     if (domDiffers) wasDirty = true;
-    if (entry) entry.dirty = false;
+    if (!wasDirty && !hadTimer) {
+      return;
+    }
 
     // ANTI-WIPE SAFETY GUARD (per field):
     const existingC = safeStorageGet('local_notepad_' + targetPdfId, '') || '';
     const existingD = safeStorageGet('local_digest_' + targetPdfId, '') || '';
-    if (!wasDirty) {
-      if (!content && existingC) content = existingC;
-      if (!digest && existingD) digest = existingD;
-      if (!content && !digest && (existingC || existingD)) {
-        console.warn(`[Notepad Safety] Blocked accidental wipe in flushNotepadSave for ${targetPdfId}`);
-        return;
-      }
+    if (!content && existingC && !entry?.hadUserInput) content = existingC;
+    if (!digest && existingD && !entry?.hadUserInput)   digest = existingD;
+    if (!content && !digest && (existingC || existingD) && !entry?.hadUserInput) {
+      console.warn(`[Notepad Safety] Blocked accidental wipe in flushNotepadSave for ${targetPdfId}`);
+      return;
     }
+
+    if (entry) entry.dirty = false;
 
     _notepadCache.set(targetPdfId, {
       content,
       digest,
       dirty: false,
+      hadUserInput: false,
       timestamp: Date.now()
     });
 
@@ -580,6 +596,7 @@ export async function openNotepad(pdfId) {
   }
 
   // 3. Load latest data from database
+  _loadingPdfIds.add(pdfId);
   try {
     const {
       content: remoteContent,
@@ -709,6 +726,8 @@ export async function openNotepad(pdfId) {
       lbl.className = 'err';
       lbl.title = `Cloud load failed: ${e?.message || e}. Using local data. Click to see Error Log.`;
     }
+  } finally {
+    _loadingPdfIds.delete(pdfId);
   }
 }
 
@@ -1356,12 +1375,11 @@ async function _getBestLocalNotepadData(trueId, aliasId = null) {
   let localC = '';
   let localD = '';
 
-  if (_domBoundPdfId === trueId && _activePdfId === trueId) {
+  const cached = _notepadCache.get(trueId) || (aliasId ? _notepadCache.get(aliasId) : null);
+  if (_domBoundPdfId === trueId && _activePdfId === trueId && cached?.dirty) {
     localC = $notesEditor()?.innerHTML ?? '';
     localD = $digestEditor()?.innerHTML ?? '';
   }
-
-  const cached = _notepadCache.get(trueId) || (aliasId ? _notepadCache.get(aliasId) : null);
   const storedC = safeStorageGet('local_notepad_' + trueId, '') || (aliasId ? safeStorageGet('local_notepad_' + aliasId, '') : '') || '';
   const storedD = safeStorageGet('local_digest_'  + trueId, '') || (aliasId ? safeStorageGet('local_digest_'  + aliasId, '') : '') || '';
 
@@ -1439,8 +1457,10 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
   let failCount = 0;
 
   try {
-    // 1. Flush active editors first (Notepad + Folder Doc)
-    await flushNotepadSave();
+    // 1. Flush active editors first ONLY IF they have unsaved user edits
+    if (_activePdfId && _notepadCache.get(_activePdfId)?.dirty) {
+      await flushNotepadSave(_activePdfId);
+    }
     try {
       const { flushFolderDoc } = await import('./viewer.js');
       await flushFolderDoc();
@@ -1681,11 +1701,12 @@ async function _executeForceSyncScope({ foldersToSync = [], pdfsToSync = [], sco
       } catch {}
     }
 
-    if (S.currentPdfId && canonicalMap.has(S.currentPdfId)) {
+    const activeTrueId = S.curPDF ? (S.curPDF.linked_pdf_id || S.curPDF.id) : null;
+    if (activeTrueId && canonicalMap.has(activeTrueId)) {
       await Promise.all([
-        dbLoadAnnotations(S.currentPdfId),
-        dbLoadDrawings(S.currentPdfId),
-        dbLoadBookmarks(S.currentPdfId),
+        dbLoadAnnotations(activeTrueId),
+        dbLoadDrawings(activeTrueId),
+        dbLoadBookmarks(activeTrueId),
       ]);
       try {
         const { renderAllAnnotations, renderAllDrawings } = await import('./viewer.js');
@@ -2051,7 +2072,7 @@ export function initNotepad() {
         if (_activePdfId) {
           const content = $notesEditor()?.innerHTML ?? '';
           const digest = $digestEditor()?.innerHTML ?? '';
-          _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
+          _notepadCache.set(_activePdfId, { content, digest, dirty: true, hadUserInput: true, timestamp: Date.now() });
           setWriteTs(_activePdfId);
           safeStorageSet('local_notepad_' + _activePdfId, content);
           safeStorageSet('local_digest_' + _activePdfId, digest);
@@ -2068,7 +2089,7 @@ export function initNotepad() {
       const digest = $digestEditor()?.innerHTML ?? '';
       const existing = _notepadCache.get(_activePdfId);
       if (!existing || existing.content !== content || existing.digest !== digest) {
-        _notepadCache.set(_activePdfId, { content, digest, dirty: true, timestamp: Date.now() });
+        _notepadCache.set(_activePdfId, { content, digest, dirty: true, hadUserInput: true, timestamp: Date.now() });
         setWriteTs(_activePdfId); // record that this device has local unsaved changes
         safeStorageSet('local_notepad_' + _activePdfId, content);
         safeStorageSet('local_digest_' + _activePdfId, digest);

@@ -608,14 +608,29 @@ export async function dbLoadNotepad(pdf_id) {
   let diagStatus = 'OK';
 
   try {
-    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
+    let { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
+    
+    // If not found or empty on truePdfId, and truePdfId differs from pdf_id, check alias ID
+    if (!error && (!data || (!data.content && !data.digest)) && truePdfId !== pdf_id) {
+      try {
+        const alt = await db.from('pdf_notes').select('content, digest').eq('pdf_id', pdf_id).maybeSingle();
+        if (alt.data && (alt.data.content || alt.data.digest)) {
+          data = alt.data;
+        }
+      } catch {}
+    }
+
     if (error) {
       diagCode = error.code || 'ERR_SELECT';
       diagStatus = 'WARN';
       logNotepadDiagnostic(truePdfId, 'LOAD', 'WARN', diagCode, `Supabase select error: ${error.message} (${diagCode}). Retrying without digest column.`, { error });
       
       // Fallback in case 'digest' column is not created in Supabase yet
-      const fallback = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
+      let fallback = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
+      if (!fallback.error && (!fallback.data || !fallback.data.content) && truePdfId !== pdf_id) {
+        const altFb = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+        if (altFb.data?.content) fallback = altFb;
+      }
       if (!fallback.error && fallback.data) {
         content = fallback.data.content || '';
         cloudContent = content;
@@ -653,8 +668,8 @@ export async function dbLoadNotepad(pdf_id) {
   }
 
   // Fallback to local storage if cloud returned empty or missing
-  const localC = safeStorageGet('local_notepad_' + truePdfId, '') || '';
-  const localD = safeStorageGet('local_digest_' + truePdfId, '') || '';
+  const localC = safeStorageGet('local_notepad_' + truePdfId, '') || (truePdfId !== pdf_id ? safeStorageGet('local_notepad_' + pdf_id, '') : '') || '';
+  const localD = safeStorageGet('local_digest_'  + truePdfId, '') || (truePdfId !== pdf_id ? safeStorageGet('local_digest_'  + pdf_id, '') : '') || '';
 
   // If cloud returned empty or errored, check if local storage has valid notes
   if (!content && localC) {
@@ -673,8 +688,14 @@ export async function dbLoadNotepad(pdf_id) {
     try {
       const { getNotepadHistoryIDB } = await import('./pdfcache.js');
       let hist = await getNotepadHistoryIDB(truePdfId);
+      if ((!Array.isArray(hist) || hist.length === 0) && truePdfId !== pdf_id) {
+        hist = await getNotepadHistoryIDB(pdf_id);
+      }
       if (!Array.isArray(hist) || hist.length === 0) {
         hist = JSON.parse(safeStorageGet('notepad_history_' + truePdfId, '[]') || '[]');
+        if ((!Array.isArray(hist) || hist.length === 0) && truePdfId !== pdf_id) {
+          hist = JSON.parse(safeStorageGet('notepad_history_' + pdf_id, '[]') || '[]');
+        }
       }
       if (Array.isArray(hist) && hist.length > 0) {
         // Find latest snapshot with actual content
@@ -698,6 +719,10 @@ export async function dbLoadNotepad(pdf_id) {
   if (content || digest || (!localC && !localD)) {
     safeStorageSet('local_notepad_' + truePdfId, content);
     safeStorageSet('local_digest_' + truePdfId, digest);
+    if (truePdfId !== pdf_id) {
+      safeStorageSet('local_notepad_' + pdf_id, content);
+      safeStorageSet('local_digest_' + pdf_id, digest);
+    }
   }
 
   return {
@@ -720,10 +745,22 @@ export async function dbFetchCloudNotepadRaw(pdf_id) {
   if (!pdf_id) return { ok: false, error: 'Missing pdf_id' };
   const truePdfId = S.pdfs?.find(p => p.id === pdf_id)?.linked_pdf_id || pdf_id;
   try {
-    const { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
+    let { data, error } = await db.from('pdf_notes').select('content, digest').eq('pdf_id', truePdfId).maybeSingle();
+    if (!error && (!data || (!data.content && !data.digest)) && truePdfId !== pdf_id) {
+      try {
+        const alt = await db.from('pdf_notes').select('content, digest').eq('pdf_id', pdf_id).maybeSingle();
+        if (alt.data && (alt.data.content || alt.data.digest)) {
+          data = alt.data;
+        }
+      } catch {}
+    }
     if (error) {
       // Maybe the digest column is missing — retry content only
-      const fb = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
+      let fb = await db.from('pdf_notes').select('content').eq('pdf_id', truePdfId).maybeSingle();
+      if (!fb.error && (!fb.data || !fb.data.content) && truePdfId !== pdf_id) {
+        const altFb = await db.from('pdf_notes').select('content').eq('pdf_id', pdf_id).maybeSingle();
+        if (altFb.data?.content) fb = altFb;
+      }
       if (fb.error) return { ok: false, error: fb.error.message || String(fb.error) };
       return { ok: true, exists: !!fb.data, content: fb.data?.content || '', digest: '', digestKnown: false };
     }

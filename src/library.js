@@ -1967,11 +1967,9 @@ export async function smartRefresh(e, forceHard = false) {
     renderLibrary();
 
     // If an active PDF is currently open, quietly sync its annotations/drawings/bookmarks in background
-    if (S.currentPdfId) {
+    if (S.curPDF) {
       try {
-        const trueId = S.currentPdfId.startsWith('sc_')
-          ? (S.shortcuts?.find(s => s.id === S.currentPdfId)?.original_pdf_id || S.currentPdfId)
-          : S.currentPdfId;
+        const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
         const { dbLoadAnnotations, dbLoadBookmarks, dbLoadDrawings } = await import('./db.js');
         await Promise.all([
           dbLoadAnnotations(trueId),
