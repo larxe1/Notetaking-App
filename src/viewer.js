@@ -872,7 +872,7 @@ function onTextUp(pageNum) {
   // Merge rects on the same line to create continuous highlights and fix gaps
   rects.sort((a,b) => {
     const over = Math.max(0, Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y));
-    return over > 2 ? a.x - b.x : a.y - b.y;
+    return over > Math.min(a.h, b.h) * 0.5 ? a.x - b.x : a.y - b.y;
   });
   const merged = [rects[0]];
   for (let i = 1; i < rects.length; i++) {
@@ -880,8 +880,8 @@ function onTextUp(pageNum) {
     const prev = merged[merged.length - 1];
     
     const over = Math.max(0, Math.min(prev.y+prev.h, curr.y+curr.h) - Math.max(prev.y, curr.y));
-    // If they share vertical space and are horizontally close (within 24px)
-    if (over > 0 && curr.x <= prev.x + prev.w + 24) {
+    // Must share >50% vertical height (same line) and be horizontally adjacent
+    if (over > Math.min(prev.h, curr.h) * 0.5 && curr.x >= prev.x - 4 && curr.x <= prev.x + prev.w + 24) {
       const right = Math.max(prev.x + prev.w, curr.x + curr.w);
       const bottom = Math.max(prev.y + prev.h, curr.y + curr.h);
       prev.x = Math.min(prev.x, curr.x);

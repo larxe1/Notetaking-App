@@ -5,8 +5,9 @@
 // so a failure here can never break app startup.
 //
 //  • Manual toggle button ("✒ Pen") in the toolbar. Persisted in localStorage.
-//  • Text mode + Pen ON: drag the Pencil along text like a highlighter pen; the words
-//    under the stroke are highlighted (snapped to whole words) and saved through the
+//  • Text mode + Pen ON: dragging the Pencil over text selects/highlights text
+//    live character-by-character and line-by-line (just like clicking and dragging
+//    with a mouse or highlighting in Apple Books), then saves on lift via the
 //    EXISTING createAnnotation() — DB / sync / export are untouched.
 //  • Draw mode + Pen ON: only the Pencil draws (draw.js checks S.penMode); fingers scroll.
 //  • Palm rejection: while the Pencil is down (and for a short moment after) other
@@ -21,25 +22,23 @@ import { toast } from './ui.js';
 import { safeStorageGet, safeStorageSet } from './storage.js';
 
 const LS_KEY       = 'pen_mode';
-const BAND_PX      = 16;     // live preview thickness of the highlighter band
-const TAP_MAX_MOVE = 8;      // px  — shorter than this (and quick) = a tap, not a stroke
+const TAP_MAX_MOVE = 6;      // px  — shorter than this (and quick) = a tap, not a drag
 const TAP_MAX_MS   = 450;
 const PALM_MS      = 250;    // ignore new finger touches this long after the Pencil lifts
 const STUCK_MS     = 15000;  // safety: never keep touches blocked longer than this
 const MAX_ERRORS   = 3;
 
-let _enabled   = false;
-let _installed = false;
-let _errors    = 0;
-let _btn       = null;
-let _overlay   = null;
-let _ctx       = null;
-let _stroke    = null;   // { id, pn, pts:[{x,y}], t0 }
-let _penDown   = false;
-let _penDownTs = 0;
-let _lastPenUp = 0;
-let _raf       = 0;
-let _scroll    = null;
+let _enabled    = false;
+let _installed  = false;
+let _errors     = 0;
+let _btn        = null;
+let _stroke     = null;   // { id, pn, x0, y0, curX, curY, maxMove, t0, geo, startCaret, previewEl, lastRes }
+let _penDown    = false;
+let _penDownTs  = 0;
+let _lastPenUp  = 0;
+let _raf        = 0;
+let _scroll     = null;
+const _sharedRange = document.createRange();
 
 const debugMouse = () => safeStorageGet('pen_debug_mouse', '0') === '1';
 const isPenEvent = e => e.pointerType === 'pen' || (e.pointerType === 'mouse' && debugMouse());
@@ -77,7 +76,7 @@ export function setPenMode(on, { silent = false } = {}) {
   if (!_enabled) cancelStroke();
   if (!silent) {
     toast(_enabled
-      ? '✒ Pen mode ON — Pencil highlights/draws, fingers scroll & zoom'
+      ? '✒ Pen mode ON — drag Pencil over text to highlight, fingers scroll & zoom'
       : '✒ Pen mode OFF');
   }
 }
@@ -89,7 +88,8 @@ function injectStyle() {
   st.textContent = `
     #pen-toggle { white-space: nowrap; }
     #pen-toggle.active { background: var(--gold-bg); color: var(--gold); border-color: var(--gold); }
-    #pen-overlay { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 9000; mix-blend-mode: multiply; }
+    .hi-grp.pen-preview { pointer-events: none !important; opacity: 0.4; mix-blend-mode: multiply; }
+    .hi-grp.pen-preview .hr { pointer-events: none !important; transition: none !important; }
     body.pen-on #canvas-scroll { -webkit-touch-callout: none; }
   `;
   document.head.appendChild(st);
@@ -155,27 +155,48 @@ function onPointerDown(e) {
   // Draw mode: draw.js does the drawing. We only note "pen is down" so touches are blocked.
   if (S.mode === 'draw') { markPenDown(); return; }
 
-  // Text mode: begin a highlighter stroke if the Pencil landed on a rendered page.
+  // Text mode: click-and-drag text selection with the Pencil.
   if (S.mode !== 'text') return;
   const pn = pageAt(e.clientX, e.clientY);
-  if (pn == null) return;                    // not on a page → let it scroll normally
+  if (pn == null) return;
 
   e.preventDefault();
   markPenDown();
-  _stroke = { id: e.pointerId, pn, pts: [{ x: e.clientX, y: e.clientY }], t0: performance.now() };
-  try { _scroll.setPointerCapture(e.pointerId); } catch {}
   window.getSelection()?.removeAllRanges();
-  ensureOverlay();
-  schedulePreview();
+  document.getElementById('sel-menu')?.classList.remove('open');
+
+  const geo = buildPageSpanGeo(pn);
+  const startCaret = geo.length ? caretAt(geo, e.clientX, e.clientY, true) : null;
+
+  _stroke = {
+    id: e.pointerId,
+    pn,
+    x0: e.clientX,
+    y0: e.clientY,
+    curX: e.clientX,
+    curY: e.clientY,
+    maxMove: 0,
+    t0: performance.now(),
+    geo,
+    startCaret,
+    previewEl: null,
+    lastRes: null,
+  };
+  try { _scroll.setPointerCapture(e.pointerId); } catch {}
 }
 
 function onPointerMove(e) {
   if (!_stroke || e.pointerId !== _stroke.id) return;
   e.preventDefault();
-  let list = [];
-  if (typeof e.getCoalescedEvents === 'function') { try { list = e.getCoalescedEvents(); } catch {} }
-  if (!list.length) list = [e];
-  for (const ev of list) _stroke.pts.push({ x: ev.clientX, y: ev.clientY });
+  _stroke.curX = e.clientX;
+  _stroke.curY = e.clientY;
+  const move = Math.hypot(e.clientX - _stroke.x0, e.clientY - _stroke.y0);
+  if (move > _stroke.maxMove) _stroke.maxMove = move;
+
+  // If user touched down slightly outside a word and dragged onto text, anchor on first text hit
+  if (!_stroke.startCaret && _stroke.geo.length) {
+    _stroke.startCaret = caretAt(_stroke.geo, e.clientX, e.clientY, true);
+  }
   schedulePreview();
 }
 
@@ -184,8 +205,12 @@ function onPointerUp(e) {
   if (!_stroke || e.pointerId !== _stroke.id) return;
   const st = _stroke;
   _stroke = null;
-  st.pts.push({ x: e.clientX, y: e.clientY });
-  hideOverlay();
+  st.curX = e.clientX;
+  st.curY = e.clientY;
+  const move = Math.hypot(e.clientX - st.x0, e.clientY - st.y0);
+  if (move > st.maxMove) st.maxMove = move;
+
+  removePreview(st);
   try { _scroll.releasePointerCapture(e.pointerId); } catch {}
   window.getSelection()?.removeAllRanges();
   finishStroke(st);
@@ -213,61 +238,57 @@ function onTouchGuard(e) {
 function markPenDown() { _penDown = true; _penDownTs = Date.now(); }
 
 function cancelStroke() {
+  if (_stroke) removePreview(_stroke);
   _stroke = null;
   _penDown = false;
-  hideOverlay();
 }
 
-// ───────────────────────── live preview overlay ─────────────────────────
-function ensureOverlay() {
-  if (!_overlay) {
-    _overlay = document.createElement('canvas');
-    _overlay.id = 'pen-overlay';
-    document.body.appendChild(_overlay);
-    _ctx = _overlay.getContext('2d');
-  }
-  const dpr = window.devicePixelRatio || 1;
-  _overlay.width  = Math.round(window.innerWidth  * dpr);
-  _overlay.height = Math.round(window.innerHeight * dpr);
-  _overlay.style.width  = window.innerWidth  + 'px';
-  _overlay.style.height = window.innerHeight + 'px';
-  _ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  _overlay.style.display = 'block';
-}
-
-function hideOverlay() {
+// ───────────────────────── live text-selection preview ─────────────────────────
+function removePreview(st) {
   if (_raf) { cancelAnimationFrame(_raf); _raf = 0; }
-  if (_overlay) { _ctx.clearRect(0, 0, _overlay.width, _overlay.height); _overlay.style.display = 'none'; }
+  if (st?.previewEl) {
+    st.previewEl.remove();
+    st.previewEl = null;
+  }
+  document.querySelectorAll('.hi-grp.pen-preview').forEach(el => el.remove());
 }
 
 function schedulePreview() {
   if (_raf) return;
   _raf = requestAnimationFrame(() => {
     _raf = 0;
-    if (!_stroke || !_ctx) return;
-    const pts = _stroke.pts;
-    _ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    _ctx.lineCap = 'round';
-    _ctx.lineJoin = 'round';
-    _ctx.lineWidth = BAND_PX;
-    _ctx.strokeStyle = rgba(S.activeColor, 0.45);
-    _ctx.beginPath();
-    _ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) _ctx.lineTo(pts[i].x, pts[i].y);
-    if (pts.length === 1) _ctx.lineTo(pts[0].x + 0.01, pts[0].y);
-    _ctx.stroke();
+    if (!_stroke || _stroke.maxMove < TAP_MAX_MOVE || !_stroke.startCaret) return;
+    const pg = S.pages[_stroke.pn];
+    if (!pg?.annOv || !pg.wrap) return;
+
+    const endCaret = caretAt(_stroke.geo, _stroke.curX, _stroke.curY, false);
+    if (!endCaret) return;
+
+    const wr = pg.wrap.getBoundingClientRect();
+    const res = computeRangeHighlight(_stroke.geo, wr, _stroke.startCaret, endCaret);
+    _stroke.lastRes = res;
+
+    if (! _stroke.previewEl) {
+      const grp = document.createElement('div');
+      grp.className = 'hi-grp pen-preview';
+      pg.annOv.appendChild(grp);
+      _stroke.previewEl = grp;
+    }
+
+    const grp = _stroke.previewEl;
+    grp.innerHTML = '';
+    if (!res || !res.rects.length) return;
+    const col = S.activeColor || '#c9a84c';
+    for (const r of res.rects) {
+      const d = document.createElement('div');
+      d.className = 'hr';
+      d.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${col};`;
+      grp.appendChild(d);
+    }
   });
 }
 
-function rgba(hex, a) {
-  let h = String(hex || '').trim().replace('#', '');
-  if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
-  if (!/^[0-9a-f]{6}$/i.test(h)) return `rgba(201,168,76,${a})`;
-  const n = parseInt(h, 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-}
-
-// ───────────────────────── stroke → highlight ─────────────────────────
+// ───────────────────────── click-and-drag text geometry ─────────────────────────
 function pageAt(x, y) {
   for (const k of Object.keys(S.pages || {})) {
     const pg = S.pages[k];
@@ -278,19 +299,173 @@ function pageAt(x, y) {
   return null;
 }
 
-function pathLength(pts) {
-  let d = 0;
-  for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-  return d;
+function buildPageSpanGeo(pn) {
+  const pg = S.pages[pn];
+  if (!pg?.txtLayer) return [];
+  const geo = [];
+  for (const el of pg.txtLayer.children) {
+    if (el.tagName !== 'SPAN') continue;
+    const node = el.firstChild;
+    if (!node || node.nodeType !== 3) continue;
+    const str = node.data;
+    if (!str) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 0.5 || r.height < 0.5) continue;
+    geo.push({
+      idx: geo.length,
+      el,
+      node,
+      str,
+      len: str.length,
+      l: r.left,
+      r: r.right,
+      t: r.top,
+      b: r.bottom,
+      cy: (r.top + r.bottom) / 2,
+      h: r.height,
+    });
+  }
+  return geo;
+}
+
+// Find the exact character position { spanIdx, offset } at viewport point (x, y),
+// matching how mouse click-and-drag text selection anchors and extends across lines.
+function caretAt(geo, x, y, isStart) {
+  if (!geo.length) return null;
+
+  // 1. Find spans on the line at y (or nearest line when dragging)
+  let lineSpans = [];
+  for (let i = 0; i < geo.length; i++) {
+    const g = geo[i];
+    if (y >= g.t - g.h * 0.25 && y <= g.b + g.h * 0.25) lineSpans.push(g);
+  }
+
+  if (!lineSpans.length) {
+    let bestG = null, bestDy = Infinity;
+    for (let i = 0; i < geo.length; i++) {
+      const g = geo[i];
+      const dy = Math.abs(y - g.cy);
+      if (dy < bestDy) { bestDy = dy; bestG = g; }
+    }
+    if (!bestG) return null;
+    // On initial touchdown, ignore taps far away from any text line
+    if (isStart && bestDy > bestG.h * 1.1) return null;
+    for (let i = 0; i < geo.length; i++) {
+      const g = geo[i];
+      if (Math.abs(g.cy - bestG.cy) <= Math.min(g.h, bestG.h) * 0.5) lineSpans.push(g);
+    }
+  }
+
+  // 2. Pick the span on that line closest horizontally to x
+  let chosen = null, bestDx = Infinity;
+  for (const g of lineSpans) {
+    const dx = x < g.l ? (g.l - x) : (x > g.r ? (x - g.r) : 0);
+    if (dx < bestDx) { bestDx = dx; chosen = g; }
+  }
+  if (!chosen) return null;
+  if (isStart && bestDx > chosen.h * 2.2) return null;
+
+  // 3. Binary-search the character offset inside the chosen span's text node
+  if (x <= chosen.l) return { spanIdx: chosen.idx, offset: 0 };
+  if (x >= chosen.r) return { spanIdx: chosen.idx, offset: chosen.len };
+
+  let lo = 0, hi = chosen.len - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    _sharedRange.setStart(chosen.node, mid);
+    _sharedRange.setEnd(chosen.node, mid + 1);
+    const cr = _sharedRange.getBoundingClientRect();
+    if (x > cr.right) lo = mid + 1;
+    else hi = mid;
+  }
+  _sharedRange.setStart(chosen.node, lo);
+  _sharedRange.setEnd(chosen.node, lo + 1);
+  const cr = _sharedRange.getBoundingClientRect();
+  const offset = x > (cr.left + cr.right) / 2 ? lo + 1 : lo;
+  return { spanIdx: chosen.idx, offset };
+}
+
+// Compute crisp per-line highlight rects and text between startCaret and endCaret
+function computeRangeHighlight(geo, wr, startCaret, endCaret) {
+  if (!startCaret || !endCaret) return null;
+  let c0 = startCaret, c1 = endCaret;
+  if (c0.spanIdx > c1.spanIdx || (c0.spanIdx === c1.spanIdx && c0.offset > c1.offset)) {
+    [c0, c1] = [c1, c0];
+  }
+  if (c0.spanIdx === c1.spanIdx && c0.offset === c1.offset) return null;
+
+  const rects = [];
+  const texts = [];
+
+  for (let s = c0.spanIdx; s <= c1.spanIdx; s++) {
+    const g = geo[s];
+    const i0 = (s === c0.spanIdx) ? c0.offset : 0;
+    const i1 = (s === c1.spanIdx) ? c1.offset : g.len;
+    if (i1 <= i0) continue;
+
+    const sub = g.str.slice(i0, i1);
+    if (!sub.trim()) continue;
+
+    _sharedRange.setStart(g.node, i0);
+    _sharedRange.setEnd(g.node, i1);
+    const rr = _sharedRange.getBoundingClientRect();
+    if (rr.width < 1 || rr.height < 1) continue;
+
+    rects.push({
+      x: rr.left - wr.left,
+      y: rr.top  - wr.top,
+      w: rr.width,
+      h: rr.height,
+    });
+    texts.push(sub.trim());
+  }
+
+  if (!rects.length) return null;
+
+  // Sort top-to-bottom by line, then left-to-right within the same line
+  rects.sort((a, b) => {
+    const over = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    return over > Math.min(a.h, b.h) * 0.5 ? a.x - b.x : a.y - b.y;
+  });
+
+  // Merge rects ONLY when they share >50% vertical height (same line) and are horizontally close
+  const merged = [{ ...rects[0] }];
+  for (let i = 1; i < rects.length; i++) {
+    const cur = rects[i], prev = merged[merged.length - 1];
+    const over = Math.max(0, Math.min(prev.y + prev.h, cur.y + cur.h) - Math.max(prev.y, cur.y));
+    if (over > Math.min(prev.h, cur.h) * 0.5 && cur.x >= prev.x - 4 && cur.x <= prev.x + prev.w + 24) {
+      const right  = Math.max(prev.x + prev.w, cur.x + cur.w);
+      const bottom = Math.max(prev.y + prev.h, cur.y + cur.h);
+      prev.x = Math.min(prev.x, cur.x);
+      prev.y = Math.min(prev.y, cur.y);
+      prev.w = right - prev.x;
+      prev.h = bottom - prev.y;
+    } else {
+      merged.push({ ...cur });
+    }
+  }
+
+  const text = texts.join(' ').replace(/\s+/g, ' ').trim();
+  return { rects: merged, text: text || '(highlighted text)' };
 }
 
 function finishStroke(st) {
-  const dist = pathLength(st.pts);
-  const dur  = performance.now() - st.t0;
-  if (dist < TAP_MAX_MOVE && dur < TAP_MAX_MS) { handleTap(st); return; }
+  const dur = performance.now() - st.t0;
+  if (st.maxMove < TAP_MAX_MOVE && dur < TAP_MAX_MS) {
+    handleTap(st);
+    return;
+  }
 
-  const res = computeHighlight(st);
-  if (!res) { toast('✒ No text under that stroke'); return; }
+  let res = st.lastRes;
+  if (!res && st.startCaret && st.geo.length) {
+    const pg = S.pages[st.pn];
+    const endCaret = caretAt(st.geo, st.curX, st.curY, false);
+    if (pg?.wrap && endCaret) {
+      res = computeRangeHighlight(st.geo, pg.wrap.getBoundingClientRect(), st.startCaret, endCaret);
+    }
+  }
+  if (!res || !res.rects.length) return;
+
   import('./annotate.js')
     .then(({ createAnnotation }) => createAnnotation(st.pn, res.rects, res.text, 'text'))
     .catch(err => { console.error('[Pen] createAnnotation failed', err); toast('Highlight failed — try again'); });
@@ -301,115 +476,8 @@ function handleTap(st) {
   const pg = S.pages[st.pn];
   if (!pg?.wrap) return;
   const wr = pg.wrap.getBoundingClientRect();
-  const x = st.pts[0].x - wr.left, y = st.pts[0].y - wr.top;
+  const x = st.x0 - wr.left, y = st.y0 - wr.top;
   const hit = (S.annotations || []).filter(a => a.page === st.pn &&
     (a.rects || []).some(r => x >= r.x - 2 && x <= r.x + r.w + 2 && y >= r.y - 2 && y <= r.y + r.h + 2)).pop();
   if (hit) pg.annOv?.querySelector(`[data-id="${hit.id}"]`)?.click();
-}
-
-function resample(pts, step) {
-  const out = [pts[0]];
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
-    for (let k = 1; k <= n; k++) out.push({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n });
-  }
-  return out;
-}
-
-const isWs = c => c === undefined || /\s/.test(c);
-
-function computeHighlight(st) {
-  const pg = S.pages[st.pn];
-  if (!pg?.txtLayer || !pg.wrap) return null;
-  const wr = pg.wrap.getBoundingClientRect();
-
-  // Geometry of every text span on the page (read once per stroke)
-  const geo = [];
-  for (const el of pg.txtLayer.children) {
-    if (el.tagName !== 'SPAN') continue;
-    const r = el.getBoundingClientRect();
-    if (r.width < 0.5 || r.height < 0.5) continue;
-    geo.push({ el, l: r.left, r: r.right, t: r.top, b: r.bottom, cy: (r.top + r.bottom) / 2, h: r.height });
-  }
-  if (!geo.length) return null;
-
-  // Assign every stroke sample to the single nearest text line it passes over
-  const cover = new Map();   // geo index -> { min, max } (screen x extent of the stroke on that span)
-  for (const p of resample(st.pts, 3)) {
-    let best = -1, bestD = Infinity;
-    for (let i = 0; i < geo.length; i++) {
-      const g = geo[i];
-      if (p.x < g.l - 2 || p.x > g.r + 2) continue;
-      const d = Math.abs(p.y - g.cy);
-      if (d <= g.h * 0.75 && d < bestD) { bestD = d; best = i; }
-    }
-    if (best < 0) continue;
-    const c = cover.get(best);
-    if (c) { if (p.x < c.min) c.min = p.x; if (p.x > c.max) c.max = p.x; }
-    else cover.set(best, { min: p.x, max: p.x });
-  }
-  if (!cover.size) return null;
-
-  // Convert each covered span into a word-snapped rectangle
-  const pieces = [];
-  const range = document.createRange();
-  for (const [i, c] of cover) {
-    const g = geo[i];
-    const node = g.el.firstChild;
-    const rotated = !!g.el.style.transform;
-
-    if (!node || node.nodeType !== 3 || rotated) {
-      pieces.push({ cy: g.cy, x: g.l, text: g.el.textContent || '',
-        rect: { x: g.l - wr.left, y: g.t - wr.top, w: g.r - g.l, h: g.h } });
-      continue;
-    }
-
-    const str = node.data, n = str.length;
-    if (!n) continue;
-    const charAt = x => {
-      let lo = 0, hi = n - 1;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        range.setStart(node, mid); range.setEnd(node, mid + 1);
-        if (x > range.getBoundingClientRect().right) lo = mid + 1; else hi = mid;
-      }
-      return lo;
-    };
-    let i0 = charAt(c.min), i1 = charAt(c.max);
-    if (i1 < i0) [i0, i1] = [i1, i0];
-    while (i0 < i1 && isWs(str[i0])) i0++;                    // trim spaces inside the stroke
-    while (i1 > i0 && isWs(str[i1])) i1--;
-    if (isWs(str[i0])) continue;                              // only whitespace
-    while (i0 > 0 && !isWs(str[i0 - 1])) i0--;                // snap out to whole words
-    while (i1 < n - 1 && !isWs(str[i1 + 1])) i1++;
-
-    range.setStart(node, i0); range.setEnd(node, i1 + 1);
-    const rr = range.getBoundingClientRect();
-    if (rr.width < 1 || rr.height < 1) continue;
-    pieces.push({ cy: g.cy, x: rr.left, text: str.slice(i0, i1 + 1),
-      rect: { x: rr.left - wr.left, y: rr.top - wr.top, w: rr.width, h: rr.height } });
-  }
-  if (!pieces.length) return null;
-
-  // Reading order: top→bottom by line, then left→right
-  pieces.sort((a, b) => (Math.abs(a.cy - b.cy) > Math.min(a.rect.h, b.rect.h) * 0.5) ? a.cy - b.cy : a.x - b.x);
-
-  // Merge rects on the same line (same rule as text-selection highlights in viewer.js)
-  const merged = [{ ...pieces[0].rect }];
-  for (let k = 1; k < pieces.length; k++) {
-    const cur = pieces[k].rect, prev = merged[merged.length - 1];
-    const over = Math.max(0, Math.min(prev.y + prev.h, cur.y + cur.h) - Math.max(prev.y, cur.y));
-    if (over > 0 && cur.x <= prev.x + prev.w + 24) {
-      const right  = Math.max(prev.x + prev.w, cur.x + cur.w);
-      const bottom = Math.max(prev.y + prev.h, cur.y + cur.h);
-      prev.x = Math.min(prev.x, cur.x);
-      prev.y = Math.min(prev.y, cur.y);
-      prev.w = right - prev.x;
-      prev.h = bottom - prev.y;
-    } else merged.push({ ...cur });
-  }
-
-  const text = pieces.map(p => p.text.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  return { rects: merged, text: text || '(highlighted text)' };
 }
