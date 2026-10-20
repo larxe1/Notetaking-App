@@ -330,6 +330,55 @@ export async function scheduleNextPdfPrefetch(pdfFile) {
   }
 }
 
+// ── Close active PDF & return to Welcome / Home ──
+let _welcomeHTML = null;
+export function getWelcomeHTML() {
+  if (!_welcomeHTML && typeof document !== 'undefined') {
+    const el = document.getElementById('welcome');
+    if (el) _welcomeHTML = el.outerHTML;
+  }
+  return _welcomeHTML || '<div id="welcome"></div>';
+}
+
+export async function closeActivePDF() {
+  if (!S.curPDF) return;
+
+  try {
+    const { flushNotepadSave, notepadOnPDFChange } = await import('./notepad.js');
+    await flushNotepadSave();
+    await notepadOnPDFChange(null);
+  } catch {}
+
+  await flushFolderDoc();
+
+  if (S.pdfDoc) {
+    try { S.pdfDoc.destroy(); } catch {}
+  }
+
+  S.curPDF = null;
+  S.pdfDoc = null;
+  S.totalPages = 0;
+  S.pages = {};
+
+  const { closeOtherPanels } = await import('./ui.js');
+  closeOtherPanels();
+  const { clearSearchHighlights } = await import('./search.js');
+  clearSearchHighlights();
+
+  const scroll = document.getElementById('canvas-scroll');
+  if (scroll) {
+    scroll.innerHTML = getWelcomeHTML();
+  }
+
+  document.getElementById('folder-doc-viewer').style.display = 'none';
+  document.getElementById('content-area').style.display = 'flex';
+  document.getElementById('pg-total').textContent = '0';
+  document.getElementById('pg-input').value = '1';
+  document.getElementById('zoom-lbl').textContent = '100%';
+
+  updateActivePDF();
+}
+
 // ── Open PDF from library ──
 export async function openPDFFromLibrary(pdfFile, retries = 5) {
   try {
