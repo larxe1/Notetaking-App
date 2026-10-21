@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v128';
+const CACHE_NAME = 'legal-annotator-shell-v129';
 
 const STATIC_ASSETS = [
   './',
@@ -45,6 +45,7 @@ const STATIC_ASSETS = [
   './src/diagram.js',
   './src/pdflink.js',
   './src/pen.js',
+  './src/panel-find.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
