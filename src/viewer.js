@@ -9,6 +9,7 @@ import { renderColorDots } from './colors.js';
 import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageGet, safeStorageSet } from './storage.js';
+import { notifyTabOpened, notifyTabClosedToHome, renderStudyDesk } from './goodnotes-ui.js';
 
 // Guard set to prevent double listener registration (fixes bug #3)
 const _boxDone  = new Set();
@@ -104,6 +105,7 @@ export async function openFolderDoc(fold) {
 
   // 2. Look up fresh live folder from state
   const liveFold = S.folders.find(f => f.id === fold.id) || fold;
+  notifyTabOpened(liveFold, 'folder');
 
   // Switch to Folder Document Mode
   document.getElementById('content-area').style.display = 'none';
@@ -416,6 +418,7 @@ export async function closeActivePDF() {
   document.getElementById('zoom-lbl').textContent = '100%';
 
   updateActivePDF();
+  notifyTabClosedToHome();
 }
 
 // ── Open PDF from library ──
@@ -435,6 +438,7 @@ export async function openPDFFromLibrary(pdfFile, retries = 5) {
 
   S.curPDF = pdfFile;
   updateActivePDF();
+  notifyTabOpened(pdfFile, 'pdf');
 
   const { closeOtherPanels } = await import('./ui.js');
   closeOtherPanels();
