@@ -15,7 +15,7 @@ import {
   dbLoadBookmarks,
 } from './db.js';
 import { replayOutbox } from './outbox.js';
-import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown } from './tablepicker.js';
+import { showTablePicker, handlePaste, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, buildHighlightDropdown, copyFirstSummaryTable } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { closeOtherPanels, toast } from './ui.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
@@ -2139,6 +2139,11 @@ export function initNotepad() {
       e.stopPropagation();
       const activeEd = $currentEditor();
 
+      if (btn.id === 'np-copy-summary-table') {
+        const fallbackEd = activeEd === $digestEditor() ? $notesEditor() : $digestEditor();
+        copyFirstSummaryTable(activeEd, fallbackEd);
+        return;
+      }
       if (btn.id === 'np-link-pdf') {
         openPdfLinkModal(activeEd, () => {
           activeEd?.dispatchEvent(new Event('input'));

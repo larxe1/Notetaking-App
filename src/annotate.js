@@ -7,7 +7,7 @@ import {
   dbCreateAnnotation, dbUpdateAnnColor, dbDelAnnotation,
   dbCreateNote, dbUpdateNote, dbDelNote,
 } from './db.js';
-import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, applyEditorHighlight } from './tablepicker.js';
+import { handlePaste, showTablePicker, insertBannerHeader, toggleGrayOut, handleEditorKeyDown, outdentLine, indentLine, applyEditorHighlight, copyFirstSummaryTable } from './tablepicker.js';
 import { openPdfLinkModal, insertWebLink } from './pdflink.js';
 import { safeStorageSet, safeStorageGet } from './storage.js';
 
@@ -292,11 +292,13 @@ function renderNotes(ann) {
     
     const cardTitle = isCase ? `⚖️ Case Summary ${i + 1}` : `📝 Note ${i + 1}`;
     const cleanBody = getNoteBody(note);
+    const hasTable = /<table[\s>]/i.test(cleanBody);
 
     card.innerHTML = `
       <div class="note-card-header">
         <div class="note-num">${cardTitle}</div>
         <div class="note-actions">
+          ${hasTable ? `<button class="note-act-btn copy-tbl-btn" title="Copy 1st summary table preserving formatting (ignores untabled text below)" style="color:var(--gold); border-color:rgba(201,168,76,0.4);">📋 Copy Summary Table</button>` : ''}
           <button class="note-act-btn edit-btn" title="Edit Note">✏ Edit</button>
           <button class="note-act-btn del" title="Delete Note">🗑 Delete</button>
         </div>
@@ -316,6 +318,10 @@ function renderNotes(ann) {
           import('./ui.js').then(m => m.toast('PDF not found or deleted'));
         }
       });
+    });
+
+    card.querySelector('.note-act-btn.copy-tbl-btn')?.addEventListener('click', () => {
+      copyFirstSummaryTable(card.querySelector('.note-body'));
     });
 
     card.querySelector('.note-act-btn.edit-btn').addEventListener('click', () => {
@@ -504,6 +510,8 @@ export function initAnnPanel() {
         outdentLine(ed);
       } else if (cmd === 'indent') {
         indentLine(ed);
+      } else if (b.id === 'btn-edit-copy-table') {
+        copyFirstSummaryTable(ed);
       } else if (b.id === 'btn-edit-pdflink') {
         openPdfLinkModal(ed);
       } else if (b.id === 'btn-edit-weblink') {
