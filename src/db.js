@@ -120,22 +120,41 @@ export async function dbLoad(retries = 3) {
   }
 }
 
-// ── Annotation counts (for badges) ──
+// ── Annotation counts & Case Digest presence (for library badges) ──
+function _hasMeaningfulDigest(html) {
+  if (!html || typeof html !== 'string') return false;
+  const stripped = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+  return stripped.length > 0 || /<img\b|<table\b/i.test(html);
+}
+
 export async function dbLoadAnnCounts() {
   try {
-    const { data } = await db
-      .from('annotations')
-      .select('pdf_file_id');
-    if (data) {
+    const [annRes, notesRes] = await Promise.all([
+      db.from('annotations').select('pdf_file_id'),
+      db.from('pdf_notes').select('pdf_id, digest').not('digest', 'is', null).neq('digest', ''),
+    ]);
+    if (annRes.data) {
       S.annCounts = {};
-      for (const row of data) {
+      for (const row of annRes.data) {
         S.annCounts[row.pdf_file_id] = (S.annCounts[row.pdf_file_id] || 0) + 1;
       }
       safeStorageSet('local_ann_counts', JSON.stringify(S.annCounts));
     }
+    if (notesRes.data) {
+      S.digestMap = {};
+      for (const row of notesRes.data) {
+        if (row.pdf_id && _hasMeaningfulDigest(row.digest)) {
+          S.digestMap[row.pdf_id] = true;
+        }
+      }
+      safeStorageSet('local_digest_map', JSON.stringify(S.digestMap));
+    }
   } catch {
     try {
       S.annCounts = JSON.parse(safeStorageGet('local_ann_counts', '{}') || '{}');
+    } catch {}
+    try {
+      S.digestMap = JSON.parse(safeStorageGet('local_digest_map', '{}') || '{}');
     } catch {}
   }
 }
@@ -880,6 +899,18 @@ export async function dbSaveNotepad(pdf_id, content, digest) {
     payload.digest = safeD;
     safeStorageSet('local_digest_' + truePdfId, safeD);
     if (truePdfId !== pdf_id) safeStorageSet('local_digest_' + pdf_id, safeD);
+
+    // Keep S.digestMap & library digest counters updated immediately
+    if (!S.digestMap) S.digestMap = {};
+    if (_hasMeaningfulDigest(safeD)) {
+      S.digestMap[truePdfId] = true;
+      S.digestMap[pdf_id] = true;
+    } else {
+      delete S.digestMap[truePdfId];
+      delete S.digestMap[pdf_id];
+    }
+    safeStorageSet('local_digest_map', JSON.stringify(S.digestMap));
+    import('./library.js').then(m => m.renderLibrary?.()).catch(() => {});
   }
 
   const cLen = payload.content?.length || 0;
