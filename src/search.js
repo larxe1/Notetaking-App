@@ -52,6 +52,15 @@ export function initSearch() {
   });
   document.getElementById('snext').addEventListener('click', () => nextSearchResult(1));
   document.getElementById('sprev').addEventListener('click', () => nextSearchResult(-1));
+
+  // Ctrl+F shortcut -> opens PDF & Annotation Search panel
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && S.curPDF) {
+      e.preventDefault();
+      openSearch();
+      document.getElementById('search-input')?.select();
+    }
+  });
 }
 
 function runSearch() {
@@ -70,15 +79,41 @@ let _searchQueryId = 0;
 
 export async function extractPageText(doc, pageNum) {
   if (S.pages[pageNum]?.textItems?.length) return S.pages[pageNum].textItems;
+
+  const trueId = S.curPDF?.linked_pdf_id || S.curPDF?.id || null;
+  const scaleKey = String(Math.round((S.scale || 1.5) * 100));
+
+  // 1. Check Disk Page Vault on D: drive if running in Desktop App
+  if (trueId && typeof window !== 'undefined' && window.__DESKTOP_PDFIUM__?.getPageText) {
+    const cached = await window.__DESKTOP_PDFIUM__.getPageText(trueId, pageNum, scaleKey);
+    if (cached && Array.isArray(cached.textItems) && cached.textItems.length) {
+      if (S.pages[pageNum]) S.pages[pageNum].textItems = cached.textItems;
+      return cached.textItems;
+    }
+  }
+
   try {
     const page = await doc.getPage(pageNum);
     const vp = page.getViewport({ scale: S.scale });
     const tc = await page.getTextContent();
     const textItems = [];
+    const spansToVault = [];
     for (const item of tc.items) {
       if (!item.str || !item.transform) continue;
       const tx = pdfjsLib.Util.transform(vp.transform, item.transform);
       const fh = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+      const angle = Math.atan2(tx[1], tx[0]);
+      const leftPx = tx[4];
+      const topPx = tx[5] - fh * 0.8;
+      const fontFam = item.fontName || 'sans-serif';
+      spansToVault.push({
+        s: item.str,
+        l: Math.round(leftPx * 100) / 100,
+        t: Math.round(topPx * 100) / 100,
+        fs: Math.round(fh * 100) / 100,
+        ff: fontFam,
+        a: angle ? Math.round(angle * 10000) / 10000 : 0,
+      });
       textItems.push({
         str: item.str,
         x: item.transform[4] * S.scale,
@@ -87,18 +122,50 @@ export async function extractPageText(doc, pageNum) {
         h: (item.height || fh) * S.scale,
       });
     }
+
+    // 2. Fallback to OCR cache if page is scanned or has more OCR lines than native tokens
+    try {
+      const { getOcrPageData } = await import('./ocr.js');
+      const ocrData = getOcrPageData(trueId, pageNum);
+      if (ocrData && Array.isArray(ocrData.lines) && ocrData.lines.length > 0 && textItems.length < ocrData.lines.length) {
+        const scale = S.scale || 1.5;
+        const ocrItems = ocrData.lines
+          .filter(l => l && l.str && l.str.trim())
+          .map(l => ({
+            str: l.str,
+            x: (l.x || 0) * scale,
+            y: (l.y || 0) * scale,
+            w: (l.w || 60) * scale,
+            h: (l.h || 14) * scale,
+            ocr: true,
+          }));
+        if (ocrItems.length > 0) {
+          if (S.pages[pageNum]) S.pages[pageNum].textItems = ocrItems;
+          return ocrItems;
+        }
+      }
+    } catch {}
+
     if (S.pages[pageNum]) S.pages[pageNum].textItems = textItems;
+    if (trueId && textItems.length > 0 && typeof window !== 'undefined' && window.__DESKTOP_PDFIUM__?.savePageText) {
+      window.__DESKTOP_PDFIUM__.savePageText(trueId, pageNum, scaleKey, {
+        w: vp.width,
+        h: vp.height,
+        spans: spansToVault,
+        textItems,
+      });
+    }
     return textItems;
   } catch (err) {
     return [];
   }
 }
 
-// Background indexer for all pages when PDF opens
+// Background indexer for all pages when PDF opens (polite idle batching)
 export async function indexAllPagesText(doc) {
   if (!doc || !S.totalPages) return;
   const total = S.totalPages;
-  const BATCH_SIZE = 30;
+  const BATCH_SIZE = 4;
   for (let i = 1; i <= total; i += BATCH_SIZE) {
     if (doc !== S.pdfDoc) return; // switched PDF
     const batch = [];
@@ -110,8 +177,14 @@ export async function indexAllPagesText(doc) {
     if (batch.length) {
       await Promise.all(batch);
     }
-    // Small yield to main thread so UI stays 100% responsive
-    await new Promise(r => setTimeout(r, 15));
+    // Polite idle yield so scrolling and PDFium canvas rendering always get priority
+    await new Promise(r => {
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => r(), { timeout: 180 });
+      } else {
+        setTimeout(r, 45);
+      }
+    });
   }
 }
 
