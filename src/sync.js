@@ -140,6 +140,44 @@ export function initRealtimeSync() {
           const pdfId = payload.new?.pdf_id || payload.old?.pdf_id;
           handleNotepadRefresh(pdfId);
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, async (payload) => {
+          const key = payload.new?.key || payload.old?.key;
+          if (!key) return;
+          if (!S.curPDF) {
+            if (key === 'gn_open_tabs_v1') {
+              import('./goodnotes-ui.js').then(m => m.renderDocTabs?.()).catch(() => {});
+            }
+            return;
+          }
+          const trueId = S.curPDF.linked_pdf_id || S.curPDF.id;
+          if (key === 'read_pos_' + trueId && payload.new?.value) {
+            try {
+              const { parseReadPosPayload, scrollToPageAndRatio } = await import('./ui.js');
+              const { safeStorageGet, safeStorageSet } = await import('./storage.js');
+              const localRaw = safeStorageGet('read_pos_meta_' + trueId) || safeStorageGet('bookmark_' + trueId);
+              const localPos = parseReadPosPayload(localRaw);
+              const cloudPos = parseReadPosPayload(payload.new.value);
+              if (cloudPos && cloudPos.page >= 1 && cloudPos.page <= S.totalPages) {
+                if (cloudPos.updatedAt > localPos.updatedAt && (cloudPos.page !== S.curPage || Math.abs(cloudPos.ratio - (localPos.ratio || 0)) > 0.05)) {
+                  safeStorageSet('bookmark_' + trueId, cloudPos.page);
+                  if (S.curPDF.linked_pdf_id) safeStorageSet('bookmark_' + S.curPDF.id, cloudPos.page);
+                  const metaStr = JSON.stringify(cloudPos);
+                  safeStorageSet('read_pos_meta_' + trueId, metaStr);
+                  safeStorageSet('read_pos_meta_' + S.curPDF.id, metaStr);
+                  S.curPage = cloudPos.page;
+                  document.getElementById('pg-input').value = cloudPos.page;
+                  await scrollToPageAndRatio(cloudPos.page, cloudPos.ratio, true);
+                }
+              }
+            } catch (err) {
+              console.warn('[Sync] Realtime read_pos update error', err);
+            }
+          } else if (key === 'pdf_tags_v1_' + trueId) {
+            import('./tags.js').then(m => m.loadTagsForPdf?.(trueId)).catch(() => {});
+          } else if (key === 'gn_open_tabs_v1') {
+            import('./goodnotes-ui.js').then(m => m.renderDocTabs?.()).catch(() => {});
+          }
+        })
         .subscribe();
     }
   } catch (err) {
