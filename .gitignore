@@ -1,9 +1,18 @@
 # Local Configuration & Environment Secrets
 config.js
+config.local.js
 .env
 .env.*
 *.env
 *.local
+*.pem
+*.key
+*.cert
+credentials.json
+service-account*.json
+*.secret
+secrets.json
+client_secret*.json
 
 # Node & Package Managers
 node_modules/

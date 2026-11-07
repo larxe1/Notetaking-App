@@ -3,7 +3,7 @@
 // Network-First with Cache Fallback for Offline Study
 // ═══════════════════════════════════════════════
 
-const CACHE_NAME = 'legal-annotator-shell-v129';
+const CACHE_NAME = 'legal-annotator-shell-v130';
 
 const STATIC_ASSETS = [
   './',
@@ -22,6 +22,7 @@ const STATIC_ASSETS = [
   './src/style.css',
   './src/main.js',
   './src/storage.js',
+  './src/offline.js',
   './src/export.js',
   './src/annotate.js',
   './src/viewer.js',
@@ -30,7 +31,6 @@ const STATIC_ASSETS = [
   './src/library.js',
   './src/ui.js',
   './src/state.js',
-  './src/dict.js',
   './src/colors.js',
   './src/draw.js',
   './src/dualview.js',
@@ -46,6 +46,15 @@ const STATIC_ASSETS = [
   './src/pdflink.js',
   './src/pen.js',
   './src/panel-find.js',
+  './src/ai.js',
+  './src/goodnotes-ui.js',
+  './src/ocr.js',
+  './src/ocr-studio.js',
+  './src/schedule.js',
+  './src/smart-copy.js',
+  './src/syllabus.js',
+  './src/tags.js',
+  './src/thumbnails.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
