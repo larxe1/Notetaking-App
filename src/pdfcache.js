@@ -19,24 +19,49 @@ function getDB() {
     if (typeof indexedDB === 'undefined') {
       return resolve(null);
     }
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(CONFIG_STORE)) {
-        db.createObjectStore(CONFIG_STORE, { keyPath: 'key' });
-      }
-      if (!db.objectStoreNames.contains(HISTORY_STORE)) {
-        db.createObjectStore(HISTORY_STORE, { keyPath: 'pdf_id' });
-      }
+    let settled = false;
+    const done = (val) => {
+      if (settled) return;
+      settled = true;
+      if (!val) _dbPromise = null;
+      resolve(val);
     };
-    request.onsuccess = (e) => resolve(e.target.result);
-    request.onerror = (e) => {
-      console.warn('[PDFCache] IndexedDB open error', e);
-      resolve(null);
-    };
+    const timer = setTimeout(() => {
+      console.warn('[PDFCache] IndexedDB open timed out after 2500ms; continuing with fallback');
+      done(null);
+    }, 2500);
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(CONFIG_STORE)) {
+          db.createObjectStore(CONFIG_STORE, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+          db.createObjectStore(HISTORY_STORE, { keyPath: 'pdf_id' });
+        }
+      };
+      request.onsuccess = (e) => {
+        clearTimeout(timer);
+        done(e.target.result);
+      };
+      request.onerror = (e) => {
+        clearTimeout(timer);
+        console.warn('[PDFCache] IndexedDB open error', e);
+        done(null);
+      };
+      request.onblocked = () => {
+        clearTimeout(timer);
+        console.warn('[PDFCache] IndexedDB open blocked');
+        done(null);
+      };
+    } catch (err) {
+      clearTimeout(timer);
+      done(null);
+    }
   });
   return _dbPromise;
 }
