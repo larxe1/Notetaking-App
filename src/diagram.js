@@ -168,6 +168,9 @@ async function ensureMermaid() {
     });
   }
   if (typeof mermaid !== 'undefined') {
+    const uiFont = ((typeof getComputedStyle === 'function'
+      ? getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim()
+      : '') || "'Public Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif").replace(/"/g, "'");
     mermaid.initialize({
       startOnLoad: false,
       theme: 'dark',
@@ -181,7 +184,7 @@ async function ensureMermaid() {
         secondaryColor: '#141d30',
         tertiaryColor: '#0a0f1d'
       },
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: uiFont,
       securityLevel: 'loose'
     });
     _mermaidInitialized = true;

@@ -177,7 +177,7 @@ export function showPersistentOcrCompletionBanner({
     'gap:16px',
     'max-width:92vw',
     'color:#ecfdf5',
-    'font-family:Inter, sans-serif',
+    'font-family:var(--font-ui, "Public Sans", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif)',
   ].join(';');
 
   const hasCompression = originalBytes > 0 && compressedBytes > 0 && savedPct > 1;
@@ -415,7 +415,7 @@ function renderStandaloneOcrStudioUI(studioInfo) {
   };
 
   document.body.innerHTML = `
-    <div id="ocr-studio-app" style="min-height:100vh;background:#0a0f1a;color:#e8e4db;font-family:'Inter',sans-serif;display:flex;flex-direction:column;box-sizing:border-box;user-select:none;">
+    <div id="ocr-studio-app" style="min-height:100vh;background:#0a0f1a;color:#e8e4db;font-family:var(--font-ui, 'Public Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif);display:flex;flex-direction:column;box-sizing:border-box;user-select:none;">
       
       <!-- Top Studio Bar -->
       <header style="background:#111a2c;border-bottom:1px solid #22334d;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
@@ -424,9 +424,9 @@ function renderStandaloneOcrStudioUI(studioInfo) {
             🗜️
           </div>
           <div>
-            <h1 style="margin:0;font-family:'Libre Baskerville',serif;font-size:19px;color:#f3ead6;display:flex;align-items:center;gap:10px;">
+            <h1 style="margin:0;font-family:var(--font-display, 'Literata', Georgia, 'Palatino Linotype', 'Book Antiqua', serif);font-size:19px;color:#f3ead6;display:flex;align-items:center;gap:10px;">
               Legal OCR &amp; Compressor Studio
-              <span style="font-family:'Inter',sans-serif;font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.4);">
+              <span style="font-family:var(--font-ui, 'Public Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif);font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(34,197,94,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.4);">
                 🔗 Linked with Legal Annotator
               </span>
             </h1>
