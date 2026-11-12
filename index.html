@@ -655,6 +655,31 @@
       <button class="ap-tab active" data-nptab="notes" id="nptab-notes"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg><span>Notes</span></button>
       <button class="ap-tab" data-nptab="digest" id="nptab-digest"><svg class="icon" aria-hidden="true"><use href="#i-scale"/></svg><span>Case Digest</span></button>
     </div>
+    <!-- Perplexity Case Digest Monitor Strip -->
+    <div class="pplx-monitor" id="pplxMonitorStrip" data-state="idle" hidden>
+      <div class="pplx-monitor__row">
+        <span class="pplx-monitor__dot" id="pplxMonitorDot" data-state="idle" aria-hidden="true"></span>
+        <div class="pplx-monitor__meta">
+          <span class="pplx-monitor__title" id="pplxMonitorTitle">Perplexity Studio</span>
+          <span class="pplx-monitor__status" id="pplxMonitorStatus">Ready</span>
+        </div>
+        <div class="pplx-monitor__actions">
+          <button type="button" class="pplx-monitor__btn" id="focusPplxBtn">
+            <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg>
+            <span>Focus / Reopen</span>
+          </button>
+          <button type="button" class="pplx-monitor__btn pplx-monitor__btn--stop" id="stopDigestBtn" disabled>
+            <svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>
+            <span>Stop</span>
+          </button>
+        </div>
+      </div>
+      <div class="pplx-monitor__alert" id="pplxMonitorAlert" role="alert" hidden>
+        <svg class="icon pplx-monitor__alert-icon" aria-hidden="true"><use href="#i-alert"/></svg>
+        <span class="pplx-monitor__alert-text" id="pplxMonitorAlertText">Perplexity Studio requires attention.</span>
+        <button type="button" class="pplx-monitor__alert-btn" id="pplxMonitorAlertBtn">Focus Studio</button>
+      </div>
+    </div>
     <!-- Notepad Toolbar -->
     <div id="np-toolbar" class="toolbar-strip" style="position:sticky; top:0; z-index:100; padding:6px 14px; border-bottom:1px solid var(--navy-b); background:var(--navy-l); gap:6px; align-items:center; display:flex; flex-wrap:wrap;">
       <button class="np-fmt-btn" data-cmd="bold" title="Bold"><b>B</b></button>
@@ -893,6 +918,31 @@
     <div class="modal-acts">
       <button class="btn-sec" data-close="mo-color">Cancel</button>
       <button class="btn-gold" id="save-color">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Highlight Color Categories -->
+<div class="modal-ov" id="mo-color-categories" role="dialog" aria-modal="true" aria-labelledby="colorCatsModalTitle">
+  <div class="modal-box color-cats-modal">
+    <div class="color-cats-modal__head">
+      <div>
+        <h3 id="colorCatsModalTitle">Customize Highlight Colors</h3>
+        <p class="color-cats-modal__sub">Rename categories or adjust colors without altering existing highlight colors.</p>
+      </div>
+      <button type="button" class="ap-close" id="colorCatCloseBtn" data-close="mo-color-categories" aria-label="Close color customization dialog">
+        <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="color-cats" id="color-cat-list" role="list" aria-label="Highlight color categories"></div>
+    <form class="color-cat-add" id="color-cat-add-form">
+      <input type="color" class="color-cat-row__color" id="newCatColor" value="#a855f7" aria-label="New category color">
+      <input type="text" class="color-cat-row__hex" id="newCatHex" value="#a855f7" maxlength="7" placeholder="#a855f7" aria-label="New category hex">
+      <input type="text" class="color-cat-row__name" id="newCatName" placeholder="Add new meaning (e.g. Dissenting, Statutory)…" maxlength="40" aria-label="New category name">
+      <button type="submit" class="btn-gold" id="addColorCatBtn">Add</button>
+    </form>
+    <div class="modal-acts">
+      <button type="button" class="btn-gold" id="colorCatDoneBtn" data-close="mo-color-categories">Done</button>
     </div>
   </div>
 </div>

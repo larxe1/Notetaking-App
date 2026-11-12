@@ -5,6 +5,7 @@
 import { S } from './state.js';
 import { safeStorageSet, safeStorageGet, safeStorageRemove } from './storage.js';
 import { handleEditorKeyDown } from './tablepicker.js';
+import { getColorCategoryForHex } from './colors.js';
 
 // ── Sync status ──
 const $sdot = () => document.getElementById('sdot');
@@ -1235,7 +1236,7 @@ export function initKeyboard(deps) {
       deps.closeSearch();
       closeModal('mo-keys');
       document.getElementById('tags-panel')?.classList.remove('open');
-      ['topic-notes-modal', 'mo-syllabus', 'mo-move-to-folder', 'mo-ocr-tool'].forEach(id => {
+      ['mo-color-categories', 'mo-color', 'topic-notes-modal', 'mo-syllabus', 'mo-move-to-folder', 'mo-ocr-tool'].forEach(id => {
         closeModal(id);
         const m = document.getElementById(id);
         if (m && m.style.display && m.style.display !== 'none') m.style.display = 'none';
@@ -1284,7 +1285,9 @@ export function exportAnnotations() {
   const lines = [`# Annotations — ${S.curPDF.name}`, ''];
   const sorted = [...S.annotations].sort((a, b) => a.page - b.page);
   for (const ann of sorted) {
-    lines.push(`## Page ${ann.page}`);
+    const cat = getColorCategoryForHex(ann.hex_color);
+    const catSuffix = cat?.name ? ` · ${cat.name}` : '';
+    lines.push(`## Page ${ann.page}${catSuffix}`);
     lines.push(`> ${ann.highlighted_text}`);
     lines.push('');
     if (ann.notes.length) {
