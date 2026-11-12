@@ -460,12 +460,13 @@ export function initTableContextMenu() {
       // If table is in a read-only note card, hide cell modification tools
       const editItems = ctxMenu.querySelectorAll('#ctx-row-above, #ctx-row-below, #ctx-col-left, #ctx-col-right, #ctx-del-row, #ctx-del-col, #ctx-del-table');
       editItems.forEach(item => {
-        item.style.display = isEditable ? 'block' : 'none';
+        item.style.display = isEditable ? 'flex' : 'none';
       });
       ctxMenu.querySelectorAll('div[style*="height:1px"]').forEach(sep => {
         sep.style.display = isEditable ? 'block' : 'none';
       });
       
+      ctxMenu.hidden = false;
       ctxMenu.style.display = 'flex';
       
       // Keep menu on screen
@@ -491,11 +492,18 @@ export function initTableContextMenu() {
     ctxMenu.style.display = 'none';
   });
 
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ctxMenu.style.display !== 'none') {
+      ctxMenu.style.display = 'none';
+      activeTableCell = null;
+    }
+  });
+
   // Bind actions
   document.getElementById('ctx-copy-table')?.addEventListener('click', () => {
     if (activeTableCell) {
       const table = activeTableCell.closest('table');
-      if (table) copyFormattedTable(table, '📋 Table copied with formatting!');
+      if (table) copyFormattedTable(table, 'Table copied with formatting!');
     }
   });
   document.getElementById('ctx-expand-table')?.addEventListener('click', () => {
@@ -543,14 +551,16 @@ function initTableHoverCopyBtn() {
     'padding:3px 9px',
     'font-size:11px',
     'font-weight:600',
-    'font-family:Inter,sans-serif',
+    'font-family:var(--font-ui)',
     'cursor:pointer',
     'box-shadow:0 4px 14px rgba(0,0,0,0.55)',
-    'backdrop-filter:blur(4px)',
     'transition:background 0.15s, transform 0.12s',
     'white-space:nowrap',
   ].join(';');
-  btn.textContent = '📋 Copy Summary Table';
+  const setHoverBtnContent = (iconId, label) => {
+    btn.innerHTML = `<svg class="icon icon-sm" aria-hidden="true"><use href="#${iconId}"/></svg><span>${label}</span>`;
+  };
+  setHoverBtnContent('i-copy', 'Copy Summary Table');
   btn.title = 'Instantly copy this table preserving its formatting';
 
   btn.addEventListener('mousedown', e => {
@@ -581,13 +591,17 @@ function initTableHoverCopyBtn() {
     const isFirst = isFirstTableInContainer(_hoveredTableEl);
     const ok = await copyFormattedTable(
       _hoveredTableEl,
-      isFirst ? '📋 Summary table copied with formatting!' : '📋 Table copied with formatting!'
+      isFirst ? 'Summary table copied with formatting!' : 'Table copied with formatting!'
     );
     if (ok) {
-      const origText = btn.textContent;
-      btn.textContent = '✓ Copied!';
+      const idleLabel = isFirst ? 'Copy Summary Table' : 'Copy Table';
+      btn.dataset.copied = '1';
+      setHoverBtnContent('i-check', 'Copied!');
       setTimeout(() => {
-        if (btn.textContent === '✓ Copied!') btn.textContent = origText;
+        if (btn.dataset.copied === '1') {
+          delete btn.dataset.copied;
+          setHoverBtnContent('i-copy', idleLabel);
+        }
       }, 1200);
     }
   });
@@ -617,8 +631,8 @@ function initTableHoverCopyBtn() {
       }
     }
     const isFirst = isFirstTableInContainer(table);
-    if (btn.textContent !== '✓ Copied!') {
-      btn.textContent = isFirst ? '📋 Copy Summary Table' : '📋 Copy Table';
+    if (btn.dataset.copied !== '1') {
+      setHoverBtnContent('i-copy', isFirst ? 'Copy Summary Table' : 'Copy Table');
     }
     btn.style.display = 'inline-flex';
     const bw = btn.offsetWidth || 138;

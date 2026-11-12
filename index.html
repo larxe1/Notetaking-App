@@ -268,6 +268,17 @@
     <rect x="3" y="6" width="18" height="12" rx="1.5" />
     <path d="M7 10h10M7 14h6" />
   </symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24">
+    <path d="M18 11V6a2 2 0 0 0-4 0v4M14 10V4a2 2 0 0 0-4 0v6M10 10V5a2 2 0 0 0-4 0v9l-1.3-1.3a2 2 0 0 0-2.8 2.8l4.7 4.7A4 4 0 0 0 9.4 21H16a4 4 0 0 0 4-4v-6a2 2 0 0 0-2-2Z" />
+  </symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24">
+    <circle cx="6" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12" />
+  </symbol>
+  <symbol id="i-command" viewBox="0 0 24 24">
+    <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3Z" />
+  </symbol>
 </svg>
 
 <div id="app">
@@ -284,16 +295,16 @@
           <span id="app-title" style="user-select:none;font-weight:600;">Legal Annotator</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <button id="btn-pin-sidebar" title="Toggle Auto-Hide (Hover) or Pin Sidebar" style="background:none;border:1px solid var(--navy-b);color:var(--muted);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--navy-b)';this.style.color='var(--muted)'"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg></button>
-          <button id="btn-install-sidebar" title="Install App to Desktop" style="display:none;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;width:28px;height:28px;align-items:center;justify-content:center;cursor:pointer;font-size:13px;"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg></button>
-          <button id="btn-settings" title="Settings & Tools" style="background:none;border:1px solid var(--navy-b);color:var(--muted);border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--navy-b)';this.style.color='var(--muted)'"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
-          <button id="lib-close" aria-label="Close Library" style="display:none;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+          <button id="btn-pin-sidebar" class="lib-hd-btn" aria-pressed="true" title="Toggle Auto-Hide (Hover) or Pin Sidebar"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg></button>
+          <button id="btn-install-sidebar" class="lib-hd-btn" title="Install App to Desktop" style="display:none;"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg></button>
+          <button id="btn-settings" class="lib-hd-btn" title="Settings &amp; Tools"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+          <button id="lib-close" class="lib-hd-btn" aria-label="Close Library" style="display:none;"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
         </div>
       </div>
     </div>
 
     <!-- Sync + auto-save bar -->
-    <div id="sync-bar" onclick="window.openSyncDiagnostics && window.openSyncDiagnostics()" title="Click to view System & Sync Diagnostics">
+    <div id="sync-bar" onclick="window.openSyncDiagnostics && window.openSyncDiagnostics()" title="Click to view System &amp; Sync Diagnostics">
       <div class="sdot spin" id="sdot"></div>
       <span id="stxt">DB Connecting…</span>
       <span id="autosave-lbl"></span>
@@ -312,11 +323,12 @@
       <div id="recent-list"></div>
     </div>
 
-    <div style="display:flex; margin: 8px 12px; gap: 6px;">
+    <div class="lib-actions-row">
       <button id="new-subj-btn" style="flex:1; margin:0; width:auto;">+ New Subject</button>
-      <button id="undo-btn" title="Undo Last Move (Ctrl+Z)" style="padding:0 10px; background:var(--navy-l); border:1px solid var(--navy-b); border-radius:6px; color:var(--text); cursor:pointer; font-size:14px; transition:background .15s" onmouseover="this.style.background='var(--navy)'" onmouseout="this.style.background='var(--navy-l)'" onclick="window.undoLastMove()"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg></button>
+      <button id="undo-btn" class="lib-hd-btn" title="Undo Last Move (Ctrl+Z)" onclick="window.undoLastMove()"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg></button>
       <button id="refresh-btn" title="Sync Library (Shift+Click or Long-Press to Hard Reload)" aria-label="Refresh and sync library"><span class="refresh-icon"><svg class="icon" aria-hidden="true"><use href="#i-sync"/></svg></span></button>
     </div>
+    <div class="tree__hint">Right-click any folder or case</div>
     <div id="lib-tree"><div class="lib-empty">Loading…</div></div>
     <div id="lib-resize-handle" class="panel-resizer-right" title="Drag to resize Library sidebar"></div>
   </div>
@@ -329,122 +341,80 @@
     <!-- GoodNotes Multi-Case Document Tabs -->
     <div id="gn-doc-tabs"></div>
 
-    <!-- Toolbar -->
-    <div id="toolbar">
+    <!-- Case Reader Toolbar (.casebar) -->
+    <div id="toolbar" class="casebar" role="toolbar" aria-label="Case reader actions and navigation">
       <button id="mob-menu-btn" aria-label="Toggle Library"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
 
-      <!-- Mode toggle (GoodNotes Stationery Capsule) -->
-      <div id="mode-tog">
-        <button class="mode-btn active" data-mode="text" title="Highlight Text (H)">
-          <svg class="icon" aria-hidden="true"><use href="#i-highlight"/></svg>
-          <span>Highlight</span>
-        </button>
-        <button class="mode-btn" data-mode="box" title="Box Highlight / Excerpt (B)">
-          <svg class="icon" aria-hidden="true"><use href="#i-box"/></svg>
-          <span>Box</span>
-        </button>
-        <button class="mode-btn" data-mode="draw" title="Freehand Pen & Ink (D)">
-          <svg class="icon" aria-hidden="true"><use href="#i-pen"/></svg>
-          <span>Pen</span>
-        </button>
+      <div class="casebar__info" id="casebar-info" hidden>
+        <span class="casebar__title" id="casebar-title"></span>
+        <span class="casebar__meta" id="casebar-meta"></span>
       </div>
 
-      <div class="tb-sep"></div>
+      <div class="casebar__actions">
+        <button class="tb-btn casebar__btn" id="btn-toc" title="Table of Contents (PDF Bookmarks)">
+          <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
+          <span>Contents</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-search" title="Search (Ctrl+F)">
+          <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <span>Search</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-links" title="Important Links">
+          <svg class="icon" aria-hidden="true"><use href="#i-link"/></svg>
+          <span>Links</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-tags" title="Highlight Tags &amp; Topic Coverage">
+          <svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>
+          <span>Tags</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-diagram" title="Legal Diagrammer &amp; Flowcharts">
+          <svg class="icon" aria-hidden="true"><use href="#i-diagram"/></svg>
+          <span>Diagram</span>
+        </button>
 
-      <!-- Color dots -->
-      <div id="color-dots"></div>
-      <button id="add-color-btn" title="Add color" aria-label="Add color"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
-
-      <div class="tb-sep"></div>
-
-      <!-- Draw controls (shown only in draw mode) -->
-      <div id="draw-ctrls">
-        <!-- Pen sizes -->
-        <div id="pen-sizes" style="display:flex;align-items:center;gap:4px">
-          <div class="dw-btn sel" data-w="2"><div class="dw-inner" style="width:5px;height:5px"></div></div>
-          <div class="dw-btn"    data-w="4"><div class="dw-inner" style="width:9px;height:9px"></div></div>
-          <div class="dw-btn"    data-w="8"><div class="dw-inner" style="width:13px;height:13px"></div></div>
-        </div>
-        <!-- Eraser sizes (hidden by default) -->
-        <div id="erase-sizes" style="display:none;align-items:center;gap:4px">
-          <div class="er-btn sel" data-ew="12"><div class="dw-inner" style="width:8px;height:8px;background:#e44"></div></div>
-          <div class="er-btn"     data-ew="24"><div class="dw-inner" style="width:14px;height:14px;background:#e44"></div></div>
-          <div class="er-btn"     data-ew="48"><div class="dw-inner" style="width:20px;height:20px;background:#e44"></div></div>
-        </div>
-        <button class="tb-btn" id="btn-erase"><svg class="icon" aria-hidden="true"><use href="#i-eraser"/></svg><span>Erase</span></button>
-        <button class="tb-btn" id="btn-undo"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span></button>
-        <button class="tb-btn" id="btn-clear"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
         <div class="tb-sep"></div>
+
+        <button class="tb-btn casebar__btn" id="btn-ocr-pdf" title="Scan to OCR (Make Scanned PDF Searchable &amp; Selectable)">
+          <svg class="icon" aria-hidden="true"><use href="#i-scan"/></svg>
+          <span>Scan OCR</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-copy-pdf-text" title="Copy Entire PDF Text to Clipboard">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
+          <span>Copy Text</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-copy-pdf-instr" title="Add or edit instructions included when copying PDF text in this subfolder">
+          <span>+ Add Instruction</span>
+        </button>
+        <button class="tb-btn casebar__btn casebar__btn--primary" id="btn-perplexity-digest" title="Extract PDF text + Subfolder Instruction and auto-digest in your Perplexity 'Law' Project">
+          <svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg><span>Case Digest (Perplexity)</span>
+        </button>
+        <button class="tb-btn casebar__btn" id="btn-print-studio" title="Open Legal Print Studio — Customize &amp; Print Notes, Case Digests, Folder Docs &amp; Summary Tables">
+          <svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span>Print Studio</span>
+        </button>
       </div>
 
-      <button class="tb-btn" id="btn-toc" title="Table of Contents (PDF Bookmarks)">
-        <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
-        Contents
-      </button>
-      <button class="tb-btn" id="btn-search" title="Search (Ctrl+F)">
-        <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-        Search
-      </button>
-      <button class="tb-btn" id="btn-links" title="Important Links">
-        <svg class="icon" aria-hidden="true"><use href="#i-link"/></svg>
-        Links
-      </button>
-      <button class="tb-btn" id="btn-tags" title="Highlight Tags & Topic Coverage">
-        <svg class="icon" aria-hidden="true"><use href="#i-tag"/></svg>
-        <span>Tags</span>
-      </button>
-      <button class="tb-btn" id="btn-diagram" title="Legal Diagrammer & Flowcharts">
-        <svg class="icon" aria-hidden="true"><use href="#i-diagram"/></svg>
-        Diagram
-      </button>
-
-      <div class="tb-sep"></div>
-
-      <button class="tb-btn" id="btn-ocr-pdf" title="Scan to OCR (Make Scanned PDF Searchable & Selectable)">
-        <svg class="icon" aria-hidden="true"><use href="#i-scan"/></svg>
-        <span>Scan OCR</span>
-      </button>
-      <button class="tb-btn" id="btn-copy-pdf-text" title="Copy Entire PDF Text to Clipboard">
-        <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
-        <span>Copy Text</span>
-      </button>
-      <button class="tb-btn" id="btn-copy-pdf-instr" title="Add or edit instructions included when copying PDF text in this subfolder">
-        <span>+ Add Instruction</span>
-      </button>
-      <button class="tb-btn" id="btn-perplexity-digest" title="Extract PDF text + Subfolder Instruction and auto-digest in your Perplexity 'Law' Project">
-        <svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg><span>Perplexity Digest</span>
-      </button>
-      <button class="tb-btn" id="btn-print-studio" title="Open Legal Print Studio — Customize &amp; Print Notes, Case Digests, Folder Docs &amp; Summary Tables">
-        <svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span>Print Studio</span>
-      </button>
-
-      <div class="tb-sep"></div>
-
-      <!-- Page nav -->
+      <!-- Page nav & right panel controls -->
       <div id="pg-info">
         <button class="tb-btn" id="btn-prev" aria-label="Previous Page"><svg class="icon" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
-        <input type="number" id="pg-input" value="1" min="1">
+        <input type="number" id="pg-input" value="1" min="1" aria-label="Current page">
         / <span id="pg-total">—</span>
         <button class="tb-btn" id="btn-next" aria-label="Next Page"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       </div>
 
-      <div class="tb-sep"></div>
-
-      <!-- Notepad button -->
-      <button class="tb-btn" id="btn-notepad" title="PDF Notepad">
+      <button class="tb-btn casebar__btn" id="btn-notepad" title="PDF Notepad">
         <svg class="icon" aria-hidden="true"><use href="#i-note"/></svg>
-        Notepad
+        <span>Notepad</span>
       </button>
 
       <!-- Skin Toggle (Chancery & Folio Day / Darkroom Casebook Night) -->
-      <button class="tb-btn" id="btn-theme-toggle" title="Switch Theme (Chancery &amp; Folio / Darkroom Casebook)">
+      <button class="tb-btn casebar__btn" id="btn-theme-toggle" title="Switch Theme (Chancery &amp; Folio / Darkroom Casebook)">
         <svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><span>Folio</span>
       </button>
 
       <!-- Swap panes button (only visible in dual view) -->
-      <button class="tb-btn" id="btn-swap-panes" title="Swap Primary / Reference" style="display:none; color:var(--gold)">
+      <button class="tb-btn casebar__btn" id="btn-swap-panes" title="Swap Primary / Reference" style="display:none;">
         <svg class="icon" aria-hidden="true"><use href="#i-dual"/></svg>
-        Swap
+        <span>Swap</span>
       </button>
     </div>
 
@@ -515,6 +485,54 @@
         <div class="pane-header" id="pane-a-header" style="display:none">
           <span class="pane-badge primary">Primary</span>
           <span class="pane-pdf-name" id="pane-a-name"></span>
+        </div>
+        <div class="reader-progress-line" aria-hidden="true"></div>
+        <!-- Floating Bottom Annotation Capsule -->
+        <div class="capsule" id="reader-capsule" role="toolbar" aria-label="Annotation tools">
+          <div class="capsule__tools" id="mode-tog">
+            <button class="mode-btn capsule__tool active" data-mode="text" title="Highlight Text (T)">
+              <svg class="icon" aria-hidden="true"><use href="#i-highlight"/></svg>
+              <span>Highlight</span>
+            </button>
+            <button class="mode-btn capsule__tool" data-mode="box" title="Box Highlight / Excerpt (B)">
+              <svg class="icon" aria-hidden="true"><use href="#i-box"/></svg>
+              <span>Box</span>
+            </button>
+            <button class="mode-btn capsule__tool" data-mode="draw" title="Freehand Pen &amp; Ink (D)">
+              <svg class="icon" aria-hidden="true"><use href="#i-pen"/></svg>
+              <span>Pen</span>
+            </button>
+          </div>
+          <span class="capsule__divider" aria-hidden="true"></span>
+          <div class="capsule__inks" id="color-dots" role="group" aria-label="Highlight color category"></div>
+          <button id="add-color-btn" class="capsule__btn" title="Add color" aria-label="Add color"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <button id="btn-manage-colors" type="button" class="manage-colors-btn" title="Manage highlight colors" aria-label="Manage highlight colors">
+            <svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>
+            <span class="manage-colors-btn__label">Manage colors</span>
+          </button>
+          <div id="draw-ctrls">
+            <span class="capsule__divider" aria-hidden="true"></span>
+            <div id="pen-sizes" style="display:flex;align-items:center;gap:4px">
+              <div class="dw-btn sel" data-w="2"><div class="dw-inner" style="width:5px;height:5px"></div></div>
+              <div class="dw-btn"    data-w="4"><div class="dw-inner" style="width:9px;height:9px"></div></div>
+              <div class="dw-btn"    data-w="8"><div class="dw-inner" style="width:13px;height:13px"></div></div>
+            </div>
+            <div id="erase-sizes" style="display:none;align-items:center;gap:4px">
+              <div class="er-btn sel" data-ew="12"><div class="dw-inner" style="width:8px;height:8px;background:#e44"></div></div>
+              <div class="er-btn"     data-ew="24"><div class="dw-inner" style="width:14px;height:14px;background:#e44"></div></div>
+              <div class="er-btn"     data-ew="48"><div class="dw-inner" style="width:20px;height:20px;background:#e44"></div></div>
+            </div>
+            <button class="tb-btn capsule__btn" id="btn-erase"><svg class="icon" aria-hidden="true"><use href="#i-eraser"/></svg><span>Erase</span></button>
+            <button class="tb-btn capsule__btn" id="btn-undo"><svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span></button>
+            <button class="tb-btn capsule__btn" id="btn-clear"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear</span></button>
+          </div>
+          <span class="capsule__divider" aria-hidden="true"></span>
+          <div class="capsule__actions">
+            <button type="button" class="capsule__btn capsule__btn--kbd" id="btn-cmd-palette" title="Command Palette (Ctrl+K)" aria-label="Open Command Palette">
+              <svg class="icon" aria-hidden="true"><use href="#i-command"/></svg>
+              <kbd>K</kbd>
+            </button>
+          </div>
         </div>
         <!-- Compact Bottom-Right Zoom Pill -->
         <div id="floating-zoom-ctrl" title="PDF Zoom">
@@ -733,6 +751,10 @@
     </div>
     <div class="ap-colors" id="ap-colors">
       <div class="ap-colors-lbl">Highlight Color</div>
+      <button type="button" id="btn-panel-manage-colors" class="manage-colors-btn" title="Manage highlight colors">
+        <svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>
+        <span class="manage-colors-btn__label">Customize colors</span>
+      </button>
     </div>
     <!-- Note Category Tabs -->
     <div class="ap-tabs">
@@ -1582,7 +1604,7 @@
   // Fallback Escape listener
   window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      document.querySelectorAll('#ann-panel, #search-panel').forEach(function(el) {
+      document.querySelectorAll('#ann-panel, #search-panel, #tags-panel').forEach(function(el) {
         el.classList.remove('open');
       });
     }
@@ -1607,39 +1629,39 @@
 <script type="module" src="./src/backup.js"></script>
 
 <!-- Table Context Menu -->
-<div id="table-ctx-menu" style="display:none; position:absolute; z-index:9999; background:var(--navy-l); border:1px solid var(--navy-b); border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.6); flex-direction:column; padding:4px; min-width:150px;">
-  <div class="ctx-item" id="ctx-copy-table" style="color:var(--gold); font-weight:600;">📋 Copy Formatted Table</div>
-  <div class="ctx-item" id="ctx-expand-table" style="color:var(--gold); font-weight:600;">🔍 Expand Table</div>
-  <div class="ctx-item" id="ctx-export-csv">💾 Export CSV</div>
-  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
+<div id="table-ctx-menu" class="ctx-menu" style="display:none; position:absolute; z-index:9999; flex-direction:column;">
+  <div class="ctx-item ctx-item--accent" id="ctx-copy-table"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy Formatted Table</span></div>
+  <div class="ctx-item ctx-item--accent" id="ctx-expand-table"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg><span>Expand Table</span></div>
+  <div class="ctx-item" id="ctx-export-csv"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Export CSV</span></div>
+  <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-row-above">Add Row Above</div>
   <div class="ctx-item" id="ctx-row-below">Add Row Below</div>
-  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
+  <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-col-left">Add Column Left</div>
   <div class="ctx-item" id="ctx-col-right">Add Column Right</div>
-  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
-  <div class="ctx-item" id="ctx-del-row" style="color:var(--red);">Delete Row</div>
-  <div class="ctx-item" id="ctx-del-col" style="color:var(--red);">Delete Column</div>
-  <div class="ctx-item" id="ctx-del-table" style="color:var(--red);">Delete Table</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item ctx-item--danger" id="ctx-del-row">Delete Row</div>
+  <div class="ctx-item ctx-item--danger" id="ctx-del-col">Delete Column</div>
+  <div class="ctx-item ctx-item--danger" id="ctx-del-table">Delete Table</div>
 </div>
 
 <!-- Library Right-Click Context Menu -->
-<div id="lib-ctx-menu">
-  <div class="ctx-item" id="lib-ctx-open">📖 Open</div>
-  <div class="ctx-item" id="lib-ctx-reference">📑 Open as Reference</div>
-  <div class="ctx-item" id="lib-ctx-set-page">📌 Set Default Opening Page…</div>
-  <div class="ctx-item" id="ctx-set-syllabus" style="display:none">📌 Set as Subject Syllabus</div>
-  <div class="ctx-item" id="ctx-move-folder">📂 Move to Folder…</div>
-  <div class="ctx-item" id="lib-ctx-link">🔗 Create Shortcut…</div>
-  <div class="ctx-item" id="lib-ctx-offline">💾 Save for Offline</div>
-  <div class="ctx-item" id="lib-ctx-download">⬇ Download to PC</div>
-  <div class="ctx-item" id="lib-ctx-syllabus" style="display:none">📋 Import / Order from Syllabus…</div>
-  <div class="ctx-item" id="lib-ctx-export-pdf" style="display:none">📥 Export Notes to PDF</div>
-  <div class="ctx-item" id="lib-ctx-export-tables-pdf" style="display:none; color:var(--gold); font-weight:600;">📊 Export Summary Tables Only</div>
-  <div class="ctx-item" id="lib-ctx-open-print-studio" style="display:none; color:var(--gold); font-weight:600;">🖨️ Open in Print Studio…</div>
-  <div class="ctx-item" id="lib-ctx-force-sync" style="color:var(--gold); font-weight:600;">☁️ Force Sync to Cloud</div>
-  <div style="height:1px; background:var(--navy-b); margin:4px 0;"></div>
-  <div class="ctx-item" id="lib-ctx-gdrive">☁ Open in Google Drive</div>
+<div id="lib-ctx-menu" class="ctx-menu">
+  <div class="ctx-item" id="lib-ctx-open"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span>Open</span></div>
+  <div class="ctx-item" id="lib-ctx-reference"><svg class="icon" aria-hidden="true"><use href="#i-dual"/></svg><span>Open as Reference</span></div>
+  <div class="ctx-item" id="lib-ctx-set-page"><svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg><span>Set Default Opening Page…</span></div>
+  <div class="ctx-item" id="ctx-set-syllabus" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg><span>Set as Subject Syllabus</span></div>
+  <div class="ctx-item" id="ctx-move-folder"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span>Move to Folder…</span></div>
+  <div class="ctx-item" id="lib-ctx-link"><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span>Create Shortcut…</span></div>
+  <div class="ctx-item" id="lib-ctx-offline"><svg class="icon" aria-hidden="true"><use href="#i-save"/></svg><span>Save for Offline</span></div>
+  <div class="ctx-item" id="lib-ctx-download"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span>Download to PC</span></div>
+  <div class="ctx-item" id="lib-ctx-syllabus" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg><span>Import / Order from Syllabus…</span></div>
+  <div class="ctx-item" id="lib-ctx-export-pdf" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg><span>Export Notes to PDF</span></div>
+  <div class="ctx-item ctx-item--accent" id="lib-ctx-export-tables-pdf" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-table"/></svg><span>Export Summary Tables Only</span></div>
+  <div class="ctx-item ctx-item--accent" id="lib-ctx-open-print-studio" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span>Open in Print Studio…</span></div>
+  <div class="ctx-item ctx-item--accent" id="lib-ctx-force-sync"><svg class="icon" aria-hidden="true"><use href="#i-cloud"/></svg><span>Force Sync to Cloud</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="lib-ctx-gdrive"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg><span>Open in Google Drive</span></div>
 </div>
 
 <!-- Service Worker Registration & PWA Install Prompter -->
@@ -1731,6 +1753,70 @@
     <button id="export-opts-studio-btn" style="width:100%;margin-top:10px;padding:8px 12px;border:1px solid rgba(201,168,76,0.55);background:rgba(201,168,76,0.12);color:#fcd34d;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;"><svg class="icon" aria-hidden="true"><use href="#i-printer"/></svg><span>Open in Print Studio…</span></button>
   </div>
 </div>
+
+<!-- Command Palette (Ctrl/Cmd+K) -->
+<dialog id="commandPalette" class="cmd-palette palette" aria-label="Command palette">
+  <div class="palette__box">
+    <div class="palette__search">
+      <svg class="icon palette__icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <input type="search" class="palette__input" id="paletteInput" placeholder="Jump to case, command, or skin..." autocomplete="off" aria-label="Search commands and cases">
+      <kbd class="palette__esc">ESC</kbd>
+    </div>
+    <div class="palette__results" id="paletteResults" role="listbox" aria-label="Command results">
+      <div class="palette__group" id="paletteCasesGroup">
+        <div class="palette__heading">Cases &amp; Documents</div>
+      </div>
+      <div class="palette__group" id="paletteActionsGroup">
+        <div class="palette__heading">Actions &amp; Navigation</div>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="go-desk">
+          <span class="palette__item-label">Go to Study Desk</span>
+          <span class="palette__item-hint">View</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="perplexity-digest">
+          <span class="palette__item-label">Case Digest (Perplexity)</span>
+          <span class="palette__item-hint">Perplexity</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="open-digest">
+          <span class="palette__item-label">Focus Case Digest Editor</span>
+          <span class="palette__item-hint">Notepad</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="open-notes">
+          <span class="palette__item-label">Toggle PDF Notepad</span>
+          <span class="palette__item-hint">Panel</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="open-color-categories">
+          <span class="palette__item-label">Manage Highlight Colors</span>
+          <span class="palette__item-hint">Highlights</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="toggle-rail-autohide">
+          <span class="palette__item-label">Toggle Sidebar Pin / Auto-Hide</span>
+          <span class="palette__item-hint">Layout</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="toggle-skin">
+          <span class="palette__item-label">Switch Skin (Folio / Casebook)</span>
+          <span class="palette__item-hint">Appearance</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="toggle-search">
+          <span class="palette__item-label">Search in PDF / Annotations</span>
+          <span class="palette__item-hint">Ctrl+F</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="toggle-tags">
+          <span class="palette__item-label">Topic Coverage &amp; Tags</span>
+          <span class="palette__item-hint">Panel</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="zoom-in">
+          <span class="palette__item-label">Zoom In</span>
+          <span class="palette__item-hint">+25%</span>
+        </button>
+        <button type="button" class="palette__item" role="option" aria-selected="false" data-cmd="zoom-out">
+          <span class="palette__item-label">Zoom Out</span>
+          <span class="palette__item-hint">-25%</span>
+        </button>
+      </div>
+      <p class="palette__empty" id="paletteEmpty" hidden>No matching cases or commands.</p>
+    </div>
+  </div>
+</dialog>
 
 </body>
 </html>
